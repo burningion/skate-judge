@@ -1,8 +1,8 @@
 # skate-judge
 
 Record skateboard motion from an Adafruit LSM6DSO32 (accelerometer + gyro)
-wired to an ESP32-S3 over STEMMA QT / Qwiic. Label makes, bails, and falls,
-and align independent phone/webcam video using timestamped LED flashes.
+wired to an ESP32-S3 over STEMMA QT / Qwiic. Record webcam video in the web UI,
+label makes, bails, and falls, and align webcam or phone footage using timestamped LED flashes.
 The original live 3D orientation viewer is also included.
 
 This is the **data collection stage**: it does not yet detect tricks, train
@@ -15,10 +15,11 @@ and the model plan.
 ```
 firmware/imu_stream/   Arduino sketch: 100 Hz USB / optional Wi-Fi motion stream and LED sync
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
+capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
 flash.sh               compile + upload with arduino-cli
 flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
-tests/                 recording integrity and video alignment checks
+tests/                 sensor/video integrity, local HTTP, and webcam controller checks
 ```
 
 ## Your hardware and pinout
@@ -61,16 +62,35 @@ uv run capture/session.py record --rider rider-01 --board deck-01
 
 While recording, enter `start ollie` before an attempt, then `make`, `bail`,
 or `fall` after observing the outcome. Use `background` for non-trick intervals,
-`unknown` for ambiguous attempts, `sync` for a video marker, and `quit` to save
-and exit. Each command is followed by Enter. Keep the viewer closed when
+`unknown` for ambiguous attempts, `countdown` for a video marker after three
+seconds (`sync` skips the countdown), and `quit` to save and exit. Each command
+is followed by Enter. Keep the viewer closed when
 recording over USB; only one application should own the serial port.
 
 For this Feather and stick, build with `./flash-feather.sh`, join the
 board's `SkateJudge-XXXX` Wi-Fi network (prototype password `skate-judge`), then:
 
 ```bash
-uv run --offline capture/session.py record --udp 192.168.4.1 --rider rider-01 --board deck-01
+uv run --offline capture/session.py record --udp 192.168.4.1 --controls --rider rider-01 --board deck-01
 ```
+
+Open the printed controls URL **on the recording computer**. With the Feather
+powered, Wi-Fi connected, and sensor recording running, click **Enable camera**,
+allow browser access, and click **Start video recording**. Preview alone is not
+recording. Microphone audio is off unless you opt in. Then click **Start 3-second
+countdown**; the Feather flashes the stick and supplies its timestamp.
+
+Repeat the countdown near the end, then click **Stop & save video**. Wait for
+**Saved** before entering `quit` in the terminal. Video is written directly to
+the sensor-session folder as `webcam-<id>.webm` or `.mp4`, with a matching JSON
+sidecar. Keep the browser tab and terminal open until saving finishes. Match the
+visible flashes afterward using that actual filename; webcam recording does not
+automatically align the clocks. See [webcam details](docs/recording.md#webcam-recording-in-the-web-ui).
+
+You can still record separately on an iPhone and leave the webcam off.
+There are no automatic flashes by default.
+The Feather's physical buttons are unchanged. Without `--controls`, the terminal
+`countdown` command does the same thing.
 
 The board streams to the laptop; it does not store data onboard. Sessions are
 saved under `sessions/` and excluded from Git. The Feather preset selects GPIO5

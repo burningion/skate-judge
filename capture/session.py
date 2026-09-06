@@ -23,6 +23,12 @@ import threading
 import time
 import uuid
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+if __package__:
+    from .video import CHUNK_LIMIT, VideoConflict, VideoStore
+else:
+    from video import CHUNK_LIMIT, VideoConflict, VideoStore
 
 OUTCOMES = ("make", "bail", "fall", "background", "unknown")
 FIELDS = (
@@ -147,6 +153,7 @@ class Session:
         self.latest = None
         self.pending = None
         self.syncs = set()
+        self.last_sync = None
         self.save_metadata()
 
     def save_metadata(self):
@@ -222,6 +229,12 @@ class Session:
                         host_monotonic_ns=host_ns,
                     )
                     if edge:
+                        self.last_sync = dict(
+                            sync_id=sync_id,
+                            device_us=stamp,
+                            host_monotonic_ns=host_ns,
+                            led_enabled=bool(led),
+                        )
                         print(
                             f"Sync {sync_id}: {'LED flash' if led else 'marker only; LED is disabled'}",
                             flush=True,
@@ -279,7 +292,7 @@ class Session:
             self.event("note", t_s=self.latest, text=text.strip())
         else:
             raise ValueError(
-                "Commands: start [trick], make, bail, fall, background, unknown, cancel, sync, note TEXT, quit"
+                "Commands: start [trick], make, bail, fall, background, unknown, cancel, countdown, sync, note TEXT, quit"
             )
 
     def flush(self):
@@ -389,6 +402,238 @@ class SerialSource:
         self.serial.close()
 
 
+class SyncTrigger:
+    """Computer-side countdown. Samples keep flowing while we wait for each deadline."""
+
+    def __init__(self):
+        self.phase = "ready"
+        self.remaining = None
+        self.deadline = 0.0
+        self.request_ns = 0
+        self.request_device_us = 0
+        self.message = "Start video, then start the countdown."
+
+    @property
+    def busy(self):
+        return self.phase in ("countdown", "waiting")
+
+    def start(self, session):
+        if self.busy:
+            raise ValueError("A sync is already in progress.")
+        session.current_time()
+        self.phase = "countdown"
+        self.remaining = 3
+        self.deadline = time.monotonic() + 3
+        self.message = "Sync in 3…"
+        session.event(
+            "countdown_start", t_s=session.latest, host_monotonic_ns=time.monotonic_ns()
+        )
+        print(self.message, flush=True)
+
+    def request(self, session, source):
+        session.current_time()
+        self.request_ns = time.monotonic_ns()
+        self.request_device_us = session.timeline.previous_us
+        source.send(b"s")
+        self.phase = "waiting"
+        self.remaining = None
+        self.deadline = time.monotonic() + 2
+        self.message = "Flash requested; waiting for the board's timestamp."
+        session.event(
+            "sync_requested", t_s=session.latest, host_monotonic_ns=self.request_ns
+        )
+        print(self.message, flush=True)
+
+    def tick(self, session, source):
+        if self.phase == "countdown":
+            try:
+                session.current_time()
+            except ValueError:
+                self.phase = "error"
+                self.remaining = None
+                self.message = "Countdown cancelled: motion data stopped. Reconnect, then try again."
+                session.event(
+                    "countdown_cancelled", t_s=session.latest, reason="stale_stream"
+                )
+                print(self.message, flush=True)
+                return
+            remaining = max(0, math.ceil(self.deadline - time.monotonic()))
+            if remaining == 0:
+                self.request(session, source)
+            elif remaining != self.remaining:
+                self.remaining = remaining
+                self.message = f"Sync in {remaining}…"
+                print(self.message, flush=True)
+        elif self.phase == "waiting":
+            marker = session.last_sync
+            if (
+                marker
+                and marker["host_monotonic_ns"] >= self.request_ns
+                and marker["device_us"] > self.request_device_us
+            ):
+                if marker["led_enabled"]:
+                    self.phase = "done"
+                    self.message = f"Flash acknowledged — sync {marker['sync_id']}."
+                else:
+                    self.phase = "error"
+                    self.message = f"Sync {marker['sync_id']} received, but the physical LED is disabled."
+                print(self.message, flush=True)
+            elif time.monotonic() >= self.deadline:
+                self.phase = "error"
+                self.message = (
+                    "No flash acknowledgement. Check the connection and try again."
+                )
+                session.event(
+                    "sync_unacknowledged",
+                    t_s=session.latest,
+                    request_host_ns=self.request_ns,
+                )
+                print(self.message, flush=True)
+
+
+class ControlServer:
+    """Optional local browser button; recording and timing remain in the main loop."""
+
+    def __init__(self, commands, session_path, port=0):
+        self.commands = commands
+        self.lock = threading.Lock()
+        self.status = dict(can_sync=False, message="Waiting for motion data.")
+        self.videos = VideoStore(session_path)
+        assets = {
+            "/": ("controls.html", "text/html; charset=utf-8"),
+            "/controls.mjs": ("controls.mjs", "text/javascript; charset=utf-8"),
+            "/webcam.mjs": ("webcam.mjs", "text/javascript; charset=utf-8"),
+        }
+        pages = {
+            url: (Path(__file__).with_name(name).read_bytes(), mime)
+            for url, (name, mime) in assets.items()
+        }
+        control = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def reply(self, code, body, content_type="application/json"):
+                self.send_response(code)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("X-Frame-Options", "DENY")
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                if self.headers.get("Host") != control.address:
+                    self.reply(403, b"{}")
+                elif self.path in pages:
+                    self.reply(200, *pages[self.path])
+                elif self.path == "/api/status":
+                    with control.lock:
+                        body = json.dumps(control.status).encode()
+                    self.reply(200, body)
+                else:
+                    self.reply(404, b"{}")
+
+            def read_body(self, limit):
+                if self.headers.get("Transfer-Encoding"):
+                    raise ValueError("Chunked HTTP transfers are not supported.")
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 <= length <= limit:
+                    raise ValueError("Request body is too large.")
+                self.connection.settimeout(3)
+                body = self.rfile.read(length)
+                if len(body) != length:
+                    raise ValueError("Incomplete request body.")
+                return body
+
+            def do_POST(self):
+                if (
+                    self.headers.get("Host") != control.address
+                    or self.headers.get("Origin") != control.url
+                ):
+                    self.reply(403, b"{}")
+                    return
+                try:
+                    if self.path.startswith("/api/video/chunk/"):
+                        if (
+                            self.headers.get("Content-Type")
+                            != "application/octet-stream"
+                        ):
+                            raise ValueError("Expected binary video data.")
+                        _, _, _, _, clip_id, sequence = self.path.split("/")
+                        result = control.videos.chunk(
+                            clip_id, int(sequence), self.read_body(CHUNK_LIMIT)
+                        )
+                    else:
+                        if self.headers.get("Content-Type") != "application/json":
+                            raise ValueError("Expected JSON.")
+                        data = json.loads(self.read_body(8192) or b"{}")
+                        if not isinstance(data, dict):
+                            raise ValueError("Expected a JSON object.")
+                        if self.path == "/api/countdown":
+                            with control.lock:
+                                ready = control.status.get("can_sync", False)
+                                if ready:
+                                    control.status["can_sync"] = False
+                                    control.commands.put("countdown")
+                            self.reply(202 if ready else 409, b"{}")
+                            return
+                        if self.path == "/api/video/start":
+                            result = control.videos.start(data)
+                        elif self.path == "/api/video/finish":
+                            result = control.videos.finish(data)
+                        elif self.path == "/api/video/abandon":
+                            result = control.videos.abandon(data.get("id", ""))
+                        else:
+                            self.reply(404, b"{}")
+                            return
+                    self.reply(200, json.dumps(result).encode())
+                except VideoConflict as error:
+                    self.reply(409, json.dumps(dict(error=str(error))).encode())
+                except (ValueError, TypeError) as error:
+                    self.reply(400, json.dumps(dict(error=str(error))).encode())
+                except OSError as error:
+                    self.reply(
+                        507,
+                        json.dumps(dict(error=f"Video save failed: {error}")).encode(),
+                    )
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+        self.address = f"127.0.0.1:{self.server.server_port}"
+        self.url = f"http://{self.address}"
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def publish(self, session, trigger):
+        fresh = (
+            session.last_host_ns is not None
+            and time.monotonic_ns() - session.last_host_ns <= 500_000_000
+        )
+        with self.lock:
+            self.status = dict(
+                session=session.path.name,
+                session_path=str(session.path.resolve()),
+                synthetic=session.metadata.get("synthetic", False),
+                samples=session.samples,
+                duration_s=session.latest or 0,
+                can_sync=fresh and not trigger.busy,
+                fresh=fresh,
+                phase=trigger.phase,
+                remaining=trigger.remaining,
+                message=trigger.message
+                if fresh or trigger.busy
+                else "Waiting for fresh motion data. Check the recorder connection.",
+            )
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=1)
+        self.videos.close()
+
+
 def record(args):
     if args.duration is not None and (
         not math.isfinite(args.duration) or args.duration <= 0
@@ -396,6 +641,8 @@ def record(args):
         raise ValueError("--duration must be positive and finite")
     if not math.isfinite(args.sync_every) or args.sync_every < 0:
         raise ValueError("--sync-every must be nonnegative and finite")
+    if not 0 <= args.controls_port <= 65535:
+        raise ValueError("--controls-port must be between 0 and 65535")
     path = args.output or Path("sessions") / (
         datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:6]
     )
@@ -425,6 +672,7 @@ def record(args):
         source.close()
         raise
     commands = queue.Queue()
+    trigger = SyncTrigger()
 
     def stdin_reader():
         for line in sys.stdin:
@@ -433,12 +681,18 @@ def record(args):
 
     threading.Thread(target=stdin_reader, daemon=True).start()
     print(
-        f"Recording {session.path}\nCommands: start [trick], make / bail / fall / background / unknown, cancel, sync, note TEXT, quit",
+        f"Recording {session.path}\nCommands: start [trick], make / bail / fall / background / unknown, cancel, countdown, sync, note TEXT, quit",
         flush=True,
     )
     started = last_flush = last_warning = time.monotonic()
     last_heartbeat = last_sync = 0.0
+    controls = None
     try:
+        if args.controls:
+            controls = ControlServer(commands, session.path, args.controls_port)
+            print(
+                f"Open countdown controls on this computer: {controls.url}", flush=True
+            )
         source.send(b"i")
         while args.duration is None or time.monotonic() - started < args.duration:
             now = time.monotonic()
@@ -451,21 +705,38 @@ def record(args):
             while not commands.empty():
                 command = commands.get_nowait()
                 if command in ("quit", "q"):
+                    if controls and controls.videos.active:
+                        print(
+                            "Stop & save the webcam video in its browser tab first. Ctrl-C forces exit with a partial video.",
+                            flush=True,
+                        )
+                        continue
                     return
-                if command == "sync":
-                    source.send(b"s")
-                    last_sync = now
-                elif command:
+                if command:
                     try:
-                        session.mark(command)
+                        if command == "countdown":
+                            trigger.start(session)
+                            last_sync = now
+                        elif command == "sync":
+                            if trigger.busy:
+                                raise ValueError("A sync is already in progress.")
+                            trigger.request(session, source)
+                            last_sync = now
+                        else:
+                            session.mark(command)
                     except ValueError as error:
                         print(error, file=sys.stderr, flush=True)
+            trigger.tick(session, source)
             if (
                 args.sync_every
                 and session.samples
+                and not trigger.busy
                 and now - last_sync >= args.sync_every
             ):
-                source.send(b"s")
+                try:
+                    trigger.request(session, source)
+                except ValueError as error:
+                    print(error, file=sys.stderr, flush=True)
                 last_sync = now
             if now - last_flush >= 1:
                 session.flush()
@@ -483,6 +754,8 @@ def record(args):
                 )
                 session.event("stream_timeout", t_s=session.latest)
                 last_warning = now
+            if controls:
+                controls.publish(session, trigger)
             if not session.samples and now - started > 15:
                 raise ValueError(
                     "No samples received. Check board firmware, sensor, and selected transport."
@@ -493,8 +766,14 @@ def record(args):
         session.event("recording_error", error=str(error))
         raise
     finally:
-        session.close()
-        source.close()
+        try:
+            if controls:
+                controls.close()
+        finally:
+            try:
+                session.close()
+            finally:
+                source.close()
         print(
             f"Saved {session.samples} samples; {session.missing} missing sequences, {session.gaps} gaps, "
             f"{session.malformed} malformed, {session.stale} stale packets. Session: {session.path}",
@@ -627,13 +906,24 @@ def main(argv=None):
     rec.add_argument("--udp-port", type=int, default=5050)
     rec.add_argument("--output", type=Path)
     rec.add_argument(
+        "--controls",
+        action="store_true",
+        help="Serve webcam recording and sync controls in a browser on this computer",
+    )
+    rec.add_argument(
+        "--controls-port",
+        type=int,
+        default=0,
+        help="Local controls port (default: choose a free port)",
+    )
+    rec.add_argument(
         "--duration", type=float, help="Stop after this many host-clock seconds"
     )
     rec.add_argument(
         "--sync-every",
         type=float,
-        default=30,
-        help="Request LED flash every N seconds (0 disables)",
+        default=0,
+        help="Optional automatic LED flashes every N seconds (default: 0, manual only)",
     )
     for key in ("rider", "board", "mounting", "surface", "video"):
         rec.add_argument(f"--{key}", default="")

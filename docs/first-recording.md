@@ -52,9 +52,21 @@ Run a short demo to install/cache the recorder's Python dependencies:
 uv run capture/session.py record --demo --duration 5 --output sessions/demo-001
 ```
 
-The demo prints `marker only; LED is disabled` and writes synthetic motion.
-It does not talk to the Feather or flash the physical stick. Do not include
-this session in the training dataset.
+The demo writes synthetic motion. It does not talk to the Feather or flash
+the physical stick. Do not include this session in the training dataset.
+
+To practice webcam recording and the countdown without a Feather, run another
+demo without a time limit:
+
+```bash
+uv run capture/session.py record --demo --controls --output sessions/demo-webcam-001
+```
+
+Open its printed local URL, enable the camera, start video recording, and click
+the countdown button. A demo sync is reported as LED-disabled, not as a physical
+flash. Stop & save video, wait for Saved, then enter `quit` in the terminal.
+The webcam footage is real, but its paired motion is synthetic; keep this
+session out of the training dataset.
 
 Connect the Feather to the laptop over USB-C, close the orientation viewer or
 any serial monitor, and build/upload:
@@ -75,17 +87,19 @@ needed when choosing direct battery power versus the regulated 5 V circuit.
 With USB and the LiPo connected, run:
 
 ```bash
-uv run --offline capture/session.py record --serial auto \
-  --output sessions/bench-001 --duration 20
+uv run --offline capture/session.py record --serial auto --controls \
+  --output sessions/bench-001 --duration 30
 ```
 
-Hold the board still for a few seconds, then tilt it gently. The recorder
-requests a sync pulse once samples arrive; all eight pixels should flash white
-for about 150 ms. Enter `sync` followed by Enter for another flash. The console
-should acknowledge `Sync <ID>: LED flash`. That confirms the firmware enabled
+Hold the board still for a few seconds, then tilt it gently. Open the controls
+URL printed in the terminal on this laptop and click **Start 3-second countdown**.
+After the computer counts down, all eight pixels should flash white for about
+150 ms. The pixels stay off during the countdown. You can also enter `countdown`
+in the terminal, or `sync` for an immediate flash, each followed by Enter.
+The console should acknowledge `Sync <ID>: LED flash`. That confirms the firmware enabled
 its LED output; also visually check the actual stick.
 
-The recording ends automatically after 20 seconds and prints a sample/gap
+The recording ends automatically after 30 seconds and prints a sample/gap
 summary. Inspect the files:
 
 ```bash
@@ -106,7 +120,7 @@ If a flash is overexposed or too dim on camera, adjust brightness while still
 on the bench, for example `SYNC_LED_BRIGHTNESS=24 ./flash-feather.sh` for dimmer
 flashes. Complete this check before starting a real session.
 
-## 4. Switch to battery power and start the camera
+## 4. Switch to battery power and connect the recording computer
 
 After the bench recorder exits, unplug USB and confirm the Feather remains
 powered by the LiPo. Join **SkateJudge-XXXX** on the laptop using password
@@ -118,12 +132,13 @@ within the range checked on site.
 Set up the iPhone or webcam with a fixed view of both feet, the board, landing
 area, and the side-mounted stick. Use ordinary video at normal playback speed;
 60 fps is useful if available. Keep the original video without trimming or
-slow-motion edits. The recorder does not capture or operate the camera.
+slow-motion edits. The web UI can record a webcam attached to the computer;
+an iPhone recording separately still needs its own camera app.
 
-**Start the video before starting the sensor recorder**, so the first flash is
-visible. Afterward, copy the original video into the session folder as
-`pilot-001.mov` (renaming the copy is fine; do not re-encode it). That filename
-is the video identifier used in the commands below.
+You can power up and connect Wi-Fi before starting either recording. There is
+no startup sync flash to catch. The control button is on the recording computer,
+not on the Feather; its BOOT and RESET buttons are unchanged. In the next step,
+start sensor recording first, then video, then the countdown.
 
 ## 5. Record a short skating session
 
@@ -133,15 +148,41 @@ minimum training-set size. Keep one rider, board mounting, and surface for this
 session; change the example metadata to describe the actual setup:
 
 ```bash
-uv run --offline capture/session.py record --udp 192.168.4.1 \
+uv run --offline capture/session.py record --udp 192.168.4.1 --controls \
   --output sessions/pilot-001 \
   --rider rider-01 --board deck-01 --surface smooth-concrete \
-  --mounting 'under deck near front truck, sensor X points toward nose' \
-  --video pilot-001.mov
+  --mounting 'under deck near front truck, sensor X points toward nose'
 ```
 
-Wait for an acknowledged, visibly recorded flash. Flashes repeat every 30
-seconds by default. **The first ID may not be 1**: the counter continues across
+Open the printed `http://127.0.0.1:PORT` URL in a browser **on the recording
+computer**. It works without internet; it is not a page to open on the iPhone.
+Once the sample count is increasing:
+
+1. For a webcam, click **Enable camera** and allow browser access. Select the
+   camera, check the live framing, then click **Start video recording**. Wait
+   for **Recording**; preview alone does not save footage. Microphone audio is
+   off by default. If recording separately on an iPhone, start its camera app
+   instead and leave the web UI's webcam off.
+2. Click **Start 3-second countdown** on the computer. The page displays 3, 2, 1
+   while motion recording continues, then sends the flash request to the Feather.
+3. Wait for the acknowledged sync ID and check that the white flash was visible
+   to the camera. Save the ID for alignment later.
+
+No flashes are requested automatically by default. You can repeat the button
+at any time when the stream is fresh, including near the end of the video.
+Without the browser, enter `countdown` in the recorder terminal for the same
+sequence; `sync` skips the countdown. The countdown itself does not start video.
+For webcam footage, the page will show its generated `webcam-<id>.webm` or
+`.mp4` filename when saved. For a separate iPhone clip, copy the original into
+the session folder as `pilot-001.mov` later. `--video pilot-001.mov` is an
+optional metadata identifier for that external clip, not a camera control.
+
+Keep the laptop awake and the browser tab and terminal open. The preview reports
+the camera's actual resolution/frame rate; 1080p/60 fps is requested but not
+guaranteed. Check a short saved webcam clip before the skating session. See
+[webcam troubleshooting and file details](recording.md#webcam-recording-in-the-web-ui).
+
+**The first ID may not be 1**: the counter continues across
 recordings until the Feather reboots. Use the IDs printed in this session and
 saved in its `events.jsonl`; do not assume an ID from an example.
 
@@ -169,14 +210,27 @@ labels, not automatic predictions. If recording alone, leave the recorder
 running and add all labels from the video afterward.
 
 If the recorder reports no fresh motion data, stop attempting tricks until the
-connection returns. If the board resets, the recorder stops; begin a new sensor
-session and preferably a new video clip. Avoid skating with a USB tether.
+connection returns. A countdown cancels if the stream goes stale. If no flash
+acknowledgement arrives, check the connection and try again; the computer's
+countdown alone is not a video sync marker. If the board resets, the recorder
+stops; begin a new sensor session and preferably a new video clip. Avoid skating
+with a USB tether.
 
 ## 6. End, inspect, and save the session
 
 Finish or cancel any open attempt. While the camera still records and the stick
-is visible, enter `sync`. Wait for the acknowledged flash, then enter `quit`.
-Stop the camera only after that final flash. Save the printed final sync ID.
+is visible, click **Start 3-second countdown** again (or enter `countdown` in
+the terminal). Wait for the acknowledged flash and save the printed sync ID.
+For webcam recording, click **Stop & save video**, wait for **Saved**, and note
+the generated filename. Then enter `quit` in the terminal. For an external
+iPhone recording, stop its video after the final flash and quit the recorder.
+You can use **Turn camera off** to release the webcam after saving.
+
+Do not close the page while recording or saving. If saving fails, leave the
+page and terminal open, resolve the error, and click **Retry saving video**.
+Ordinary `quit` refuses to exit while a webcam upload is active; Ctrl-C, a
+duration limit, a crash, or a board restart can still interrupt it. An interrupted
+upload is retained as `.part` and is not a confirmed complete video.
 
 Review the summary and metadata:
 
@@ -192,10 +246,11 @@ reported duration with the time you recorded; do not treat a session with long
 gaps as continuous evidence. `led_enabled: true` is a configuration indication,
 not proof that the camera saw a flash.
 
-Copy the original video into `sessions/pilot-001/pilot-001.mov` and back up the
-whole session folder. `--video` only saves an identifier: it does not copy or
-record the video for you. Session folders are ignored by Git, so a code commit
-does not back up your data.
+Webcam recordings and their `webcam-<id>.json` sidecars are already in the session
+folder; check the sidecar says `status: saved` and review any `warning`. If you
+used a separate iPhone, copy its original into `sessions/pilot-001/pilot-001.mov`.
+Back up the whole session folder. Session folders are ignored by Git, so a code
+commit does not back up your data.
 
 ## 7. Align video and review labels
 
@@ -204,15 +259,18 @@ bright frame of an identifiable recorded pulse near the beginning and another
 near the end. Match them to actual rising-edge (`edge: 1`) sync IDs in
 `events.jsonl`. If you cannot confidently match a flash, use another one.
 
-The following IDs and times are **examples only**. Replace them with values
-from your video and session before running:
+The following IDs, filename, and times are **examples only**. Replace them with
+values from your video and session before running. For webcam footage, replace
+`pilot-001.mov` with the actual `webcam-<id>.webm` or `.mp4` filename everywhere
+below, including the label commands. Each separately recorded clip needs its
+own beginning/end sync points.
 
 ```bash
 uv run capture/session.py align sessions/pilot-001 \
   --video pilot-001.mov --sync-id 1 --video-seconds 4.20
 
 uv run capture/session.py align sessions/pilot-001 \
-  --video pilot-001.mov --sync-id 11 --video-seconds 304.21
+  --video pilot-001.mov --sync-id 2 --video-seconds 604.21
 ```
 
 Two points allow correction for clock drift as well as offset. A single point

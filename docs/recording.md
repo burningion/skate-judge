@@ -54,8 +54,8 @@ There is no onboard recording or recovery of missed wireless packets.
 
 The sync output supports an eight-pixel SKC6812 / SK6812 stick. All eight pixels
 flash white for 150 ms, then turn off together. Sending `sync` in the recorder
-triggers the flash and records its timestamp; automatic session flashes also
-use the whole stick. Pixels stay off between flashes, including after startup.
+triggers the flash and records its timestamp; optional automatic session flashes
+also use the whole stick. Pixels stay off between flashes, including after startup.
 
 The [Adafruit eight-pixel RGB stick](https://www.adafruit.com/product/1426)
 currently lists SKC6812 LEDs and uses RGB data.
@@ -201,24 +201,50 @@ NeoPixels.
 
 Point the phone or webcam so both feet, the board, the landing area, and the
 sync LED are visible. Record at normal playback speed; keep the original video.
-The software does not operate the camera or automatically detect flashes.
+The web UI can record a local webcam; an external phone recording is still
+manual. The software does not automatically detect flashes or align video.
 At 60 frames per second, selecting the first bright frame has roughly a
 one-frame timing uncertainty (about 17 ms), plus exposure and rolling-shutter
 effects. Visibility and a continuous recording matter more than resolution.
 
 ```bash
-uv run capture/session.py record --udp 192.168.4.1 \
+uv run --offline capture/session.py record --udp 192.168.4.1 --controls \
   --output sessions/first-session \
   --rider rider-01 --board deck-01 --surface smooth-concrete \
   --mounting 'under deck near front truck, sensor X points toward nose' \
   --video IMG_1234.MOV
 ```
 
-The recorder requests a flash once samples arrive, then every 30 seconds.
-Enter `sync` for another. It prints the acknowledged sync ID and whether the
-firmware actually enabled an LED. Network command delays do not become video
-offsets: alignment uses the board's timestamp at the LED write. A lost sync
-packet has no usable correspondence; use a flash whose ID was recorded.
+Power the Feather, join its Wi-Fi on the recording computer, and start the
+sensor recorder first. Open the printed local controls URL on that same computer,
+start the camera, then click **Start 3-second countdown**. The computer displays
+3, 2, 1 and sends the LED request; the stick stays off until the white sync pulse.
+Sensor acquisition continues throughout. The controls work without internet and
+bind only to `127.0.0.1`, not to other devices on the Wi-Fi. Enable the webcam
+and click **Start video recording** before the countdown, or start an external
+camera yourself. The Feather's physical buttons are unchanged.
+
+Without the browser, enter `countdown` in the recorder terminal; `sync` requests
+an immediate flash. Repeat near the end while the video and sensor recording
+are both still running. For a webcam, Stop & save video and wait for Saved before
+entering `quit`. For an external camera, stop it after the final flash. The page disables
+the button without fresh samples or while a sync is in progress. A stale stream
+cancels the countdown; a missing board acknowledgement is reported as an error.
+
+**Automatic flashes are off by default** (`--sync-every 0`). Opt in with
+`--sync-every 30` to request a flash once samples arrive and every 30 seconds
+thereafter; this can produce flashes before the camera is ready. Manual control
+is recommended for the first session. `--controls-port PORT` optionally fixes
+the local page's port; otherwise a free port is selected.
+
+The recorder prints the acknowledged sync ID and whether the firmware enabled
+an LED; still check the physical stick and video. Network command delays do not
+become video offsets: alignment uses the board's timestamp at the LED write,
+not the computer countdown or command-send time. A lost sync packet has no
+usable correspondence; use a flash whose ID was recorded. Computer-side
+`countdown_start` and `sync_requested` events are diagnostic records, not
+substitutes for the board's `sync` event. Demo mode cannot flash a physical LED
+or supply video alignment points.
 
 An observer can enter these commands during recording:
 
@@ -232,7 +258,8 @@ An observer can enter these commands during recording:
 | `unknown` | Occluded, ambiguous, interrupted, or otherwise unjudgeable |
 | `cancel` | Abandon the open interval without assigning an outcome |
 | `note text` | Save a session note |
-| `sync` | Request a timestamped LED pulse |
+| `countdown` | Count down three seconds on the computer, then request an LED pulse |
+| `sync` | Request a timestamped LED pulse immediately |
 | `quit` | Close recording; Ctrl-C also saves and exits |
 
 Start about a second before the attempt and wait about two seconds after the
@@ -248,6 +275,64 @@ or setting down the board, and stationary board movement. These help expose
 false sound triggers. Collect natural misses; falls do not need to be staged.
 Begin with a small range of tricks across several separate sessions. Expand
 riders, surfaces, and tricks once the capture workflow and labels are consistent.
+
+## Webcam recording in the web UI
+
+Run the recorder with `--controls` over Wi-Fi, USB, or demo mode and open the
+printed URL on that same computer. The page offers a live preview, camera
+selector, optional microphone audio, Start video recording, and Stop & save video.
+Camera/microphone access is requested only after you click Enable camera;
+microphone audio defaults to off. Changing a camera or microphone setting
+reopens the preview, and these settings are locked while recording/saving.
+Preview alone does not record. The sync button also remains usable without a
+webcam for separate iPhone footage.
+
+The browser requests 1920×1080 at 60 fps as preferences, not requirements; the
+actual negotiated settings appear below the preview and in the clip's sidecar.
+Preview is not mirrored. The browser chooses a supported WebM or MP4 recording
+format. Files are named `webcam-<id>.webm` or `webcam-<id>.mp4` and saved directly
+inside the current sensor-session folder. The UI shows the filename after a
+successful save. `--video` remains an optional identifier for external footage;
+it does not rename a webcam clip. No additional Python dependencies are needed.
+
+Video data is sent in ordered, at-most-1-MiB requests to the local recorder while
+capture continues, so an entire session is not accumulated in browser memory.
+Retries cannot append the same chunk twice. The video uploader runs separately
+from sensor acquisition. Stop & save waits for the final MediaRecorder data and
+all upload acknowledgements before marking the clip Saved. The adjacent
+`webcam-<id>.json` records the format, camera settings, byte/chunk counts, browser
+duration, save status, and any recording warning. Browser times and chunk counts
+are **not** sensor alignment points: continue matching visible beginning/end LED
+flashes, using the actual webcam filename in `align` and `label`.
+
+Keep the laptop awake, with adequate free disk space, and leave the browser tab
+and terminal open until Saved. Do a short webcam test and inspect the original
+saved clip in your video editor before collecting a long session. Browser video
+containers/editors differ in seeking support; the save acknowledgement confirms
+byte delivery, not playback quality or the presence of visible sync flashes.
+
+If camera permission is denied, allow it for this local page in browser and OS
+settings, then retry Enable camera. If the camera is busy, close other camera
+apps. If MediaRecorder is unavailable, use another supported browser or record
+externally. A plain localhost page can request camera access without an internet
+connection; see the [camera API's permission requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia).
+Recording uses the browser's [MediaRecorder API](https://developer.mozilla.org/en-US/docs/Web/API/MediaRecorder).
+
+On upload failure the UI stops video, retains unsent data in the open tab, and
+offers Retry saving video. It also stops if pending uploads exceed 32 MiB;
+review the saved warning and record another clip if needed. Do not refresh or
+close a tab with unsaved video. A closed tab cannot be resumed; start a new
+sensor session after preserving its partial files. One webcam upload is allowed
+per sensor session at a time, so a second tab cannot overwrite an active clip.
+
+Ordinary terminal `quit` waits for you to stop/save the active webcam recording.
+Ctrl-C, `--duration`, a board reset, or a process crash can still stop the recorder
+first. Received video is kept as `webcam-<id>.<format>.part`, and normal shutdown
+marks its sidecar incomplete. After a crash a sidecar may still say recording;
+neither is a confirmed complete clip, and partial files may not play. Do not
+count incomplete clips as usable training data without reviewing/recovering them.
+Use Turn camera off after saving to release the webcam. No video is sent to a
+cloud service by this application.
 
 ## Match phone video to sensor time
 
@@ -296,6 +381,9 @@ Each recording creates a new directory and refuses to overwrite an existing one.
 | `events.jsonl` | Sync edges, gaps, errors, notes, and unfinished attempts |
 | `labels.jsonl` | Human outcome intervals and append-only revisions, when labels exist |
 | `video_sync.jsonl` | Human-matched video/sensor flash correspondences, when supplied |
+| `webcam-<id>.webm` / `.mp4` | Completed webcam clip saved by the web UI, when used |
+| `webcam-<id>.json` | Camera settings, upload counts, save status, and any warning for that clip |
+| `webcam-<id>.<format>.part` | Unfinished webcam upload; not a confirmed complete clip |
 
 Sensor time determines intervals. Host arrival time is diagnostic; it is not the
 capture timestamp and is not a wall-clock value shared with the camera. Firmware

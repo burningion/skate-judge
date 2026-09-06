@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Skate Judge · Session recorder</title>
+<style>
+  :root { color-scheme: dark; font: 17px/1.5 system-ui, sans-serif; background: #10191c; color: #e9f0ef; }
+  body { margin: 0; }
+  main { box-sizing: border-box; max-width: 1120px; margin: auto; padding: 36px 24px; }
+  .brand { color: #99b9ae; font-size: 12px; letter-spacing: .16em; font-weight: 700; }
+  h1 { font-size: clamp(30px, 6vw, 42px); line-height: 1.15; margin: 18px 0; }
+  p { color: #aabbb9; }
+  h2 { font-size: 19px; margin: 0 0 16px; }
+  .workspace { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(280px, 1fr); gap: 20px; margin: 28px 0 20px; align-items: start; }
+  .panel { padding: 24px; border: 1px solid #354946; border-radius: 16px; background: #172523; min-width: 0; }
+  video { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: contain; background: #080e10; border-radius: 8px; }
+  #number { min-height: 110px; display: grid; place-items: center; font-size: 76px; line-height: 1; color: #c9f887; font-weight: 700; }
+  #message { min-height: 52px; text-align: center; color: #e9f0ef; }
+  button { width: 100%; border: 0; border-radius: 10px; padding: 18px; background: #c9f887; color: #14230c; font: inherit; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible { outline: 3px solid white; outline-offset: 4px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 14px; color: #aabbb9; }
+  .note { font-size: 14px; }
+  #demo { color: #ffc38b; }
+  .secondary { background: #354946; color: #e9f0ef; }
+  #stop-video { background: #ffd0bc; color: #3f1c13; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+  .row > button { flex: 1 1 170px; }
+  label { display: block; margin-top: 12px; }
+  select { width: 100%; box-sizing: border-box; padding: 12px; font: inherit; border-radius: 8px; background: #10191c; color: #e9f0ef; border: 1px solid #526760; margin-top: 6px; }
+  select:focus-visible, input:focus-visible { outline: 3px solid white; outline-offset: 4px; }
+  #camera-message[data-error="true"] { color: #ffc38b; }
+  #camera-message, #folder, #saved-clips { overflow-wrap: anywhere; }
+  #camera-state { font-weight: 700; color: #c9f887; }
+  #camera-state[data-recording="true"] { color: #ffb398; }
+  #saved-clips { padding-left: 20px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 780px) { .workspace { grid-template-columns: 1fr; } main { padding: 24px 16px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">SKATE JUDGE / RECORDING</div>
+  <h1>One session. Motion + video.</h1>
+  <p>Frame the board and both feet, start video, then count down to the LED sync flash.</p>
+  <div class="meta"><span id="session">Waiting for session</span><span id="samples">0 samples</span><span id="duration">0:00</span></div>
+  <p id="demo" hidden>Demo sensor session: no physical LED will flash. Webcam video is real, but this session is not training data.</p>
+  <div class="workspace">
+    <section class="panel" aria-labelledby="camera-title">
+      <h2 id="camera-title">1. Webcam recording</h2>
+      <video id="preview" autoplay muted playsinline aria-label="Live webcam preview"></video>
+      <p><span id="camera-state">Camera off</span> <span id="video-time">0:00</span></p>
+      <label for="camera">Camera<select id="camera" disabled><option value="">Default camera</option></select></label>
+      <label><input id="audio" type="checkbox"> Include microphone audio (off by default)</label>
+      <div class="row">
+        <button id="enable-camera" class="secondary" type="button">Enable camera</button>
+        <button id="disable-camera" class="secondary" type="button" disabled>Turn camera off</button>
+      </div>
+      <div class="row">
+        <button id="start-video" type="button" disabled>Start video recording</button>
+        <button id="stop-video" type="button" disabled>Stop &amp; save video</button>
+      </div>
+      <button id="retry-video" type="button" hidden>Retry saving video</button>
+      <p id="camera-message" role="status" aria-live="polite">Enable the camera and allow browser access. Preview alone does not record.</p>
+      <p class="note">Video is saved locally into the sensor-session folder, not uploaded to a cloud service. Keep this tab and the terminal open until it says Saved.</p>
+      <ul id="saved-clips" aria-label="Videos saved from this tab" hidden></ul>
+    </section>
+    <section class="panel" aria-labelledby="sync-title">
+      <h2 id="sync-title">2. Sync with the Feather</h2>
+      <div id="number" aria-hidden="true">—</div>
+      <p id="message" role="status" aria-live="polite">Connecting to recorder…</p>
+      <button id="countdown" type="button" disabled>Start 3-second countdown</button>
+      <p class="note">Motion and webcam recording continue during the countdown. The Feather supplies the flash timestamp; match the visible flash in the video afterward.</p>
+      <p class="note">Repeat near the end. Wait for the final flash, then Stop &amp; save video. Only after Saved, enter <code>quit</code> in the terminal.</p>
+      <p class="note">Using a separate iPhone recording? Leave the webcam off and use the countdown as before.</p>
+    </section>
+  </div>
+  <p id="folder" class="note"></p>
+</main>
+<script type="module" src="/controls.mjs"></script>
+</body>
+</html>
