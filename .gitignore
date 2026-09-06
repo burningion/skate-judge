@@ -1,0 +1,7 @@
+.arduino/
+__pycache__/
+*.pyc
+.venv/
+firmware/imu_stream/build/
+imu_viz_*.png
+.DS_Store
