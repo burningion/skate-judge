@@ -3,12 +3,17 @@
 // Streams LSM6DSO32 accelerometer + gyroscope samples over USB serial for
 // viz/imu_viz.py.  Output, 100 lines per second:
 //
-//   D,<micros>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<temp_C>   accel m/s^2, gyro rad/s
+//   D,<device_us>,<ax>,<ay>,<az>,<gx>,<gy>,<gz>,<temp_C>,<sequence>,<boot_id>
+//                                                     accel m/s^2, gyro rad/s
 //   R,<accel_sat_ms2>,<gyro_sat_rads>                   where the int16 readings saturate
 //   I,<text>                                            informational
 //   E,<text>                                            error
 //
 // Send "i" (or "?") to get the info lines again.
+// Send "s" for a timestamped 150 ms LED sync pulse. New D lines append a
+// sequence number and boot ID; the orientation viewer ignores these fields.
+// Optional SKATE_WIFI=1 starts a local AP and streams UDP to a subscribing
+// recorder on port 5050. USB remains available.
 //
 // The sketch does not assume a particular ESP32-S3 board: it tries the usual
 // STEMMA QT / Qwiic I2C pin pairs until it finds the sensor.  To force a pair,
@@ -17,6 +22,79 @@
 
 #include <Wire.h>
 #include <Adafruit_LSM6DSO32.h>
+#include <esp_timer.h>
+#include <esp_system.h>
+#include <stdarg.h>
+
+#ifndef SKATE_WIFI
+#define SKATE_WIFI 0
+#endif
+#ifndef SYNC_LED_PIN
+#define SYNC_LED_PIN -1
+#endif
+#ifndef SYNC_LED_RGB
+#define SYNC_LED_RGB 0
+#endif
+#ifndef SYNC_LED_ACTIVE_LOW
+#define SYNC_LED_ACTIVE_LOW 0
+#endif
+
+#if SKATE_WIFI
+#include <WiFi.h>
+#include <NetworkUdp.h>
+static NetworkUDP udp;
+static IPAddress recorderIP;
+static uint16_t recorderPort = 0;
+static uint32_t lastHeartbeat = 0;
+static bool wifiReady = false;
+static char apName[32];
+#endif
+
+static uint32_t bootId;
+static uint32_t sampleSequence = 0;
+static uint32_t syncSequence = 0;
+static bool syncOn = false;
+static bool ledReady = false;
+static int64_t syncOffAt = 0;
+
+static void emit(const char *format, ...) {
+  char line[240];
+  va_list args;
+  va_start(args, format);
+  vsnprintf(line, sizeof(line), format, args);
+  va_end(args);
+  if (Serial) Serial.print(line);
+#if SKATE_WIFI
+  if (wifiReady && recorderPort && millis() - lastHeartbeat < 5000) {
+    if (udp.beginPacket(recorderIP, recorderPort)) {
+      udp.write((const uint8_t *)line, strlen(line));
+      udp.endPacket();
+    }
+  }
+#endif
+}
+
+static void setSyncLED(bool on) {
+  if (!ledReady) return;
+#if SYNC_LED_PIN >= 0
+#if SYNC_LED_RGB
+  rgbLedWrite(SYNC_LED_PIN, on ? 48 : 0, on ? 48 : 0, on ? 48 : 0);
+#else
+  digitalWrite(SYNC_LED_PIN, on != (bool)SYNC_LED_ACTIVE_LOW ? HIGH : LOW);
+#endif
+#endif
+}
+
+static void syncEdge(bool on) {
+  // Timestamp the physical operation, before USB/network output can delay it.
+  int64_t at = esp_timer_get_time();
+  setSyncLED(on);
+  syncOn = on;
+  if (on) syncOffAt = at + 150000;
+  emit("S,%llu,%lu,%d,%d,%08lx\n", (unsigned long long)at,
+       (unsigned long)syncSequence, on ? 1 : 0, ledReady ? 1 : 0,
+       (unsigned long)bootId);
+}
 
 #ifndef IMU_SDA
 #define IMU_SDA -1
@@ -64,14 +142,51 @@ static uint8_t     foundAddr = 0;
 static const char *foundNote = "";
 
 static void printInfo() {
-  Serial.printf("I,imu_stream on %s\n", ARDUINO_BOARD);
+  emit("I,imu_stream on %s; boot=%08lx; protocol=2\n", ARDUINO_BOARD, (unsigned long)bootId);
   if (found) {
-    Serial.printf("I,LSM6DSO32 at 0x%02X on SDA=%d SCL=%d (%s)\n", foundAddr, foundSda, foundScl, foundNote);
-    Serial.println("I,accel +/-32 g, gyro +/-2000 dps, 208 Hz ODR, 100 Hz stream");
-    Serial.printf("R,%.2f,%.4f\n", ACCEL_SAT_MS2, GYRO_SAT_RADS);
+    emit("I,LSM6DSO32 at 0x%02X on SDA=%d SCL=%d (%s)\n", foundAddr, foundSda, foundScl, foundNote);
+    emit("I,accel +/-32 g, gyro +/-2000 dps, 208 Hz ODR, 100 Hz stream\n");
+    emit("R,%.2f,%.4f\n", ACCEL_SAT_MS2, GYRO_SAT_RADS);
   } else {
-    Serial.println("E,no LSM6DSO32 found on any candidate I2C pins");
+    emit("E,no LSM6DSO32 found on any candidate I2C pins\n");
   }
+  emit("I,sync LED pin=%d rgb=%d enabled=%d\n", SYNC_LED_PIN, SYNC_LED_RGB, ledReady ? 1 : 0);
+#if SKATE_WIFI
+  if (wifiReady) emit("I,WiFi AP=%s; UDP=192.168.4.1:5050\n", apName);
+  else emit("E,WiFi AP or UDP initialization failed\n");
+#endif
+}
+
+static void command(int c) {
+  if (c == 'i' || c == '?') printInfo();
+  if (c == 's' && !syncOn) {
+    ++syncSequence;
+    syncEdge(true);
+  }
+}
+
+static void pollCommands() {
+  // Bound work so a busy client cannot indefinitely postpone sampling.
+  for (int n = 0; n < 32 && Serial.available(); ++n) command(Serial.read());
+#if SKATE_WIFI
+  if (!wifiReady) return;
+  int size = udp.parsePacket();
+  if (size > 0) {
+    IPAddress senderIP = udp.remoteIP();
+    uint16_t senderPort = udp.remotePort();
+    int c = udp.read();
+    udp.clear();
+    // One recorder at a time; an active lease cannot be stolen by another client.
+    bool same = senderIP == recorderIP && senderPort == recorderPort;
+    if (size == 1 && (c == 'i' || c == '?' || c == 'k' || c == 's') &&
+        (same || !recorderPort || millis() - lastHeartbeat >= 5000)) {
+      recorderIP = senderIP;
+      recorderPort = senderPort;
+      lastHeartbeat = millis();
+      command(c);
+    }
+  }
+#endif
 }
 
 static bool probe(int sda, int scl, uint8_t addr) {
@@ -113,6 +228,7 @@ static void configureSensor() {
 }
 
 void setup() {
+  bootId = esp_random();
   Serial.begin(115200);
 #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
   Serial.setTxTimeoutMs(0);  // never stall the loop when nothing is reading the USB port
@@ -120,17 +236,36 @@ void setup() {
   delay(300);
   found = findSensor();
   if (found) configureSensor();
+  // A pin must be selected explicitly. Do not assume that LED_BUILTIN is an
+  // ordinary LED (many S3 boards use an addressable RGB LED).
+#if SYNC_LED_PIN >= 0
+  ledReady = found && SYNC_LED_PIN != foundSda && SYNC_LED_PIN != foundScl;
+  for (const PinPair &p : CANDIDATES) {
+    if (p.sda == foundSda && p.scl == foundScl && p.power == SYNC_LED_PIN) ledReady = false;
+  }
+  if (ledReady) {
+#if !SYNC_LED_RGB
+    pinMode(SYNC_LED_PIN, OUTPUT);
+#endif
+    setSyncLED(false);
+  }
+#endif
+#if SKATE_WIFI
+  snprintf(apName, sizeof(apName), "SkateJudge-%04x", (unsigned int)(ESP.getEfuseMac() & 0xffff));
+  WiFi.mode(WIFI_AP);
+  // Local prototype network. This is a shared setup password, not a private
+  // network; change it here before using it around untrusted clients.
+  wifiReady = WiFi.softAP(apName, "skate-judge") && udp.begin(5050);
+#endif
   printInfo();
 }
 
 void loop() {
-  static uint32_t nextSample = micros();
+  static int64_t nextSample = esp_timer_get_time();
   static uint32_t lastRetry  = 0;
 
-  while (Serial.available()) {
-    int c = Serial.read();
-    if (c == 'i' || c == '?') printInfo();
-  }
+  if (syncOn && esp_timer_get_time() >= syncOffAt) syncEdge(false);
+  pollCommands();
 
   if (!found) {
     if (millis() - lastRetry > 1000) {
@@ -142,20 +277,21 @@ void loop() {
     return;
   }
 
-  uint32_t now = micros();
-  if ((int32_t)(now - nextSample) < 0) return;
+  int64_t now = esp_timer_get_time();
+  if (now < nextSample) return;
   nextSample += SAMPLE_PERIOD_US;
-  if ((int32_t)(now - nextSample) > (int32_t)(10 * SAMPLE_PERIOD_US)) nextSample = now;  // fell behind: resync
+  // Do not emit a burst of repeated readings to catch up after a stall.
+  if (nextSample <= now) nextSample = now + SAMPLE_PERIOD_US;
 
   sensors_event_t accel, gyro, temp;
   if (!imu.getEvent(&accel, &gyro, &temp)) {
-    Serial.println("E,sensor read failed, rescanning");
+    emit("E,sensor read failed, rescanning\n");
     found = false;
     return;
   }
-  Serial.printf("D,%lu,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.1f\n",
-                (unsigned long)now,
+  emit("D,%llu,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.1f,%lu,%08lx\n",
+                (unsigned long long)now,
                 accel.acceleration.x, accel.acceleration.y, accel.acceleration.z,
                 gyro.gyro.x, gyro.gyro.y, gyro.gyro.z,
-                temp.temperature);
+                temp.temperature, (unsigned long)sampleSequence++, (unsigned long)bootId);
 }

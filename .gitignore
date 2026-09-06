@@ -5,3 +5,5 @@ __pycache__/
 firmware/imu_stream/build/
 imu_viz_*.png
 .DS_Store
+sessions/
+.build/

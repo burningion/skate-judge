@@ -5,6 +5,8 @@
 #   ./flash.sh /dev/cu.usbmodem101               explicit port
 #   IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh   force the I2C pins instead of auto-probing
 #   FQBN=esp32:esp32:esp32s3:CDCOnBoot=cdc ./flash.sh   override the board definition
+#   SKATE_WIFI=1 SYNC_LED_PIN=48 SYNC_LED_RGB=1 ./flash.sh  optional WiFi / sync LED
+#   ./flash.sh --compile-only                  build without uploading
 #
 # Needs arduino-cli with the esp32 core:
 #   brew install arduino-cli
@@ -32,12 +34,27 @@ if [ ! -d "$ARDUINO_DIRECTORIES_USER/libraries/Adafruit_LSM6DS" ]; then
 fi
 
 EXTRA=()
+DEFINES=()
 if [ -n "${IMU_SDA:-}" ] && [ -n "${IMU_SCL:-}" ]; then
-  EXTRA=(--build-property "compiler.cpp.extra_flags=-DIMU_SDA=${IMU_SDA} -DIMU_SCL=${IMU_SCL} -DIMU_POWER=${IMU_POWER:--1}")
+  DEFINES+=("-DIMU_SDA=${IMU_SDA}" "-DIMU_SCL=${IMU_SCL}" "-DIMU_POWER=${IMU_POWER:--1}")
+fi
+for key in SKATE_WIFI SYNC_LED_PIN SYNC_LED_RGB SYNC_LED_ACTIVE_LOW; do
+  value="${!key:-}"
+  if [ -n "$value" ]; then
+    if ! [[ "$value" =~ ^-?[0-9]+$ ]]; then
+      echo "$key must be an integer" >&2
+      exit 1
+    fi
+    DEFINES+=("-D${key}=${value}")
+  fi
+done
+if [ ${#DEFINES[@]} -gt 0 ]; then
+  EXTRA=(--build-property "compiler.cpp.extra_flags=${DEFINES[*]}")
 fi
 
 echo "== compiling for $FQBN"
 arduino-cli compile --fqbn "$FQBN" ${EXTRA[@]+"${EXTRA[@]}"} firmware/imu_stream
+if [ "$PORT" = "--compile-only" ]; then exit 0; fi
 
 find_port() { ls /dev/cu.usbmodem* 2>/dev/null | head -n 1 || true; }
 [ -n "$PORT" ] || PORT=$(find_port)
