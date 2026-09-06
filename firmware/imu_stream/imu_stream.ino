@@ -12,6 +12,8 @@
 // Send "i" (or "?") to get the info lines again.
 // Send "s" for a timestamped 150 ms LED sync pulse. New D lines append a
 // sequence number and boot ID; the orientation viewer ignores these fields.
+// For an eight-pixel SKC6812 RGB stick, set SYNC_LED_RGB=1, SYNC_LED_COUNT=8,
+// and SYNC_LED_PIN to its data GPIO. SYNC_LED_RGBW=1 selects a GRBW stick.
 // Optional SKATE_WIFI=1 starts a local AP and streams UDP to a subscribing
 // recorder on port 5050. USB remains available.
 //
@@ -24,6 +26,7 @@
 #include <Adafruit_LSM6DSO32.h>
 #include <esp_timer.h>
 #include <esp_system.h>
+#include <driver/gpio.h>
 #include <stdarg.h>
 
 #ifndef SKATE_WIFI
@@ -37,6 +40,29 @@
 #endif
 #ifndef SYNC_LED_ACTIVE_LOW
 #define SYNC_LED_ACTIVE_LOW 0
+#endif
+#ifndef SYNC_LED_RGBW
+#define SYNC_LED_RGBW 0
+#endif
+#ifndef SYNC_LED_COUNT
+#define SYNC_LED_COUNT 1
+#endif
+#ifndef SYNC_LED_BRIGHTNESS
+#define SYNC_LED_BRIGHTNESS 48  // channel value out of 255; start dim for the camera
+#endif
+
+#if SYNC_LED_RGB || SYNC_LED_RGBW
+#if SYNC_LED_COUNT < 1 || SYNC_LED_COUNT > 64
+#error "SYNC_LED_COUNT must be between 1 and 64"
+#endif
+#if SYNC_LED_BRIGHTNESS < 1 || SYNC_LED_BRIGHTNESS > 255
+#error "SYNC_LED_BRIGHTNESS must be between 1 and 255"
+#endif
+#if SYNC_LED_PIN >= 0
+#include <Adafruit_NeoPixel.h>
+static Adafruit_NeoPixel syncPixels(SYNC_LED_COUNT, SYNC_LED_PIN,
+                                   (SYNC_LED_RGBW ? NEO_GRBW : NEO_GRB) + NEO_KHZ800);
+#endif
 #endif
 
 #if SKATE_WIFI
@@ -77,8 +103,14 @@ static void emit(const char *format, ...) {
 static void setSyncLED(bool on) {
   if (!ledReady) return;
 #if SYNC_LED_PIN >= 0
-#if SYNC_LED_RGB
-  rgbLedWrite(SYNC_LED_PIN, on ? 48 : 0, on ? 48 : 0, on ? 48 : 0);
+#if SYNC_LED_RGB || SYNC_LED_RGBW
+  // Fill the whole chain, then latch one frame so all eight pixels flash
+  // together. RGBW sticks use their dedicated white channel.
+  uint8_t level = on ? SYNC_LED_BRIGHTNESS : 0;
+  uint32_t color = SYNC_LED_RGBW ? syncPixels.Color(0, 0, 0, level)
+                               : syncPixels.Color(level, level, level);
+  syncPixels.fill(color);
+  syncPixels.show();
 #else
   digitalWrite(SYNC_LED_PIN, on != (bool)SYNC_LED_ACTIVE_LOW ? HIGH : LOW);
 #endif
@@ -150,7 +182,9 @@ static void printInfo() {
   } else {
     emit("E,no LSM6DSO32 found on any candidate I2C pins\n");
   }
-  emit("I,sync LED pin=%d rgb=%d enabled=%d\n", SYNC_LED_PIN, SYNC_LED_RGB, ledReady ? 1 : 0);
+  emit("I,sync LED pin=%d rgb=%d rgbw=%d pixels=%d brightness=%d enabled=%d\n",
+       SYNC_LED_PIN, SYNC_LED_RGB, SYNC_LED_RGBW, SYNC_LED_COUNT,
+       SYNC_LED_BRIGHTNESS, ledReady ? 1 : 0);
 #if SKATE_WIFI
   if (wifiReady) emit("I,WiFi AP=%s; UDP=192.168.4.1:5050\n", apName);
   else emit("E,WiFi AP or UDP initialization failed\n");
@@ -239,12 +273,16 @@ void setup() {
   // A pin must be selected explicitly. Do not assume that LED_BUILTIN is an
   // ordinary LED (many S3 boards use an addressable RGB LED).
 #if SYNC_LED_PIN >= 0
-  ledReady = found && SYNC_LED_PIN != foundSda && SYNC_LED_PIN != foundScl;
+  ledReady = found && GPIO_IS_VALID_OUTPUT_GPIO(SYNC_LED_PIN) &&
+             SYNC_LED_PIN != foundSda && SYNC_LED_PIN != foundScl;
   for (const PinPair &p : CANDIDATES) {
     if (p.sda == foundSda && p.scl == foundScl && p.power == SYNC_LED_PIN) ledReady = false;
   }
   if (ledReady) {
-#if !SYNC_LED_RGB
+#if SYNC_LED_RGB || SYNC_LED_RGBW
+    ledReady = syncPixels.begin() && syncPixels.numPixels() == SYNC_LED_COUNT;
+    if (!ledReady) emit("E,NeoPixel initialization failed\n");
+#else
     pinMode(SYNC_LED_PIN, OUTPUT);
 #endif
     setSyncLED(false);

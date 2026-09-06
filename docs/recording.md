@@ -11,10 +11,15 @@ may require a camera during use or an additional rider/contact sensor.
 The current implementation collects the evidence needed to make that decision.
 It has no trained classifier or automatic audio trigger yet.
 
+For the first outing, follow [your first dataset recording](first-recording.md).
+This page is the detailed hardware, labeling, and data-quality reference.
+
 ## Hardware and mounting
 
-Use the existing ESP32-S3 and LSM6DSO32. Its accelerometer supports ±32 g and
-gyroscope ±2000 dps nominal; those are the firmware's configured ranges
+The current setup is an Adafruit Feather ESP32-S3 with 8 MB flash and no PSRAM,
+an LSM6DSO32 over STEMMA QT, a 3.7 V 500 mAh LiPo, and an eight-pixel SKC6812 RGB
+stick mounted along the side of the deck. The IMU's accelerometer supports
+±32 g and gyroscope ±2000 dps nominal; those are the firmware's configured ranges
 ([ST sensor specifications](https://www.st.com/en/mems-and-sensors/lsm6dso32.html)).
 The sketch reads at approximately 100 Hz from a sensor configured at 208 Hz.
 This is polling, without a sensor FIFO or data-ready synchronization; short
@@ -25,14 +30,17 @@ Rigidly attach the IMU so it follows the deck and cannot rotate independently.
 Record its orientation and position in `--mounting`; moving it changes the
 data distribution. Secure the board and wiring in an enclosure clear of wheels,
 trucks, and the surfaces used for slides. Keep the battery protected from
-crushing and abrasion. Battery connector, polarity, charging support, and LED
-pins must be checked against the exact development board; ESP32-S3 identifies
-the chip, not those board features. Runtime must be measured on the final setup.
+crushing and abrasion. The Feather supports a 3.7/4.2 V single-cell LiPo through
+its battery JST socket; confirm the battery plug has the correct polarity.
+The 3.7 V rating is nominal (about 4.2 V when full), and 500 mAh is capacity,
+not a maximum output-current specification. Measure runtime and check the
+battery's discharge rating for the final setup
+([Feather power guide](https://learn.adafruit.com/adafruit-esp32-s3-feather/power-management)).
 
 For a first wireless prototype, enable the ESP32's local access point:
 
 ```bash
-SKATE_WIFI=1 ./flash.sh
+./flash-feather.sh
 ```
 
 Join `SkateJudge-XXXX` on the laptop using password `skate-judge`. This is a
@@ -42,24 +50,152 @@ phone camera can record without joining it. Streaming uses the ESP32's
 [UDP network API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/network.html).
 There is no onboard recording or recovery of missed wireless packets.
 
-For sync, choose a visible LED and set its actual GPIO at build time:
+## Eight-pixel NeoPixel stick
+
+The sync output supports an eight-pixel SKC6812 / SK6812 stick. All eight pixels
+flash white for 150 ms, then turn off together. Sending `sync` in the recorder
+triggers the flash and records its timestamp; automatic session flashes also
+use the whole stick. Pixels stay off between flashes, including after startup.
+
+The [Adafruit eight-pixel RGB stick](https://www.adafruit.com/product/1426)
+currently lists SKC6812 LEDs and uses RGB data.
+
+For your **Adafruit Feather ESP32-S3 with 8 MB flash and no PSRAM**
+([board 5323](https://www.adafruit.com/product/5323)), the verified data pin is
+the header marked **5**, which is GPIO5. This is a digital data pin, not a 5 V
+power output or a position counted along the header. It is separate from the
+IMU's SDA=3, SCL=4, and power-enable GPIO7. Use the provided preset:
 
 ```bash
-# Replace N with the verified physical GPIO number for your hardware.
-SKATE_WIFI=1 SYNC_LED_PIN=N ./flash.sh
+./flash-feather.sh --compile-only
+./flash-feather.sh
 
-# For a single WS2812 / NeoPixel instead of a simple GPIO LED:
-SKATE_WIFI=1 SYNC_LED_PIN=N SYNC_LED_RGB=1 ./flash.sh
-
-# For a simple active-low LED, add SYNC_LED_ACTIVE_LOW=1.
+# Optional brightness or RGBW variant:
+SYNC_LED_BRIGHTNESS=24 ./flash-feather.sh
+SYNC_LED_RGBW=1 ./flash-feather.sh
 ```
 
-No LED pin is selected by default. A simple external LED needs an appropriate
-current-limiting resistor. The RGB implementation drives one pixel, not an
-entire strip. Confirm any pixel power-enable wiring separately. Avoid USB,
-flash/PSRAM, and other board-reserved pins; the sketch additionally disables
-the LED when it conflicts with the discovered IMU wiring. If the IMU is absent
-at boot, restart after correcting the wiring to enable the LED.
+This selects the Arduino `adafruit_feather_esp32s3_nopsram` target, its 8 MB
+partition layout, native hardware USB CDC, the STEMMA QT pins, and an eight-pixel
+RGB stick on GPIO5. It also enables Wi-Fi; use `SKATE_WIFI=0` for USB only.
+The board's onboard NeoPixel is separate and is not used as the sync stick.
+
+The RGB configuration sends GRB bytes at 800 kHz; RGBW sends GRBW and flashes
+the dedicated white channel. RGB and RGBW sticks need different data framing,
+so select the type in the product listing rather than guessing from the chip
+family ([Adafruit RGBW stick](https://www.adafruit.com/product/2868)).
+`flash.sh` installs the Adafruit NeoPixel library into `.arduino` when either
+pixel mode is selected.
+
+Brightness defaults to `48` out of `255`. Add `SYNC_LED_BRIGHTNESS=24` for a
+dimmer flash or increase it if needed outdoors. Check the camera image for
+visibility without washing out the board. This changes the PWM channel value,
+not a calibrated current limit. Pixel count defaults to one for compatibility
+with a single onboard pixel; `SYNC_LED_COUNT=8` is required for the entire stick.
+The supported count is 1–64 and brightness is 1–255. The preset supplies the
+eight-pixel count automatically.
+
+### Direct-LiPo wiring for the first test
+
+Disconnect USB and the battery while making the connections. With the battery
+plugged into the Feather, its `BAT` pad exposes battery voltage directly. The
+label `5V` on the stick is the positive power input; in this experiment it is
+fed from the LiPo rather than a regulated 5 V source.
+
+| Connection | Destination |
+| --- | --- |
+| 3.7 V 500 mAh LiPo plug | Feather battery JST socket, with matching polarity |
+| Feather `BAT` | Stick `5V` / `+` |
+| Feather `GND` | Stick `GND` / `−` |
+| Feather header **5** (GPIO5) | 330 Ω series resistor near stick `DIN`, then `DIN` / `IN` |
+| Stick `DOUT` / `OUT` | Leave unconnected |
+| Feather STEMMA QT | LSM6DSO32 STEMMA QT, using the four-wire cable |
+
+The STEMMA connection carries 3.3 V, ground, SDA=GPIO3, and SCL=GPIO4. The
+firmware enables its power rail using GPIO7; GPIO7 is not an extra wire to run
+to the IMU. The preset leaves the stick's data on GPIO5.
+
+The **330 Ω resistor is recommended, not mandatory** for a short-wire bench
+test. It protects the first pixel's data input; the pixels control their own
+LED current. Adafruit recommends 300–500 Ω near the first pixel and notes that
+newer pixels and small battery projects can work without it. Keep it in the
+mounted version if practical
+([NeoPixel best practices](https://learn.adafruit.com/adafruit-neopixel-uberguide/best-practices)).
+
+Adafruit documents running short NeoPixel chains directly from a 3.7 V LiPo
+with 3.3 V data, so this arrangement can be bench-tested without a boost converter
+or level shifter
+([connections guide](https://learn.adafruit.com/adafruit-neopixel-uberguide/basic-connections)).
+However, the [specific RGB stick listing](https://www.adafruit.com/product/1426)
+specifies 4–7 V. Direct-LiPo operation below that range is an experiment, not
+a guarantee: flashes can dim, show wrong colors, or stop as the battery runs
+down. Keep the default reduced brightness and check operation both when full
+and after some discharge before relying on the flashes for video sync. Use the
+regulated option below if the flashes are unreliable or insufficiently visible.
+
+Leave the battery connected during a USB bench check with this wiring: USB
+powers the Feather, but it does not replace a missing battery on `BAT`. The
+Feather charges a compatible attached battery through USB. Its `USB` pad has
+5 V only when USB is connected, and its `3V` pad is not the stick's power source
+([Feather pinout](https://learn.adafruit.com/adafruit-esp32-s3-feather/pinouts)).
+
+### Regulated 5 V option
+
+This is an alternative if direct battery power does not work reliably across
+the charge range. Keep the same LiPo; a boost converter raises its voltage to
+5 V for the stick. It does not require a second battery.
+
+| Stick connection | Connect to |
+| --- | --- |
+| `5V` / `+` | Regulated 5 V supply for the LEDs |
+| `GND` / `−` | Supply ground **and** ESP32 ground |
+| `DIN` / `IN` | Feather **5** (GPIO5) through a 3.3 V → 5 V logic buffer, then the recommended 330 Ω resistor near `DIN` |
+| `DOUT` / `OUT` | Leave disconnected unless adding another stick |
+
+Use an appropriate buffer such as a 74AHCT125 powered at 5 V, with its ground
+shared and the selected channel's output enabled. Its input receives the ESP32
+GPIO; its output drives the resistor and stick. The data direction must enter
+`DIN`, not `DOUT`. Adafruit recommends level shifting for reliable operation
+with 3.3 V controllers and 5 V pixels
+([connections guide](https://learn.adafruit.com/adafruit-neopixel-uberguide/basic-connections)).
+
+Adafruit recommends a 500–1000 µF capacitor rated at least 6.3 V across the
+stick's 5 V and ground near its power input, observing polarity, to buffer power
+transients. Size the LED supply for about 0.5 A for eight RGB pixels at full white,
+plus separate allowance for the ESP32
+if sharing a supply; the default reduced brightness normally draws less.
+Power the stick from the supply, not an ESP32 GPIO or its 3.3 V regulator.
+See [Adafruit's power guidance](https://learn.adafruit.com/adafruit-neopixel-uberguide/powering-neopixels).
+
+For a **USB bench test**, the Feather header marked `USB` provides USB's 5 V
+while a powered USB-C cable is connected. Use that rail for the stick and logic
+buffer, subject to the USB source's current budget. The header marked `3V` is
+not the strip's power connection.
+
+For **regulated 5 V battery operation**, plug a compatible, correctly polarized
+1-cell LiPo into the Feather's battery JST socket. The header marked `BAT` exposes that
+battery voltage; route it to the input of a suitable 1-cell LiPo-to-5 V boost
+converter. The converter's 5 V output powers the stick and logic buffer, while
+the Feather remains powered through its battery socket. Connect all grounds.
+Keep this boosted LED rail separate from the Feather's `USB` pad. The `USB` pad
+does **not** generate 5 V from the battery. These power pin meanings are from
+[Adafruit's Feather pinout](https://learn.adafruit.com/adafruit-esp32-s3-feather/pinouts)
+and [power guide](https://learn.adafruit.com/adafruit-esp32-s3-feather/power-management).
+
+### Mounting and other configurations
+
+Mount the stick along the side with the pixels facing the camera, protected by
+a clear cover or recess. Add strain relief where wires meet the stick so deck
+flex and impacts do not pull on the solder joints.
+
+The generic `flash.sh` does not select a data GPIO; `flash-feather.sh` selects
+GPIO5 for this exact board. For other configurations, avoid USB, flash/PSRAM,
+and other board-reserved pins; the sketch additionally disables the LED on
+invalid output GPIOs or when it conflicts with discovered IMU wiring. If the IMU is absent at
+boot, restart after correcting the wiring to enable the LED. A simple GPIO LED
+is still supported with `SYNC_LED_PIN=N` alone and an appropriate current-limiting
+resistor; add `SYNC_LED_ACTIVE_LOW=1` if needed. That setting does not apply to
+NeoPixels.
 
 ## Record and label attempts
 

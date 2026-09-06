@@ -5,7 +5,8 @@
 #   ./flash.sh /dev/cu.usbmodem101               explicit port
 #   IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh   force the I2C pins instead of auto-probing
 #   FQBN=esp32:esp32:esp32s3:CDCOnBoot=cdc ./flash.sh   override the board definition
-#   SKATE_WIFI=1 SYNC_LED_PIN=48 SYNC_LED_RGB=1 ./flash.sh  optional WiFi / sync LED
+#   SYNC_LED_PIN=N SYNC_LED_RGB=1 SYNC_LED_COUNT=8 ./flash.sh  RGB stick; replace N with verified GPIO
+#   SYNC_LED_RGBW=1 selects an RGBW stick instead; SYNC_LED_BRIGHTNESS=48 is the default (1-255)
 #   ./flash.sh --compile-only                  build without uploading
 #
 # Needs arduino-cli with the esp32 core:
@@ -38,7 +39,7 @@ DEFINES=()
 if [ -n "${IMU_SDA:-}" ] && [ -n "${IMU_SCL:-}" ]; then
   DEFINES+=("-DIMU_SDA=${IMU_SDA}" "-DIMU_SCL=${IMU_SCL}" "-DIMU_POWER=${IMU_POWER:--1}")
 fi
-for key in SKATE_WIFI SYNC_LED_PIN SYNC_LED_RGB SYNC_LED_ACTIVE_LOW; do
+for key in SKATE_WIFI SYNC_LED_PIN SYNC_LED_RGB SYNC_LED_RGBW SYNC_LED_ACTIVE_LOW SYNC_LED_COUNT SYNC_LED_BRIGHTNESS; do
   value="${!key:-}"
   if [ -n "$value" ]; then
     if ! [[ "$value" =~ ^-?[0-9]+$ ]]; then
@@ -50,6 +51,13 @@ for key in SKATE_WIFI SYNC_LED_PIN SYNC_LED_RGB SYNC_LED_ACTIVE_LOW; do
 done
 if [ ${#DEFINES[@]} -gt 0 ]; then
   EXTRA=(--build-property "compiler.cpp.extra_flags=${DEFINES[*]}")
+fi
+
+if [ "${SYNC_LED_RGB:-0}" != "0" ] || [ "${SYNC_LED_RGBW:-0}" != "0" ]; then
+  if [ ! -d "$ARDUINO_DIRECTORIES_USER/libraries/Adafruit_NeoPixel" ]; then
+    echo "== installing Adafruit NeoPixel into $ARDUINO_DIRECTORIES_USER"
+    arduino-cli lib install "Adafruit NeoPixel@1.15.4"
+  fi
 fi
 
 echo "== compiling for $FQBN"

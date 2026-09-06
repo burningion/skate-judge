@@ -8,17 +8,48 @@ The original live 3D orientation viewer is also included.
 This is the **data collection stage**: it does not yet detect tricks, train
 a model, or play automatic audio. A board-mounted IMU measures the board's
 motion, which does not always reveal whether the rider stayed on or fell.
-See [the recording workflow and model plan](docs/recording.md).
+Start with [your first dataset recording](docs/first-recording.md). The
+[hardware and recording reference](docs/recording.md) covers wiring, file formats,
+and the model plan.
 
 ```
 firmware/imu_stream/   Arduino sketch: 100 Hz USB / optional Wi-Fi motion stream and LED sync
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
 flash.sh               compile + upload with arduino-cli
+flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
 tests/                 recording integrity and video alignment checks
 ```
 
-## Record a session
+## Your hardware and pinout
+
+This setup uses the Adafruit Feather ESP32-S3 **8 MB flash / no PSRAM**, an
+LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and an **eight-pixel SKC6812 RGB stick**.
+For the first direct-LiPo bench test, wire with power disconnected:
+
+| Connection | Destination |
+| --- | --- |
+| LiPo plug | Feather battery JST socket, with matching polarity |
+| Feather `BAT` | Stick `5V` / `+` input |
+| Feather `GND` | Stick `GND` |
+| Feather header printed **5** (GPIO5) | Stick `DIN`, preferably through a 330 Ω resistor near `DIN` |
+| Stick `DOUT` | Leave unconnected |
+| Feather STEMMA QT socket | LSM6DSO32 STEMMA QT socket |
+
+**The label “5” means GPIO5, not 5 volts or the fifth header position.**
+The resistor is recommended protection on the data wire, not a strict requirement
+or an LED brightness resistor. A short-wire bench test can omit it.
+
+Adafruit documents direct LiPo power for short NeoPixel chains, but this stick's
+listing specifies 4–7 V. Test visibility and correct colors as the battery runs
+down before relying on it for sync; a regulated 5 V supply with a level shifter
+is the fallback. See [power details and manufacturer sources](docs/recording.md#direct-lipo-wiring-for-the-first-test).
+
+## First dataset recording
+
+Follow the [step-by-step first-session guide](docs/first-recording.md) for setup,
+a USB bench check, battery/Wi-Fi recording, and video labels. Run the demo while
+the laptop still has internet access so `uv` can download its dependencies:
 
 ```bash
 # Exercise the recorder without hardware (synthetic data, not training data).
@@ -34,16 +65,16 @@ or `fall` after observing the outcome. Use `background` for non-trick intervals,
 and exit. Each command is followed by Enter. Keep the viewer closed when
 recording over USB; only one application should own the serial port.
 
-For battery-powered recording, build with `SKATE_WIFI=1 ./flash.sh`, join the
+For this Feather and stick, build with `./flash-feather.sh`, join the
 board's `SkateJudge-XXXX` Wi-Fi network (prototype password `skate-judge`), then:
 
 ```bash
-uv run capture/session.py record --udp 192.168.4.1 --rider rider-01 --board deck-01
+uv run --offline capture/session.py record --udp 192.168.4.1 --rider rider-01 --board deck-01
 ```
 
 The board streams to the laptop; it does not store data onboard. Sessions are
-saved under `sessions/` and excluded from Git. LED flashes require an explicitly
-configured pin; see [hardware and video setup](docs/recording.md).
+saved under `sessions/` and excluded from Git. The Feather preset selects GPIO5
+and eight pixels; the generic `flash.sh` leaves the sync pin disabled by default.
 
 ## One-time setup
 
@@ -53,18 +84,17 @@ arduino-cli core install esp32:esp32 --additional-urls https://espressif.github.
 ```
 
 The Adafruit LSM6DS library (plus BusIO and Unified Sensor) is installed into
-`./.arduino` the first time `flash.sh` runs, so nothing touches your global
-Arduino sketchbook.
+`./.arduino` the first time `flash.sh` runs. NeoPixel builds also install
+Adafruit NeoPixel there, so nothing touches your global Arduino sketchbook.
 
 ## Flash the board
 
-```bash
-./flash.sh
-```
+For this Feather and stick, use `./flash-feather.sh`; for other boards, the
+generic entry point is `./flash.sh`.
 
-Use `./flash.sh --compile-only` to build without uploading.
+Both scripts accept `--compile-only` to build without uploading.
 
-The sketch is built for the generic `esp32s3` target with USB CDC on boot, so it
+The generic script builds for the `esp32s3` target with USB CDC on boot, so it
 talks over the ESP32-S3's native USB port. It probes the usual STEMMA QT pin
 pairs at startup and, for Adafruit Feathers, switches on the I2C power rail
 first. It prints what it found:
@@ -73,7 +103,23 @@ first. It prints what it found:
 I,LSM6DSO32 at 0x6A on SDA=3 SCL=4 (Adafruit Feather ESP32-S3 / Reverse TFT, I2C power on GPIO 7)
 ```
 
-To skip the probing, force the pins: `IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh`.
+To try specific pins first: `IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh`.
+
+For your **Adafruit Feather ESP32-S3, 8 MB flash / no PSRAM**, connect the
+eight-pixel SKC6812 RGB stick's data circuit to the header marked **5** (GPIO5).
+The preset selects the board, IMU wiring, Wi-Fi, and all eight pixels:
+
+```bash
+./flash-feather.sh --compile-only  # build first
+./flash-feather.sh                 # upload once connected
+```
+
+All eight pixels flash white for 150 ms on `sync`, then turn off. Brightness
+defaults to 48/255; override with `SYNC_LED_BRIGHTNESS`. For an RGBW stick,
+use `SYNC_LED_RGBW=1 ./flash-feather.sh`.
+See [stick wiring and power](docs/recording.md#eight-pixel-neopixel-stick)
+before connecting it. Direct-LiPo wiring uses `BAT`; the Feather's `USB` pin
+only supplies 5 V while USB is connected.
 
 ## Run the viewer
 
