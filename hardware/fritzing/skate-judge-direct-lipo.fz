@@ -1,0 +1,1009 @@
+<?xml version='1.0' encoding='utf-8'?>
+<module fritzingVersion="1.0.5">
+  <title>Skate Judge — direct-LiPo first prototype</title>
+  <views>
+    <view name="breadboardView" backgroundColor="#ffffff" gridSize="0.1in" showGrid="0" alignToGrid="0" viewFromBelow="0" />
+    <view name="schematicView" backgroundColor="#ffffff" gridSize="0.1in" showGrid="0" alignToGrid="0" viewFromBelow="0" />
+    <view name="pcbView" backgroundColor="#ffffff" gridSize="0.1in" showGrid="0" alignToGrid="0" viewFromBelow="0" />
+  </views>
+  <instances>
+    <instance moduleIdRef="adafruit_4f171bb918411ebeca4b679018d6f93b_1" modelIndex="1" path="adafruit_4f171bb918411ebeca4b679018d6f93b_1.fzp">
+      <title>U1 · Feather ESP32-S3</title>
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="310" y="245" z="2" />
+          <titleGeometry visible="true" x="400" y="337" z="8" xOffset="90" yOffset="92" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector218" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="101" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector217" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="103" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector64" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="104" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector60" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="108" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector73" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="114" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector30" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="121" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector29" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="124" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector31" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="127" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector32" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="130" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="250" y="230" z="2" />
+          <titleGeometry visible="true" x="250" y="218" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="100" y="100" z="2" />
+          <titleGeometry visible="true" x="100" y="88" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
+    <instance moduleIdRef="adafruit_b68cb253a83e83fdb327b179050b0346_1" modelIndex="2" path="adafruit_b68cb253a83e83fdb327b179050b0346_1.fzp">
+      <title>U2 · LSM6DSO32</title>
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="70" y="265" z="2" />
+          <titleGeometry visible="true" x="70" y="253" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector12" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="119" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector11" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="122" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector13" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="125" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector14" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="128" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="510" y="300" z="2" />
+          <titleGeometry visible="true" x="510" y="288" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="330" y="100" z="2" />
+          <titleGeometry visible="true" x="330" y="88" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
+    <instance moduleIdRef="adafruit_6530a5d9a89aa5dfd404e4335177b1a6_1" modelIndex="3" path="adafruit_6530a5d9a89aa5dfd404e4335177b1a6_1.fzp">
+      <title>LED1 · 8-pixel RGB stick</title>
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="550" y="135" z="2" />
+          <titleGeometry visible="true" x="550" y="123" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector24" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="107" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector26" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="113" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector25" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="118" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="510" y="100" z="2" />
+          <titleGeometry visible="true" x="510" y="88" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="100" y="250" z="2" />
+          <titleGeometry visible="true" x="100" y="238" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
+    <instance moduleIdRef="ResistorModuleID" modelIndex="4" path="resistor.fzp">
+      <title>R1 · 330 Ω</title>
+      <property name="resistance" value="330" />
+      <property name="tolerance" value="±5%" />
+      <property name="power" value="0.25" />
+      <property name="pin spacing" value="400 mil" />
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="502" y="143.9599" z="2" />
+          <titleGeometry visible="true" x="462" y="130" z="8" xOffset="-40" yOffset="-13.959900000000005" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector0" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="117" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="118" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="435" y="133.83" z="2" />
+          <titleGeometry visible="true" x="435" y="121.83000000000001" z="8" xOffset="0" yOffset="-12.0" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="330" y="250" z="2" />
+          <titleGeometry visible="true" x="330" y="238" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
+    <instance moduleIdRef="skate_judge_lipo_500mah_v1" modelIndex="5" path="skate-judge-lipo.fzp">
+      <title>BAT1 · 1S LiPo</title>
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="190" y="105" z="2" />
+          <titleGeometry visible="true" x="190" y="93" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector0" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="100" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="102" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="100" y="250" z="2" />
+          <titleGeometry visible="true" x="100" y="238" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="100" y="350" z="2" />
+          <titleGeometry visible="true" x="100" y="338" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="100" path="wire.fzp">
+      <title>LiPo positive → Feather battery JST +</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="295.0" y="127.0" x1="0" y1="0" x2="63.065" y2="0.0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="5" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="101" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="101" path="wire.fzp">
+      <title>LiPo positive → Feather battery JST +</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="358.065" y="127" x1="0" y1="0" x2="0.0" y2="115.71525" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="100" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector218" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="102" path="wire.fzp">
+      <title>LiPo negative → Feather battery JST −</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="295.0" y="150.0" x1="0" y1="0" x2="52.435" y2="0.0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="5" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="103" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="103" path="wire.fzp">
+      <title>LiPo negative → Feather battery JST −</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="347.435" y="150" x1="0" y1="0" x2="0.0" y2="92.71525" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="102" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector217" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="104" path="wire.fzp">
+      <title>BAT → stick +5V input (battery voltage)</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="372.55" y="249.5" x1="0" y1="0" x2="0.0" y2="-34.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector64" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="105" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="105" path="wire.fzp">
+      <title>BAT → stick +5V input (battery voltage)</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="372.55" y="215" x1="0" y1="0" x2="162.45" y2="0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="104" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="106" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="106" path="wire.fzp">
+      <title>BAT → stick +5V input (battery voltage)</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="535" y="215" x1="0" y1="0" x2="0" y2="-57.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="105" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="107" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="107" path="wire.fzp">
+      <title>BAT → stick +5V input (battery voltage)</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="535" y="157.5" x1="0" y1="0" x2="16.771056521742707" y2="0.00036473409738846385" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="106" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector24" modelIndex="3" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="108" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="363.55" y="321.5" x1="0" y1="0" x2="0.0" y2="28.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector60" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="109" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="109" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="363.55" y="350" x1="0" y1="0" x2="401.45" y2="0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="108" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="110" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="110" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="765" y="350" x1="0" y1="0" x2="0" y2="-240" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="109" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="111" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="111" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="765" y="110" x1="0" y1="0" x2="-230" y2="0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="110" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="112" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="112" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="535" y="110" x1="0" y1="0" x2="0" y2="29.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="111" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="113" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="113" path="wire.fzp">
+      <title>Common ground → stick GND</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="535" y="139.5" x1="0" y1="0" x2="16.77097715486991" y2="0.00036473409738846385" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="112" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector26" modelIndex="3" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="114" path="wire.fzp">
+      <title>GPIO5 → 330 Ω resistor</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="453.54999999999995" y="249.5" x1="0" y1="0" x2="5.684341886080802e-14" y2="-56.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector73" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="115" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="115" path="wire.fzp">
+      <title>GPIO5 → 330 Ω resistor</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="453.55" y="193" x1="0" y1="0" x2="26.44999999999999" y2="0" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="114" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="116" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="116" path="wire.fzp">
+      <title>GPIO5 → 330 Ω resistor</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="480" y="193" x1="0" y1="0" x2="0" y2="-44.5" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="115" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="117" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="117" path="wire.fzp">
+      <title>GPIO5 → 330 Ω resistor</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="480" y="148.5" x1="0" y1="0" x2="23.309500000000014" y2="0.0004000000000132786" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="116" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="4" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="118" path="wire.fzp">
+      <title>330 Ω → stick DIN</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="539.3158" y="148.5004" x1="0" y1="0" x2="12.455279338423566" y2="-3.526590262481477e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="4" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector25" modelIndex="3" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="119" path="wire.fzp">
+      <title>STEMMA QT switched 3.3 V → IMU VIN</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="164.95475743737282" y="299.1281462742966" x1="0" y1="0" x2="55.04524256262718" y2="-4.62742966078622e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector12" modelIndex="2" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="120" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="120" path="wire.fzp">
+      <title>STEMMA QT switched 3.3 V → IMU VIN</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="220" y="299.1281" x1="0" y1="0" x2="60" y2="-11.061200000000042" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="119" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="121" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="121" path="wire.fzp">
+      <title>STEMMA QT switched 3.3 V → IMU VIN</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="280" y="288.0669" x1="0" y1="0" x2="110.881125" y2="3.750000001900844e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="120" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector30" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="122" path="wire.fzp">
+      <title>STEMMA QT ground</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="164.95463243766088" y="304.7973819017161" x1="0" y1="0" x2="55.04536756233912" y2="-8.19017161006741e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector11" modelIndex="2" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="123" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="123" path="wire.fzp">
+      <title>STEMMA QT ground</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="220" y="304.7973" x1="0" y1="0" x2="60" y2="-11.489900000000034" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="122" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="124" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="124" path="wire.fzp">
+      <title>STEMMA QT ground</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="280" y="293.3074" x1="0" y1="0" x2="110.881125" y2="3.750000001900844e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="123" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector29" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="125" path="wire.fzp">
+      <title>STEMMA QT SDA / GPIO3</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="164.95475743737285" y="293.4587856468772" x1="0" y1="0" x2="55.04524256262715" y2="-8.564687715306718e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#246bd1" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector13" modelIndex="2" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="126" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="126" path="wire.fzp">
+      <title>STEMMA QT SDA / GPIO3</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="220" y="293.4587" x1="0" y1="0" x2="60" y2="-10.666800000000023" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#246bd1" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="125" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="127" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="127" path="wire.fzp">
+      <title>STEMMA QT SDA / GPIO3</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="280" y="282.7919" x1="0" y1="0" x2="110.881125" y2="3.750000001900844e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#246bd1" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="126" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector31" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="128" path="wire.fzp">
+      <title>STEMMA QT SCL / GPIO4</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="164.95475743737282" y="287.78955001945775" x1="0" y1="0" x2="55.04524256262718" y2="-5.001945777394212e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#d1ac00" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector14" modelIndex="2" layer="breadboard" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="129" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="129" path="wire.fzp">
+      <title>STEMMA QT SCL / GPIO4</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="220" y="287.7895" x1="0" y1="0" x2="60" y2="-10.272699999999986" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#d1ac00" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="128" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector0" modelIndex="130" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="WireModuleID" modelIndex="130" path="wire.fzp">
+      <title>STEMMA QT SCL / GPIO4</title>
+      <views>
+        <breadboardView layer="breadboardWire">
+          <geometry x="280" y="277.5168" x1="0" y1="0" x2="110.881125" y2="1.2500000025283953e-05" z="4" wireFlags="64" />
+          <wireExtras mils="22.2222" color="#d1ac00" opacity="1" banded="0" />
+          <connectors>
+            <connector connectorId="connector0" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="129" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector1" layer="breadboardWire">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector32" modelIndex="1" layer="breadboard" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="NoteModuleID" modelIndex="900" path="note.fzp">
+      <title>SKATE JUDGE — DIRECT-LiPo FIRST PROTOTYPE</title>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;SKATE JUDGE — DIRECT-LiPo FIRST PROTOTYPE&lt;/b&gt;&lt;br/&gt;Editable wiring layout · power disconnected while wiring · not a production PCB design&lt;/body&gt;&lt;/html&gt;</text>
+      <views>
+        <breadboardView layer="breadboardNote">
+          <geometry x="40" y="25" width="720" height="50" z="6" />
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="NoteModuleID" modelIndex="901" path="note.fzp">
+      <title>ONE STEMMA QT CABLE</title>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;ONE STEMMA QT CABLE&lt;/b&gt;&lt;br/&gt;Red: switched 3.3 V · black: GND · blue: SDA / GPIO3 · yellow: SCL / GPIO4. GPIO7 enables this rail; no extra wire.&lt;/body&gt;&lt;/html&gt;</text>
+      <views>
+        <breadboardView layer="breadboardNote">
+          <geometry x="55" y="345" width="270" height="60" z="6" />
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="NoteModuleID" modelIndex="902" path="note.fzp">
+      <title>LED STICK</title>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;LED STICK&lt;/b&gt;&lt;br/&gt;GPIO5 (pad marked 5) is DATA, not 5 V. R1: recommended 330 Ω, near DIN. DOUT is unconnected. BAT supplies battery voltage, not regulated 5 V.&lt;/body&gt;&lt;/html&gt;</text>
+      <views>
+        <breadboardView layer="breadboardNote">
+          <geometry x="550" y="205" width="195" height="115" z="6" />
+        </breadboardView>
+      </views>
+    </instance>
+    <instance moduleIdRef="NoteModuleID" modelIndex="903" path="note.fzp">
+      <title>CHECK BEFORE SKATING</title>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;CHECK BEFORE SKATING&lt;/b&gt;&lt;br/&gt;Direct LiPo is a bench-test option: this RGB stick is specified for 4–7 V, so operation below 4 V is not guaranteed. Test fully charged and partly discharged. Verify JST polarity. Insulate and protect the battery. Crossings without a junction are not connections.&lt;/body&gt;&lt;/html&gt;</text>
+      <views>
+        <breadboardView layer="breadboardNote">
+          <geometry x="55" y="415" width="690" height="75" z="6" />
+        </breadboardView>
+      </views>
+    </instance>
+  </instances>
+</module>

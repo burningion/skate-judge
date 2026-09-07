@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1.2in" height="0.8in" viewBox="0 0 108 72">
+  <g id="breadboard">
+    <rect x="1" y="1" width="81" height="69" rx="4" fill="#c6cacf" stroke="#858b92" stroke-width="1.5"/>
+    <rect x="6" y="6" width="70" height="59" rx="2" fill="#e5e8eb" stroke="#acb2b8"/>
+    <rect x="74" y="8" width="10" height="56" fill="#d6b449"/>
+    <text x="12" y="27" font-family="Arial" font-size="13" fill="#222">LiPo 1S</text>
+    <text x="12" y="43" font-family="Arial" font-size="11" fill="#222">3.7 V</text>
+    <text x="12" y="57" font-family="Arial" font-size="11" fill="#222">500 mAh</text>
+    <path d="M84 22H105" stroke="#d22630" stroke-width="3" fill="none"/>
+    <path d="M84 45H105" stroke="#292929" stroke-width="3" fill="none"/>
+    <circle id="connector0pin" cx="105" cy="22" r="2" fill="#d22630"/>
+    <circle id="connector1pin" cx="105" cy="45" r="2" fill="#292929"/>
+    <text x="89" y="16" font-family="Arial" font-size="10" fill="#9e1420">+</text>
+    <text x="89" y="58" font-family="Arial" font-size="10" fill="#222">−</text>
+  </g>
+</svg>

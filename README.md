@@ -1,9 +1,11 @@
-# skate-judge
+# Judgy Skateboard
 
 Record skateboard motion from an Adafruit LSM6DSO32 (accelerometer + gyro)
 wired to an ESP32-S3 over STEMMA QT / Qwiic. Record webcam video in the web UI,
 label makes, bails, and falls, and align webcam or phone footage using timestamped LED flashes.
 The original live 3D orientation viewer is also included.
+
+![hardware layout](./hardware/fritzing/skate-judge-direct-lipo.png)
 
 This is the **data collection stage**: it does not yet detect tricks, train
 a model, or play automatic audio. A board-mounted IMU measures the board's
@@ -23,6 +25,9 @@ tests/                 sensor/video integrity, local HTTP, and webcam controller
 ```
 
 ## Your hardware and pinout
+
+An [editable Fritzing wiring project](hardware/fritzing/README.md) is included,
+with bundled parts and a preview of the direct-LiPo prototype.
 
 This setup uses the Adafruit Feather ESP32-S3 **8 MB flash / no PSRAM**, an
 LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and an **eight-pixel SKC6812 RGB stick**.

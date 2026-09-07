@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="0.4in" height="0.25in" viewBox="0 0 36 22.5">
+  <g id="silkscreen" fill="none" stroke="#fff" stroke-width="0.7"><rect x="3" y="3" width="30" height="16.5"/><path d="M7 8h4M9 6v4"/></g>
+  <g id="copper1"><g id="copper0" stroke="#f7bd13" stroke-width="1.8" fill="none">
+    <circle id="connector0pin" cx="15" cy="11.25" r="2.5"/>
+    <circle id="connector1pin" cx="22.0866" cy="11.25" r="2.5"/>
+  </g></g>
+</svg>

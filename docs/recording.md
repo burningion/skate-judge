@@ -97,6 +97,9 @@ eight-pixel count automatically.
 
 ### Direct-LiPo wiring for the first test
 
+See the [editable Fritzing project](../hardware/fritzing/README.md) for a
+connector-level drawing of this setup, with a bundled-parts `.fzz` file.
+
 Disconnect USB and the battery while making the connections. With the battery
 plugged into the Feather, its `BAT` pad exposes battery voltage directly. The
 label `5V` on the stick is the positive power input; in this experiment it is

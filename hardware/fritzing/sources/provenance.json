@@ -1,0 +1,18 @@
+{
+  "feather": {
+    "upstream": "https://github.com/adafruit/Fritzing-Library/blob/7d905c3e982de3712c3033da4596cc71ea32de1c/parts/Adafruit ESP32-S3 Feather.fzpz",
+    "sha256": "81df94d6f2423f9136de0e0cdc6a4a53dcfa0266a43e02dafe061904b96672c1"
+  },
+  "imu": {
+    "upstream": "https://github.com/adafruit/Fritzing-Library/blob/7d905c3e982de3712c3033da4596cc71ea32de1c/parts/Adafruit LSM6DSO32.fzpz",
+    "sha256": "362896c6f4235a0dba8e166900107c3081e269db829be34ed17e4d88ef05ee50"
+  },
+  "stick": {
+    "upstream": "https://github.com/adafruit/Fritzing-Library/blob/7d905c3e982de3712c3033da4596cc71ea32de1c/parts/Adafruit NeoPixel Stick.fzpz",
+    "sha256": "227cc633c4e55a2b4e315a3c1c79154d338e52f38b20b318b2c48dcab8010029"
+  },
+  "resistor": {
+    "upstream": "https://github.com/fritzing/fritzing-parts/tree/e64ffe973e92176b989ab390ab668638a85ee305",
+    "sha256": "ee073e675e65976d7847d1adf3e74711e79224a2f8de37b2b64af4a1fdc8725d"
+  }
+}

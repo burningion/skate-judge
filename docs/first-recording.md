@@ -12,6 +12,9 @@ the recorder will refuse to overwrite an existing one.
 
 ## 1. Wire and mount the hardware
 
+The [editable Fritzing project and preview](../hardware/fritzing/README.md)
+show the direct-LiPo layout below. Use the `.fzz` file to move parts or change wires.
+
 Start with the [direct-LiPo pinout](recording.md#direct-lipo-wiring-for-the-first-test):
 
 | From | To |

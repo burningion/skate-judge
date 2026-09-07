@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="0.6in" height="0.8in" viewBox="0 0 54 72">
+  <g id="schematic" fill="none" stroke="#222" stroke-width="1.5">
+    <line id="connector0pin" x1="27" y1="0" x2="27" y2="28"/>
+    <rect id="connector0terminal" x="26.95" y="0" width="0.1" height="0.1" stroke="none"/>
+    <line x1="9" y1="28" x2="45" y2="28" stroke-width="2.5"/>
+    <line x1="18" y1="39" x2="36" y2="39" stroke-width="3"/>
+    <line id="connector1pin" x1="27" y1="39" x2="27" y2="72"/>
+    <rect id="connector1terminal" x="26.95" y="71.9" width="0.1" height="0.1" stroke="none"/>
+    <text x="35" y="20" font-family="Arial" font-size="12" fill="#222" stroke="none">+</text>
+  </g>
+</svg>
