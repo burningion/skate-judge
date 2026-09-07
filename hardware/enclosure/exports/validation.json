@@ -1,0 +1,103 @@
+{
+  "openscad": "OpenSCAD version 2021.01",
+  "source": "../skate-judge.scad",
+  "source_sha256": "e36f42af3f5e74fe02b56594cec9db87b97d955922eb2295e1a9a583bf9c4068",
+  "parts": {
+    "base.stl": {
+      "triangles": 7686,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          -13.0,
+          0.0
+        ],
+        [
+          108.0,
+          93.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        108.0,
+        106.0,
+        20.0
+      ],
+      "solid_volume_cm3": 53.549,
+      "sha256": "5936d3116e47ba78262b7b8c2fb879bb77d25fe5482abe2d892a54802e7eb7a9"
+    },
+    "base-velcro.stl": {
+      "triangles": 6544,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          -7.0,
+          0.0
+        ],
+        [
+          108.0,
+          87.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        108.0,
+        94.0,
+        20.0
+      ],
+      "solid_volume_cm3": 50.426,
+      "sha256": "cf9aabc02d8e7cec0d2e1a124ffad0a41ad1934719f559e6e5c984733e10e176"
+    },
+    "lid.stl": {
+      "triangles": 1116,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          108.0,
+          80.0,
+          8.0
+        ]
+      ],
+      "size_mm": [
+        108.0,
+        80.0,
+        8.0
+      ],
+      "solid_volume_cm3": 27.177,
+      "sha256": "90cee2138ac32791c262f60ce18c570135daa59733ce7c06d845aecb908a052e"
+    },
+    "fit-coupon.stl": {
+      "triangles": 2808,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          45.0,
+          20.0,
+          5.0
+        ]
+      ],
+      "size_mm": [
+        45.0,
+        20.0,
+        5.0
+      ],
+      "solid_volume_cm3": 4.346,
+      "sha256": "cfdfb49892664737f036fe14600fdd3c7d0f5437d2906a3c6db943b34c414fa5"
+    }
+  }
+}
