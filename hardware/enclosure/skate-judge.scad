@@ -1,9 +1,10 @@
 // Judgy Skateboard: PLA prototype enclosure. Units: mm.
+// Revision 3, 2026-09-08: physical lid flip and soldered LED lead passages.
 // OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
 // PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
 
 /* [Output] */
-part = "assembly"; // [assembly,exploded,interior,base,lid,fit_coupon,layout]
+part = "assembly"; // [assembly,exploded,interior,base,lid,fit_coupon,led_fit_base,led_fit_lid,layout]
 show_electronics = true;
 mount_ears = true;
 lid_markings = false; // Optional engraving adds first-layer islands and bridges.
@@ -38,6 +39,16 @@ stick_length = 51.1;
 stick_width = 10.22;
 stick_height = 3.2;
 stick_clearance = 0.3; // End clearance per side in the top-loading channel.
+led_lid_clearance = 0.8;
+// Open-top wire passages extend this far outward and inward from each PCB end.
+led_wire_end_space = 5;
+led_wire_pad_space = 5;
+// Y bounds of each passage, measured from the exterior long wall.
+led_wire_front = 1;
+led_wire_back = 11;
+// Keep solder/wires below this height above the enclosure back when closing.
+led_wire_top = 11.5;
+show_led_wire_envelopes = false;
 
 /* [Hidden] */
 $fn = 48;
@@ -73,6 +84,11 @@ led_window_length = stick_length-1.2;
 led_window_bottom = led_bottom+2.2;
 led_window_top = led_bottom+stick_width-0.6;
 led_anchor_x = led_slot_x-10;
+led_top = led_bottom+stick_width;
+led_wire_floor = floor_thickness+1;
+led_sample_x = led_x-led_wire_end_space-1;
+led_sample_length = stick_length+2*led_wire_end_space+2;
+led_sample_depth = led_wire_back+2;
 
 assert(case_length >= 108 && case_width >= 80, "Default PCB layout needs at least 108 x 80 mm.");
 assert(wall >= 2.4 && wall <= 3.5 && floor_thickness >= 3, "Keep 2.4-3.5 mm walls and >=3 mm floor; rework layout outside these limits.");
@@ -86,10 +102,15 @@ assert(pcb_z+1.6+7+2 <= body_height, "Increase body_height for PCB components.")
 assert(usb_opening_top < body_height && usb_opening_bottom >= floor_thickness, "USB opening must fit between floor and lid.");
 assert(stick_length >= 50 && stick_length <= 53 && stick_width >= 10 && stick_width <= 12 && stick_height > led_pcb_thickness && stick_height <= 4, "Side channel supports the bare eight-pixel stick; rework layout for other boards.");
 assert(stick_clearance >= 0.15 && stick_clearance <= 0.4, "Keep 0.15-0.4 mm LED end clearance so the retaining edges still overlap the PCB.");
-assert(led_bottom+stick_width+fit_clearance+1.2 <= body_height, "Increase body_height for the LED channel and lid stop.");
+assert(led_top+led_lid_clearance+1.2 <= body_height && led_lid_clearance >= 0.5, "Increase body_height for the LED channel and lid stop.");
 assert(led_anchor_x-3 >= 13 && led_slot_x+led_slot_length+2 <= case_length-13, "LED channel/strain relief conflicts with corner bosses.");
 assert(led_slot_back+2 < feather_xy[1]-2, "LED channel must clear the Feather and its wiring.");
-assert(part=="assembly" || part=="exploded" || part=="interior" || part=="base" || part=="lid" || part=="fit_coupon" || part=="layout", "Unknown part.");
+assert(led_wire_end_space >= 3 && led_wire_end_space <= 6 && led_wire_pad_space >= 4 && led_wire_pad_space <= 6, "Use 3-6 mm outside / 4-6 mm inside each LED end; revise guides beyond that.");
+assert(led_wire_front >= 0.8 && led_wire_front <= 1.5 && led_wire_back >= 9 && led_wire_back <= 12, "Keep an exterior skin and clearance to the Feather behind the LED passages.");
+assert(led_wire_top > led_wire_floor+4 && led_wire_top < led_top-2, "Lead envelope must fit below the lid's corner locators.");
+assert(part=="assembly" || part=="exploded" || part=="interior" || part=="base" || part=="lid" || part=="fit_coupon" || part=="led_fit_base" || part=="led_fit_lid" || part=="layout", "Unknown part.");
+
+function enclosure_size() = [case_length,case_width,body_height+lid_thickness];
 
 module rounded_rect(l,w,r) {
     hull() for(x=[r,l-r], y=[r,w-r]) translate([x,y]) circle(r=r);
@@ -159,13 +180,18 @@ module led_channel() {
     for(x=[led_slot_x-2,led_slot_x+led_slot_length])
         translate([x,wall-eps,floor_thickness-eps])
             cube([2,led_slot_back+2-wall+eps,body_height-floor_thickness+eps]);
-    // Short rear guides leave the center open for access to the soldered wires.
-    // Relief beneath the guides clears the low pad row at either end of the stick.
-    for(side=[0,1])
-        translate([side==0?led_slot_x-eps:led_slot_x+led_slot_length+eps,led_slot_back+2,led_bottom+3.5])
-            scale([side==0?1:-1,1,1]) rotate([90,0,0]) linear_extrude(height=2)
-                // 45-degree lead-in supports the guide without a new roof bridge.
-                polygon([[0,0],[3+eps,3+eps],[3+eps,body_height-led_bottom-3.5],[0,body_height-led_bottom-3.5]]);
+    // Rear supports are inboard of both solder zones and grow from the floor.
+    // The lid supplies the upper-corner X stops after the wired PCB is inserted.
+    for(x=[led_x+led_wire_pad_space+2,led_x+stick_length-led_wire_pad_space-5])
+        translate([x,led_slot_back,floor_thickness-eps])
+            cube([3,2,led_top+0.5-floor_thickness+eps]);
+}
+module led_wire_passages() {
+    // Actual through-slots across the end walls, not recesses behind a bare PCB.
+    // Open to the rim so the solder joints can travel down with the LED board.
+    for(x=[led_x-led_wire_end_space,led_x+stick_length-led_wire_pad_space])
+        translate([x,led_wire_front,led_wire_floor])
+            cube([led_wire_end_space+led_wire_pad_space,led_wire_back-led_wire_front,body_height+1]);
 }
 module base() {
     difference() {
@@ -196,14 +222,16 @@ module base() {
         for(y=[-3,case_width+3]) translate([case_length/2,y,-eps]) slot(10,2.8,5);
         pcb_pilots(feather_xy,feather_holes);
         pcb_pilots(imu_xy,imu_holes);
+        led_wire_passages();
         // Open-to-rim ports print without a roof; lid tongues close their upper part.
         translate([-eps,usb_y-usb_opening_width/2,usb_opening_bottom]) cube([wall+2*eps,usb_opening_width,body_height]);
         translate([led_window_x,-eps,led_window_bottom])
             cube([led_window_length,led_slot_front+eps,body_height]);
     }
 }
-module lid() {
-    // PRINT ORIENTATION: outer face down, guides/tongues up. No inversion in slicer.
+module lid_features_in_case_xy() {
+    // Feature positions use the CASE's XY coordinates. lid() maps them into
+    // print coordinates so an actual 180-degree flip puts them on these walls.
     difference() {
         union() {
             rounded_box(case_length,case_width,lid_thickness,corner_radius);
@@ -223,7 +251,12 @@ module lid() {
                 cube([led_window_length-2*fit_clearance,wall-2*fit_clearance,body_height-led_window_top+eps]);
             // Stop above the board: retains it without clamping or flexing PLA.
             translate([led_slot_x+fit_clearance,led_slot_front+fit_clearance,lid_thickness-eps])
-                cube([led_slot_length-2*fit_clearance,led_pcb_thickness,body_height-led_bottom-stick_width-fit_clearance+eps]);
+                cube([led_slot_length-2*fit_clearance,led_pcb_thickness,body_height-led_top-led_lid_clearance+eps]);
+            // Locate only the upper, unsoldered PCB corners. The lower end
+            // passages stay open for wires; these do not squeeze the PCB faces.
+            for(x=[led_slot_x-1.6,led_slot_x+led_slot_length])
+                translate([x,led_slot_front+fit_clearance,lid_thickness-eps])
+                    cube([1.6,led_pcb_thickness,body_height-led_top+1.5+eps]);
         }
         for(p=bosses) translate([p[0],p[1],-eps]) cylinder(d=3.4,h=lid_thickness+1);
         // Off by default: a plain first layer is easier to print reliably.
@@ -234,6 +267,11 @@ module lid() {
                 text("DECK / PLA",size=3.5,halign="center",valign="center");
         }
     }
+}
+module lid() {
+    // PRINT: exterior down. Mirroring Y HERE makes the manufactured lid correct.
+    // Assembly must use a rotation, never a reflection of the printed solid.
+    translate([0,case_width,0]) mirror([0,1,0]) lid_features_in_case_xy();
 }
 module led_electronics() {
     translate([led_x,led_slot_front+fit_clearance+led_pcb_thickness,led_bottom]) rotate([90,0,0]) {
@@ -262,7 +300,34 @@ module electronics() {
         rounded_box(battery_length,battery_width,battery_thickness,1);
 }
 module assembled_lid(lift=0) {
-    translate([0,0,body_height+lid_thickness+lift]) mirror([0,0,1]) lid();
+    translate([0,case_width,body_height+lid_thickness+lift]) rotate([180,0,0]) lid();
+}
+module led_solder_envelopes(travel=0) {
+    // Assumed solder + insulated-lead keepouts, 0.5 mm clear of passage walls.
+    // These are fit fixtures, not a measured model of the user's solder joints.
+    for(x=[led_x-led_wire_end_space,led_x+stick_length-led_wire_pad_space])
+        translate([x+0.5,led_wire_front+0.5,led_wire_floor+0.5])
+            cube([led_wire_end_space+led_wire_pad_space-1,led_wire_back-led_wire_front-1,led_wire_top-led_wire_floor-0.5+travel]);
+}
+module wired_led_insertion(travel=22) {
+    // Sweep each box vertically, preserving the actual PCB/pixel footprint.
+    translate([led_x,led_slot_front+fit_clearance,led_bottom])
+        cube([stick_length,led_pcb_thickness,stick_width+travel]);
+    for(i=[0:7]) translate([led_x+0.675+i*6.35,led_slot_front+fit_clearance-(stick_height-led_pcb_thickness),led_bottom+3.85])
+        cube([5,stick_height-led_pcb_thickness,5+travel]);
+    led_solder_envelopes(travel);
+}
+module led_fit_base() {
+    translate([-led_sample_x,0,0]) intersection() {
+        base();
+        translate([led_sample_x,0,-eps]) cube([led_sample_length,led_sample_depth,body_height+2*eps]);
+    }
+}
+module led_fit_lid() {
+    translate([-led_sample_x,-(case_width-led_sample_depth),0]) intersection() {
+        lid();
+        translate([led_sample_x,case_width-led_sample_depth,-eps]) cube([led_sample_length,led_sample_depth,lid_thickness+body_height]);
+    }
 }
 module fit_coupon() {
     // One connected print: M3 nut/bolt fit and three labelled M2 pilot sizes.
@@ -285,6 +350,8 @@ echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_cle
 if(part=="base") base();
 if(part=="lid") lid();
 if(part=="fit_coupon") fit_coupon();
+if(part=="led_fit_base") led_fit_base();
+if(part=="led_fit_lid") led_fit_lid();
 if(part=="layout") {
     base();
     translate([case_length+12,0,0]) lid();
@@ -294,4 +361,5 @@ if(part=="assembly" || part=="exploded" || part=="interior") {
     color([0.17,0.24,0.3]) base();
     if(part!="interior") color([0.87,0.55,0.19]) translate([0,part=="exploded"?42:0,0]) assembled_lid(part=="exploded"?30:0);
     if(show_electronics) electronics();
+    if(show_led_wire_envelopes) color([0.9,0.15,0.05,0.65]) led_solder_envelopes();
 }

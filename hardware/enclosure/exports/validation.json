@@ -1,10 +1,10 @@
 {
   "openscad": "OpenSCAD version 2021.01",
   "source": "../skate-judge.scad",
-  "source_sha256": "e36f42af3f5e74fe02b56594cec9db87b97d955922eb2295e1a9a583bf9c4068",
+  "source_sha256": "30da4301441d971e006d7b25b9cd10ab2a96f1dfc5aff1b8e848b6d4104a0f18",
   "parts": {
     "base.stl": {
-      "triangles": 7686,
+      "triangles": 7718,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -24,11 +24,11 @@
         106.0,
         20.0
       ],
-      "solid_volume_cm3": 53.549,
-      "sha256": "5936d3116e47ba78262b7b8c2fb879bb77d25fe5482abe2d892a54802e7eb7a9"
+      "solid_volume_cm3": 52.788,
+      "sha256": "61b959a6a023b46ab035e0672e7d5ee0296983fe92ded341d1836a67e1dcb969"
     },
     "base-velcro.stl": {
-      "triangles": 6544,
+      "triangles": 6576,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -48,11 +48,11 @@
         94.0,
         20.0
       ],
-      "solid_volume_cm3": 50.426,
-      "sha256": "cf9aabc02d8e7cec0d2e1a124ffad0a41ad1934719f559e6e5c984733e10e176"
+      "solid_volume_cm3": 49.666,
+      "sha256": "a62c7f32b38ec9cbf9c00a09fe6585cae39f4a48ee3711ead438262f324efd57"
     },
     "lid.stl": {
-      "triangles": 1116,
+      "triangles": 1148,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -64,16 +64,16 @@
         [
           108.0,
           80.0,
-          8.0
+          8.78
         ]
       ],
       "size_mm": [
         108.0,
         80.0,
-        8.0
+        8.78
       ],
-      "solid_volume_cm3": 27.177,
-      "sha256": "90cee2138ac32791c262f60ce18c570135daa59733ce7c06d845aecb908a052e"
+      "solid_volume_cm3": 27.166,
+      "sha256": "77fc6970d893deb4683ceb320b7bc114ffc822866261b5ef472df78fdd0b72fc"
     },
     "fit-coupon.stl": {
       "triangles": 2808,
@@ -97,7 +97,55 @@
         5.0
       ],
       "solid_volume_cm3": 4.346,
-      "sha256": "cfdfb49892664737f036fe14600fdd3c7d0f5437d2906a3c6db943b34c414fa5"
+      "sha256": "b3bec666cc0dc08c53c479edecf5c71d6696e33ace29bdbe5c22d4413552ec5d"
+    },
+    "led-fit-base.stl": {
+      "triangles": 124,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          -1.90735e-07,
+          0.0,
+          0.0
+        ],
+        [
+          63.1,
+          13.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        63.1,
+        13.0,
+        20.0
+      ],
+      "solid_volume_cm3": 4.059,
+      "sha256": "165cfcaa9d3c362eb64310ebe452c9e2e82ae09922a392232614d63ee53db21e"
+    },
+    "led-fit-lid.stl": {
+      "triangles": 108,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          -1.90735e-07,
+          0.0,
+          0.0
+        ],
+        [
+          63.1,
+          13.0,
+          8.78
+        ]
+      ],
+      "size_mm": [
+        63.1,
+        13.0,
+        8.78
+      ],
+      "solid_volume_cm3": 3.379,
+      "sha256": "7c4c956b99bfd9bce2c2369b7013d009d728f8ad42bfa504fc7db4fb6728201f"
     }
   }
 }

@@ -1,0 +1,13 @@
+{
+  "source_sha256": "30da4301441d971e006d7b25b9cd10ab2a96f1dfc5aff1b8e848b6d4104a0f18",
+  "revision": 3,
+  "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
+  "contact_face_offset_mm": 0.02,
+  "checks": {
+    "lid_to_base": "no interference with stated fixtures",
+    "electronics_to_base": "no interference with stated fixtures",
+    "electronics_to_lid": "no interference with stated fixtures",
+    "wired_led_insertion": "no interference with stated fixtures",
+    "sample_lid_to_base": "no interference with stated fixtures"
+  }
+}

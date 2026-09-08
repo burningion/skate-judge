@@ -74,11 +74,14 @@ def main():
     if not match or int(match[1]) < 2021:
         parser.error(f"Requires OpenSCAD 2021.01 or newer; found {version_text}")
     targets = [("base", "base", True), ("base-velcro", "base", False),
-               ("lid", "lid", True), ("fit-coupon", "fit_coupon", True)]
+               ("lid", "lid", True), ("fit-coupon", "fit_coupon", True),
+               ("led-fit-base", "led_fit_base", False), ("led-fit-lid", "led_fit_lid", False)]
     outputs = [args.output/f"{name}.stl" for name,_,_ in targets] + [args.output/"validation.json"]
     if not args.replace and any(p.exists() for p in outputs):
         parser.error("Output exists. Choose --output /new/directory, or --replace for generated files.")
     args.output.mkdir(parents=True, exist_ok=True)
+    # Fit checks apply to a particular export set and must be rerun after a build.
+    (args.output/"fit-validation.json").unlink(missing_ok=True)
     report = {"openscad":version_text, "source":"../skate-judge.scad",
               "source_sha256":hashlib.sha256((HERE/"skate-judge.scad").read_bytes()).hexdigest(), "parts":{}}
     for name,part,ears in targets:

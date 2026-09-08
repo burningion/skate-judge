@@ -8,11 +8,27 @@ and progressive riding trials; CAD checks do not establish impact survival.
 
 ![Enclosure with recessed side-facing LEDs](preview-assembly.png)
 
+**Revision 3 — 2026-09-08, fixes from the first physical print.** The previous
+lid preview reflected the printed part instead of rotating it into place. This
+hid the reversed position of its asymmetric wall-closing tabs. The lid STL now
+accounts for the physical flip; neither the preview nor the fit check reflects
+the printed lid into place.
+
 The LED PCB slides down into a channel from the open top. The screwed-on lid
 retains it; the eight pixels face outward through a recessed side opening.
-There is no separate LED guard to print, no external LED cable, and no PLA snap.
-The previous separate-guard STL has been removed from this package. Reprint
-**both the base and lid** for this revision; it is not a clip-on retrofit.
+Both ends now have actual **open-top through-slots for soldered leads**. Rear
+guides are moved away from the solder zones, and the lid locates the PCB's
+unsoldered upper corners. It leaves 0.8 mm above the board instead of 0.3 mm.
+
+Print the [LED fit sample base](exports/led-fit-base.stl) and
+[matching sample lid](exports/led-fit-lid.stl) first, and try your **soldered**
+stick. These reproduce the entire holder and its lid features in a
+**63.1 × 13 mm footprint**; hold the lid seated by hand. They do not test the
+USB tab or full enclosure screw alignment. Then print **both the revised full
+base and lid**. R3 lid corner locators occupy the old end-stop positions;
+do not mix R3 parts with the unmodified R2 base/lid.
+
+![Small LED holder and matching lid test pieces](preview-led-fit.png)
 
 ## Mounting choice
 
@@ -53,6 +69,8 @@ likewise needs enough actual contact area on your deck.
 | [base-velcro.stl](exports/base-velcro.stl) | Alternative to base | Same; ears omitted, tether lugs retained |
 | [lid.stl](exports/lid.stl) | 1 | Flat exterior face on bed, guide ribs up |
 | [fit-coupon.stl](exports/fit-coupon.stl) | 1 first | Flat back on bed |
+| [led-fit-base.stl](exports/led-fit-base.stl) | 1 first | Flat bottom on bed, slot upward |
+| [led-fit-lid.stl](exports/led-fit-lid.stl) | 1 first | Flat exterior on bed, tabs upward |
 
 Exported files already have those orientations and use millimeters. The LED mount
 fits inside the existing shell footprint. `layout` is for visual inspection;
@@ -70,8 +88,8 @@ or paint removable local supports with accessible removal paths. Do not assume
 that support inside a captive-nut pocket will be easy to remove. The supplied
 coupon checks screw/nut dimensions; it does **not** reproduce those roof bridges.
 The LED window is open to the rim in the base; its upper frame prints as part of
-the lid. The rear LED guides have 45-degree ramps. These avoid a roughly 50 mm
-window-roof bridge when printing the base flat.
+the lid. The rear LED guides rise from the floor, inboard of the solder zones.
+The end wire slots are open to the top, so they introduce no roof bridges.
 The 0.3 mm lid clearance is **per side**. Deburr openings that contact wires.
 The default lid is plain. Optional `lid_markings=true` engraves the exterior;
 that version triggered a long-bridge warning in PrusaSlicer and is not the
@@ -106,8 +124,12 @@ supplied print default.
   keep it free of the removable lid's window header. This is a separately cut
   cover, not a printed PLA part or a supplied STL, and it does not make a seal.
 
-1. Print the coupon and check screw/nut fit. Inspect the base for cracks, poor
-   bridges and layer separation. Fit the empty base and lid before electronics.
+1. Print the screw/nut coupon and the two LED fit samples. Check the complete
+   wired stick drops into the sample and the sample lid seats without force.
+   Then print and inspect the full parts. Turn the full lid over to face its tabs
+   into the cavity, lining up the wide LED header with the LED opening and the
+   USB tab with the USB cutout. **Do not mirror the STL in the slicer.** Fit the
+   empty base and lid, then repeat with the wired electronics before tightening.
 2. With power disconnected, screw both PCBs to their posts. The Feather USB points
    toward the **x=0 short wall**. Its battery connector faces the battery bay;
    the IMU header row faces that bay too. Route the STEMMA cable in the free space
@@ -120,13 +142,19 @@ supplied print default.
 4. Solder and insulate the LED leads before inserting the stick. Slide the bare
    PCB down the channel along the **y=0 long wall**, pixels facing **negative Y**
    (outward), with the pad row toward the channel floor. It rests 5.5 mm above
-   the enclosure back; do not force it past wires or solder bumps. Route leads
-   through the open rear of the channel into the case, using the relief beneath
-   the rear guides for the end pads. Tie the insulated cable bundle to the anchor
+   the enclosure back. Drop the solder joints and wires down the **open-top slot
+   at either end**, and route them through that slot into the case. Each slot
+   crosses the old end wall and extends 5 mm beyond and 5 mm inside the nominal
+   PCB end. It runs from y=1 to y=11 mm and from z=4 mm up to the rim. Keep the
+   joints and exiting leads below **z=11.5 mm** so the lid's upper-corner stops
+   pass above them. The fit fixture allows a **9 × 9 × 7 mm envelope per end**,
+   with 0.5 mm clearance to slot walls; this is an assumption to check against
+   your soldering, not a measured wire model. Tie the insulated cable bundle to the anchor
    near **(18.15, 8)**, with slack between anchor and solder joints. It must not
    obstruct the adjacent Feather, lid guides, or the LED's vertical insertion path.
 5. Fit the lid. Its front header finishes the LED opening; a separate internal
-   stop leaves 0.3 mm above the PCB and prevents it lifting out. Confirm the
+   stop leaves 0.8 mm above the PCB and prevents it lifting out. The two corner
+   locators limit lengthwise movement without blocking the lower wire slots. Confirm the
    board is retained without being clamped, and all eight LEDs remain unobstructed.
    The other tongue closes the USB slot. The USB
    opening is **16 × 10 mm**; verify your actual USB-C plug housing reaches the
@@ -174,7 +202,11 @@ increased for headers, but check the real assembly and USB position; the echo
 prints the lid screw length (12 mm for the default). Moving the standoffs changes
 USB height and needs port adjustment too. Changing layout dimensions requires
 fresh geometry and physical checks. The supplied STLs contain **only defaults**.
-`stick_clearance` controls the LED's end clearance. The hidden
+`stick_clearance` controls the LED's end clearance at the lid locators.
+`led_wire_end_space`, `led_wire_pad_space`, `led_wire_front`, and `led_wire_back`
+control the two lead passages. `led_wire_top` specifies the assumed assembled
+lead height for the clearance fixture. `show_led_wire_envelopes=true` displays
+those assumed envelopes in red. The hidden
 `led_pcb_thickness` assumption and the channel faces need adjustment if the real
 PCB is thicker/thinner than 1.6 mm; increasing `stick_height` only changes the
 illustrative component envelope. Do not add a back pad that makes the slide-in
@@ -186,6 +218,7 @@ From the repository root, export to a new directory:
 
 ```bash
 python3 hardware/enclosure/build.py --output /tmp/judgy-enclosure
+python3 hardware/enclosure/verify_fit.py --exports /tmp/judgy-enclosure
 ```
 
 Use `--openscad /path/to/openscad` if necessary. On this Mac, the current version
@@ -193,7 +226,7 @@ is `/Applications/OpenSCAD-2021.01.app/Contents/MacOS/OpenSCAD`; the similarly n
 `OpenSCAD.app` is the older 2015 release. To deliberately regenerate the checked-in
 default outputs, use `--replace`. This only replaces this generator's named files.
 
-In the GUI, select `base`, `lid` or `fit_coupon` using `part`, then
+In the GUI, select `base`, `lid`, `fit_coupon`, `led_fit_base` or `led_fit_lid` using `part`, then
 **F6 → File → Export → Export as STL**. `assembly` and `exploded` are viewing modes.
 `interior` shows the PCB and battery layout without the lid. `mount_ears=false`
 selects the Velcro base.
@@ -204,10 +237,16 @@ and z=0 placement. Results are in [validation.json](exports/validation.json).
 Rendered views were visually reviewed. Print quality, exact hardware fit, deck
 clearance, RF performance and riding loads still require the physical checks above.
 
-Additional CAD checks found no overlap of the revised base with the simplified
-electronics (including the vertical LED stick), or with the lid, after lifting the seated items by 0.02 mm to exclude
-their intentional contact faces. This is a nominal geometry check, not a clearance
-guarantee for unmodeled components. PrusaSlicer 2.9.6 also imported the main base and
-lid as single manifold parts and generated toolpaths with the print
-settings above. The base's bridge warning remains as described under printing.
-The trial G-code uses generic settings and is not supplied as printer-ready output.
+R3's [fit-validation.json](exports/fit-validation.json) comes from checks against
+the **exported STLs**, with a real 180-degree lid rotation. It checks lid/base,
+electronics/base, electronics/lid, the sample pair, and the vertical insertion
+path of the wired LED, including the stated end envelopes. A 0.02 mm lift excludes intentional
+contact faces. The previous reflection-based fit check was inadequate and is
+superseded. These checks still do not measure print shrinkage, warping, your solder
+joints or real components; use the sample pair before another full print.
+
+PrusaSlicer 2.9.6 generates toolpaths for the full base, full lid and both LED
+test pieces with the settings above. The lid and sample pair produced no slice
+warnings. The base's bridge warning remains
+as described under printing. Trial G-code uses generic settings and is not
+supplied as printer-ready output.
