@@ -50,9 +50,11 @@ export class WebcamCapture {
     this.changed();
     let allocated = false;
     try {
+      // Prefer H.264 MP4 for synchronized review in Rerun. Leave codec profiles
+      // to the browser so the camera's negotiated resolution/rate remain usable.
       const types = stream.getAudioTracks().length
-        ? ['video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
-        : ['video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+        ? ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm']
+        : ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp8', 'video/webm'];
       const mimeType = types.find(type => this.Recorder.isTypeSupported(type));
       if (!mimeType) throw new Error('This browser cannot record WebM or MP4. Try another browser.');
       this.recorder = new this.Recorder(stream, {mimeType, videoBitsPerSecond: 5000000});
@@ -85,7 +87,8 @@ export class WebcamCapture {
       this.recorder.onstart = () => {
         this.startedAt = this.now();
         this.phase = 'recording';
-        this.message = 'Recording video. Put the stick in view, then start the sync countdown.';
+        const format = (this.recorder.mimeType || mimeType).startsWith('video/mp4') ? 'MP4' : 'WebM';
+        this.message = `Recording ${format} video. Put the stick in view, then start the sync countdown.`;
         this.changed();
       };
       this.recorder.start(1000);

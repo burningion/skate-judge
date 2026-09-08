@@ -92,9 +92,10 @@ countdown**; the Feather flashes the stick and supplies its timestamp.
 
 Repeat the countdown near the end, then click **Stop & save video**. Wait for
 **Saved** before entering `quit` in the terminal. Video is written directly to
-the sensor-session folder as `webcam-<id>.webm` or `.mp4`, with a matching JSON
-sidecar. Keep the browser tab and terminal open until saving finishes. Match the
-visible flashes afterward using that actual filename; webcam recording does not
+the sensor-session folder as `webcam-<id>.mp4` when supported, with WebM as a
+fallback and a matching JSON sidecar. Keep the browser tab and terminal open
+until saving finishes. Match the visible flashes afterward using that actual
+filename; webcam recording does not
 automatically align the clocks. See [webcam details](docs/recording.md#webcam-recording-in-the-web-ui).
 
 You can still record separately on an iPhone and leave the webcam off.

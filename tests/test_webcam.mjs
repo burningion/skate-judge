@@ -131,14 +131,36 @@ test('camera startup failure abandons only its allocated video and never says sa
   assert.equal(calls.at(-1)[0], '/api/video/abandon');
 });
 
-test('MP4-only browsers negotiate MP4 instead of a hardcoded WebM format', async () => {
-  class MP4 extends FakeRecorder { static isTypeSupported(type) { return type === 'video/mp4'; } }
-  const {capture, calls} = setup({Recorder: MP4});
-  await capture.start(stream);
-  assert.equal(calls[0][1].mime_type, 'video/mp4');
-  capture.stop();
-  await settle();
-  assert.equal(capture.phase, 'saved');
+test('recording prefers compatible MP4 codecs while retaining audio and WebM fallback', async t => {
+  const cases = [
+    {name: 'H.264 MP4 over WebM', audio: false,
+      supported: ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp8'],
+      expected: 'video/mp4;codecs=avc1'},
+    {name: 'H.264 and AAC with microphone enabled', audio: true,
+      supported: ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1', 'video/mp4', 'video/webm'],
+      expected: 'video/mp4;codecs=avc1,mp4a.40.2'},
+    {name: 'browser-selected MP4 codecs over WebM', audio: false,
+      supported: ['video/mp4', 'video/webm;codecs=vp8'], expected: 'video/mp4'},
+    {name: 'MP4-only browser with microphone enabled', audio: true,
+      supported: ['video/mp4'], expected: 'video/mp4'},
+    {name: 'WebM-only browser', audio: false,
+      supported: ['video/webm;codecs=vp8'], expected: 'video/webm;codecs=vp8'},
+    {name: 'WebM-only browser with microphone enabled', audio: true,
+      supported: ['video/webm;codecs=vp8,opus'], expected: 'video/webm;codecs=vp8,opus'},
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async () => {
+    class Recorder extends FakeRecorder {
+      static isTypeSupported(type) { return scenario.supported.includes(type); }
+    }
+    const {capture, calls} = setup({Recorder});
+    await capture.start({...stream, getAudioTracks: () => scenario.audio ? [{}] : []});
+    assert.equal(calls[0][1].mime_type, scenario.expected);
+    assert.equal(calls[0][1].capture.audio, scenario.audio);
+    assert.match(capture.message, scenario.expected.startsWith('video/mp4') ? /MP4/ : /WebM/);
+    capture.stop();
+    await settle();
+    assert.equal(capture.phase, 'saved');
+  });
 });
 
 test('upload backlog stops recording and retains all emitted data for saving', async () => {

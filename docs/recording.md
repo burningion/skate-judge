@@ -292,8 +292,13 @@ webcam for separate iPhone footage.
 
 The browser requests 1920×1080 at 60 fps as preferences, not requirements; the
 actual negotiated settings appear below the preview and in the clip's sidecar.
-Preview is not mirrored. The browser chooses a supported WebM or MP4 recording
-format. Files are named `webcam-<id>.webm` or `webcam-<id>.mp4` and saved directly
+Preview is not mirrored. Recording prefers H.264 in MP4, with AAC when microphone
+audio is enabled, then browser-selected MP4 codecs. Browsers without MP4 recording
+support use WebM. The recording status shows the selected container. MP4 is the
+preferred input for the [planned Rerun review tool](rerun-review-plan.md);
+existing WebM clips can be converted into derived MP4 review copies with timing
+verified against the original.
+Files are named `webcam-<id>.mp4` or `webcam-<id>.webm` and saved directly
 inside the current sensor-session folder. The UI shows the filename after a
 successful save. `--video` remains an optional identifier for external footage;
 it does not rename a webcam clip. No additional Python dependencies are needed.
@@ -405,6 +410,9 @@ and start a new session. Normal shutdown finalizes metadata. Do not train on
 synthetic demos or windows with substantial gaps/clipping.
 
 ## Model and audio work after recordings exist
+
+The [Rerun review and labeling plan](rerun-review-plan.md) describes the proposed
+synchronized video/IMU viewer, label controls, and model comparison workflow.
 
 1. Review labels and motion around takeoff, landing, and roll-away. Measure
    missing packets, saturation, and sensor consistency. Decide whether acquisition
