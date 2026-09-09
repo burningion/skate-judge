@@ -89,6 +89,11 @@ class VideoStore:
             self._manifest(clip)
             return dict(clip)
 
+    def ready_for_sync(self, clip_id):
+        with self.lock:
+            clip = self.clips.get(clip_id)
+            return bool(clip and clip['status'] == 'recording' and clip['chunks'] > 0)
+
     def chunk(self, clip_id, sequence, body):
         if not 0 < len(body) <= CHUNK_LIMIT:
             raise ValueError("Video chunk must be between 1 byte and 1 MiB.")

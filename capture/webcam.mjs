@@ -2,11 +2,24 @@
 export const CHUNK_BYTES = 1024 * 1024;
 const MAX_PENDING_BYTES = 32 * CHUNK_BYTES;
 
-export async function request(path, data, binary = false) {
+export async function recordThenCountdown({capture, stream, send = request, external = false}) {
+  if (!external) {
+    if (!stream) throw new Error('Enable the camera before syncing.');
+    if (capture.phase !== 'recording') await capture.start(stream);
+    await capture.waitForFirstChunk();
+  }
+  // Onboard capture starts here; the original streaming recorder treats this
+  // as a readiness check. Both happen only after video bytes have been saved.
+  await send('/api/prepare', {video_id: external ? null : capture.id, external});
+  if (!external && capture.phase !== 'recording') throw new Error('Video stopped before the countdown.');
+  return send('/api/countdown', {video_id: external ? null : capture.id, external});
+}
+
+export async function request(path, data, binary = false, timeoutMs = 5000) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt++) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const response = await fetch(path, {
         method: 'POST', signal: controller.signal,
@@ -61,6 +74,7 @@ export class WebcamCapture {
       this.id = this.newId();
       this.queue = [];
       this.sequence = this.bytes = this.pendingBytes = 0;
+      this.uploadedChunks = 0;
       this.failed = this.uploading = this.ended = false;
       this.startedAt = this.endedAt = null;
       this.warning = '';
@@ -84,15 +98,34 @@ export class WebcamCapture {
         }
         this.changed();
       };
-      this.recorder.onstart = () => {
-        this.startedAt = this.now();
-        this.phase = 'recording';
-        const format = (this.recorder.mimeType || mimeType).startsWith('video/mp4') ? 'MP4' : 'WebM';
-        this.message = `Recording ${format} video. Put the stick in view, then start the sync countdown.`;
-        this.changed();
-      };
-      this.recorder.start(1000);
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Camera did not begin recording.')), 5000);
+        const previousError = this.recorder.onerror;
+        this.recorder.onerror = event => {
+          previousError(event);
+          clearTimeout(timeout);
+          reject(new Error(this.warning));
+        };
+        this.recorder.onstart = () => {
+          clearTimeout(timeout);
+          this.recorder.onerror = previousError;
+          this.startedAt = this.now();
+          this.phase = 'recording';
+          const format = (this.recorder.mimeType || mimeType).startsWith('video/mp4') ? 'MP4' : 'WebM';
+          this.message = `Recording ${format} video. Put the stick in view, then start the sync countdown.`;
+          this.changed();
+          resolve();
+        };
+        try { this.recorder.start(1000); }
+        catch (error) { clearTimeout(timeout); reject(error); }
+      });
     } catch (error) {
+      if (this.recorder) {
+        this.recorder.onstart = this.recorder.onstop = this.recorder.ondataavailable = this.recorder.onerror = null;
+        if (this.recorder.state !== 'inactive') {
+          try { this.recorder.stop(); } catch { /* Startup already failed. */ }
+        }
+      }
       // An uncertain response can still have allocated a file: abandon by the same ID.
       if (this.id) {
         try { await this.send('/api/video/abandon', {id: this.id}); }
@@ -103,6 +136,24 @@ export class WebcamCapture {
       this.changed();
       throw error;
     }
+  }
+
+  async waitForFirstChunk(timeoutMs = 8000) {
+    const deadline = performance.now() + timeoutMs;
+    while (!this.uploadedChunks) {
+      if (this.phase !== 'recording') throw new Error('Video is not recording; countdown cancelled.');
+      if (performance.now() >= deadline) throw new Error('No video data saved yet; countdown cancelled.');
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    if (this.phase !== 'recording') throw new Error('Video stopped; countdown cancelled.');
+  }
+
+  async stopAndSave() {
+    this.stop();
+    while (this.phase === 'saving' || this.phase === 'recording') {
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+    if (this.phase !== 'saved') throw new Error(this.message || 'Video has not been saved.');
   }
 
   enqueue(blob) {
@@ -143,6 +194,7 @@ export class WebcamCapture {
       while (this.queue.length) {
         const item = this.queue[0];
         await this.send(`/api/video/chunk/${this.id}/${item.sequence}`, item.blob, true);
+        this.uploadedChunks++;
         this.queue.shift();
         this.pendingBytes -= item.blob.size;
         this.changed();

@@ -43,7 +43,7 @@
 <main>
   <div class="brand">SKATE JUDGE / RECORDING</div>
   <h1>One session. Motion + video.</h1>
-  <p>Frame the board and both feet, start video, then count down to the LED sync flash.</p>
+  <p>Frame the board and both feet. Record video + sync starts recording before the LED countdown.</p>
   <div class="meta"><span id="session">Waiting for session</span><span id="samples">0 samples</span><span id="duration">0:00</span></div>
   <p id="demo" hidden>Demo sensor session: no physical LED will flash. Webcam video is real, but this session is not training data.</p>
   <div class="workspace">
@@ -70,10 +70,12 @@
       <h2 id="sync-title">2. Sync with the Feather</h2>
       <div id="number" aria-hidden="true">—</div>
       <p id="message" role="status" aria-live="polite">Connecting to recorder…</p>
-      <button id="countdown" type="button" disabled>Start 3-second countdown</button>
-      <p class="note">Motion and webcam recording continue during the countdown. The Feather supplies the flash timestamp; match the visible flash in the video afterward.</p>
+      <button id="countdown" type="button" disabled>Record video + sync</button>
+      <p class="note">Video starts first. The countdown begins only after the first video data is saved and the sensor recorder is ready. An already recording video continues through another sync.</p>
+      <p id="board-status" class="note" role="status" aria-live="polite"></p>
+      <button id="retry-board" class="secondary" type="button" hidden>Stop &amp; download board data</button>
       <p class="note">Repeat near the end. Wait for the final flash, then Stop &amp; save video. Only after Saved, enter <code>quit</code> in the terminal.</p>
-      <p class="note">Using a separate iPhone recording? Leave the webcam off and use the countdown as before.</p>
+      <label class="note"><input id="external-video" type="checkbox"> I’m already recording on a separate camera</label>
     </section>
   </div>
   <p id="folder" class="note"></p>

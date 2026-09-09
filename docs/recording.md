@@ -12,7 +12,9 @@ The current implementation collects the evidence needed to make that decision.
 It has no trained classifier or automatic audio trigger yet.
 
 For the first outing, follow [your first dataset recording](first-recording.md).
-This page is the detailed hardware, labeling, and data-quality reference.
+This page is the hardware and labeling reference. The primary capture path is
+[onboard recording](onboard-recording.md); the streaming commands below are
+retained for the legacy live viewer and demos.
 
 ## Hardware and mounting
 
@@ -21,10 +23,10 @@ an LSM6DSO32 over STEMMA QT, a 3.7 V 500 mAh LiPo, and an eight-pixel SKC6812 RG
 stick mounted along the side of the deck. The IMU's accelerometer supports
 ±32 g and gyroscope ±2000 dps nominal; those are the firmware's configured ranges
 ([ST sensor specifications](https://www.st.com/en/mems-and-sensors/lsm6dso32.html)).
-The sketch reads at approximately 100 Hz from a sensor configured at 208 Hz.
-This is polling, without a sensor FIFO or data-ready synchronization; short
-impact peaks can be missed. Preserve the raw readings and inspect timing and
-clipping before deciding whether to implement faster FIFO acquisition.
+The onboard logger saves both streams at 208 Hz using the sensor FIFO. It checks
+read lengths, configuration readback, actual rates, and FIFO overflow. Short
+impact peaks can still be missed; inspect raw timing and clipping. The older
+live-stream sketch polls at a nominal 100 Hz and is not the dataset recorder.
 
 Rigidly attach the IMU so it follows the deck and cannot rotate independently.
 Record its orientation and position in `--mounting`; moving it changes the
@@ -46,9 +48,9 @@ For a first wireless prototype, enable the ESP32's local access point:
 Join `SkateJudge-XXXX` on the laptop using password `skate-judge`. This is a
 shared prototype password, configurable in the sketch's `WiFi.softAP` call.
 The network is local and provides no internet connection. The independent
-phone camera can record without joining it. Streaming uses the ESP32's
-[UDP network API](https://docs.espressif.com/projects/arduino-esp32/en/latest/api/network.html).
-There is no onboard recording or recovery of missed wireless packets.
+phone camera can record without joining it. The onboard logger uses Wi-Fi for controls/status and post-recording downloads.
+Motion is preserved in flash independently of the connection. USB provides
+the same controls and download protocol; see [recovery](onboard-recording.md).
 
 ## Eight-pixel NeoPixel stick
 
@@ -194,13 +196,26 @@ flex and impacts do not pull on the solder joints.
 The generic `flash.sh` does not select a data GPIO; `flash-feather.sh` selects
 GPIO5 for this exact board. For other configurations, avoid USB, flash/PSRAM,
 and other board-reserved pins; the sketch additionally disables the LED on
-invalid output GPIOs or when it conflicts with discovered IMU wiring. If the IMU is absent at
-boot, restart after correcting the wiring to enable the LED. A simple GPIO LED
-is still supported with `SYNC_LED_PIN=N` alone and an appropriate current-limiting
+invalid output GPIOs or when it conflicts with IMU wiring. The onboard logger
+blocks recording/sync if the IMU is unavailable; use `check-sensor` after fixing
+its cable. In the legacy streaming sketch, a simple GPIO LED
+is supported with `SYNC_LED_PIN=N` alone and an appropriate current-limiting
 resistor; add `SYNC_LED_ACTIVE_LOW=1` if needed. That setting does not apply to
 NeoPixels.
 
-## Record and label attempts
+## Legacy streaming capture and live labels
+
+The commands in this section require the legacy firmware:
+
+```bash
+SKETCH=firmware/imu_stream ./flash-feather.sh
+```
+
+For new datasets, use [onboard recording](onboard-recording.md) and apply labels
+after importing the log. Legacy live labels rely on received samples and do not
+apply to onboard capture.
+
+### Record and label attempts
 
 Point the phone or webcam so both feet, the board, the landing area, and the
 sync LED are visible. Record at normal playback speed; keep the original video.
@@ -220,12 +235,11 @@ uv run --offline capture/session.py record --udp 192.168.4.1 --controls \
 
 Power the Feather, join its Wi-Fi on the recording computer, and start the
 sensor recorder first. Open the printed local controls URL on that same computer,
-start the camera, then click **Start 3-second countdown**. The computer displays
+click **Record video + sync**. The computer displays
 3, 2, 1 and sends the LED request; the stick stays off until the white sync pulse.
 Sensor acquisition continues throughout. The controls work without internet and
-bind only to `127.0.0.1`, not to other devices on the Wi-Fi. Enable the webcam
-and click **Start video recording** before the countdown, or start an external
-camera yourself. The Feather's physical buttons are unchanged.
+bind only to `127.0.0.1`, not to other devices on the Wi-Fi. The combined button waits for saved video bytes before counting down. For an
+external camera, start it yourself and check the already-recording option. The Feather's physical buttons are unchanged.
 
 Without the browser, enter `countdown` in the recorder terminal; `sync` requests
 an immediate flash. Repeat near the end while the video and sensor recording
@@ -287,8 +301,8 @@ selector, optional microphone audio, Start video recording, and Stop & save vide
 Camera/microphone access is requested only after you click Enable camera;
 microphone audio defaults to off. Changing a camera or microphone setting
 reopens the preview, and these settings are locked while recording/saving.
-Preview alone does not record. The sync button also remains usable without a
-webcam for separate iPhone footage.
+Preview alone does not record. For separate iPhone footage, select the explicit already-recording checkbox
+before syncing.
 
 The browser requests 1920×1080 at 60 fps as preferences, not requirements; the
 actual negotiated settings appear below the preview and in the clip's sidecar.

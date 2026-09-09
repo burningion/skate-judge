@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {CHUNK_BYTES, WebcamCapture} from '../capture/webcam.mjs';
+import {CHUNK_BYTES, WebcamCapture, recordThenCountdown} from '../capture/webcam.mjs';
 
 class FakeRecorder {
   static isTypeSupported(type) { return type.startsWith('video/webm'); }
@@ -181,4 +181,52 @@ test('upload backlog stops recording and retains all emitted data for saving', a
   assert.equal(capture.phase, 'saved');
   assert.equal(capture.bytes, 33 * CHUNK_BYTES + 4);
   assert.equal(capture.pendingBytes, 0);
+});
+
+test('sync waits for asynchronous recorder startup and a saved video chunk', async () => {
+  let startRecorder, releaseUpload;
+  class DelayedRecorder extends FakeRecorder {
+    start() { startRecorder = () => { this.state = 'recording'; this.onstart(); }; }
+  }
+  const gate = new Promise(resolve => { releaseUpload = resolve; });
+  const {capture} = setup({Recorder: DelayedRecorder, send: async path => {
+    if (path.includes('/chunk/')) await gate;
+    return {filename: 'sync.webm'};
+  }});
+  const syncCalls = [];
+  const work = recordThenCountdown({capture, stream, send: async path => { syncCalls.push(path); }});
+  await settle();
+  assert.equal(capture.phase, 'starting');
+  assert.deepEqual(syncCalls, []);
+  startRecorder();
+  await settle();
+  assert.deepEqual(syncCalls, []);
+  capture.recorder.emit('first video data');
+  await settle();
+  assert.deepEqual(syncCalls, []);
+  releaseUpload();
+  await work;
+  assert.deepEqual(syncCalls, ['/api/prepare', '/api/countdown']);
+  capture.stop(); await settle();
+});
+
+test('another sync keeps the existing video, and a failed sensor preflight cannot flash', async () => {
+  const {capture} = setup();
+  await capture.start(stream); capture.recorder.emit('first'); await settle();
+  const recorder = capture.recorder, calls = [];
+  await assert.rejects(recordThenCountdown({capture, stream, send: async path => {
+    calls.push(path); throw new Error('sensor read failed');
+  }}), /sensor read failed/);
+  assert.equal(capture.recorder, recorder);
+  assert.deepEqual(calls, ['/api/prepare']);
+  assert.equal(capture.phase, 'recording');
+  capture.stop(); await settle();
+});
+
+test('stopped video and missing camera cannot trigger a countdown', async () => {
+  const {capture} = setup(); let sent = false;
+  await assert.rejects(recordThenCountdown({capture, stream: null, send: async () => { sent = true; }}), /camera/);
+  await capture.start(stream); capture.stop(); await settle();
+  await assert.rejects(capture.waitForFirstChunk(), /stopped|not recording/);
+  assert.equal(sent, false);
 });

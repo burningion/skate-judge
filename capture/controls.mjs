@@ -1,4 +1,4 @@
-import {WebcamCapture} from './webcam.mjs';
+import {WebcamCapture, recordThenCountdown, request} from './webcam.mjs';
 
 const $ = id => document.getElementById(id);
 const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, '0')}`;
@@ -8,18 +8,32 @@ let opening = false;
 let fresh = false;
 let submitting = false;
 let disconnected = 0;
+let onboard = false;
+let finishing = false;
+let canSync = false;
+let canDownload = false;
+let syncError = '';
+let boardError = '';
 const savedIds = new Set();
 const supported = !!(navigator.mediaDevices?.getUserMedia && globalThis.MediaRecorder);
 
 function renderCamera() {
-  const busy = capture.busy;
+  const busy = capture.busy || submitting || finishing;
   $('enable-camera').disabled = !supported || opening || busy;
   $('enable-camera').textContent = stream ? 'Apply camera settings' : 'Enable camera';
   $('disable-camera').disabled = !stream || opening || busy;
   $('camera').disabled = opening || busy || !stream;
   $('audio').disabled = opening || busy;
   $('start-video').disabled = !stream || !fresh || opening || busy;
-  $('stop-video').disabled = capture.phase !== 'recording';
+  $('stop-video').disabled = capture.phase !== 'recording' || submitting || finishing;
+  $('external-video').disabled = busy;
+  $('countdown').disabled = submitting || finishing || opening || !canSync ||
+    (capture.busy && capture.phase !== 'recording');
+  $('countdown').textContent = capture.phase === 'recording' || $('external-video').checked
+    ? 'Start 3-second sync countdown' : 'Record video + sync';
+  $('stop-video').textContent = onboard ? 'Stop & save video + board data' : 'Stop & save video';
+  $('retry-board').hidden = !onboard || !canDownload || !(capture.phase === 'saved' || $('external-video').checked);
+  $('retry-board').disabled = finishing || submitting;
   $('retry-video').hidden = capture.phase !== 'error';
   $('retry-video').disabled = capture.uploading || !capture.ended;
   $('camera-state').textContent = ({starting: 'Starting…', recording: '● Recording', saving: 'Saving…',
@@ -93,16 +107,20 @@ async function refresh() {
     const status = await response.json();
     disconnected = 0;
     fresh = !!status.fresh;
-    $('countdown').disabled = submitting || !status.can_sync;
+    onboard = !!status.onboard;
+    canSync = !!status.can_sync;
+    canDownload = !!status.can_download;
     $('number').textContent = status.remaining ?? (status.phase === 'done' ? '✓' : status.phase === 'waiting' ? '…' : '—');
-    $('message').textContent = status.message;
+    $('message').textContent = syncError || status.message;
     $('session').textContent = status.session ?? 'Waiting for session';
     $('samples').textContent = `${(status.samples ?? 0).toLocaleString()} samples`;
     $('duration').textContent = `${clock(status.duration_s ?? 0)} sensor time`;
     $('demo').hidden = !status.synthetic;
     $('folder').textContent = status.session_path ? `Session folder: ${status.session_path}` : '';
+    $('board-status').textContent = boardError || status.board_message || '';
   } catch {
     fresh = false;
+    canSync = false;
     $('countdown').disabled = true;
     $('number').textContent = '—';
     $('message').textContent = 'Recorder unavailable. Check the terminal; sensor recording may have stopped.';
@@ -120,17 +138,38 @@ $('camera').addEventListener('change', () => { if (stream) void openCamera(); })
 $('start-video').addEventListener('click', async () => {
   try { await capture.start(stream); } catch { /* The capture controller displays the error. */ }
 });
-$('stop-video').addEventListener('click', () => capture.stop());
+$('stop-video').addEventListener('click', async () => {
+  boardError = '';
+  finishing = true; renderCamera();
+  try {
+    await capture.stopAndSave();
+    if (onboard) {
+      $('board-status').textContent = 'Closing the onboard log and downloading the recording…';
+      await request('/api/board/finish', {}, false, 120000);
+    }
+  } catch (error) { boardError = error.message; $('board-status').textContent = boardError; }
+  finally { finishing = false; renderCamera(); }
+});
+$('retry-board').addEventListener('click', async () => {
+  boardError = '';
+  finishing = true; renderCamera();
+  try { await request('/api/board/finish', {}, false, 120000); }
+  catch (error) { boardError = error.message; $('board-status').textContent = boardError; }
+  finally { finishing = false; renderCamera(); }
+});
 $('retry-video').addEventListener('click', () => capture.retry());
 $('countdown').addEventListener('click', async () => {
+  syncError = '';
   submitting = true;
   $('countdown').disabled = true;
   try {
-    const response = await fetch('/api/countdown', {method: 'POST', headers: {'Content-Type': 'application/json'}, signal: AbortSignal.timeout(2500)});
-    if (!response.ok) throw new Error('Not ready');
-  } catch { $('message').textContent = 'Cannot start yet. Wait for fresh motion data, then try again.'; }
-  finally { submitting = false; }
+    if (!$('external-video').checked && !stream) await openCamera();
+    $('message').textContent = 'Starting video and waiting for recorded data…';
+    await recordThenCountdown({capture, stream, external: $('external-video').checked});
+  } catch (error) { syncError = error.message; $('message').textContent = syncError; }
+  finally { submitting = false; renderCamera(); }
 });
+$('external-video').addEventListener('change', renderCamera);
 window.addEventListener('beforeunload', event => {
   if (capture.busy) { event.preventDefault(); event.returnValue = ''; }
 });

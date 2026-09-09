@@ -7,18 +7,22 @@ The original live 3D orientation viewer is also included.
 
 ![hardware layout](./hardware/fritzing/skate-judge-direct-lipo.png)
 
-This is the **data collection stage**: it does not yet detect tricks, train
-a model, or play automatic audio. A board-mounted IMU measures the board's
+This is the **data collection stage**: the review tool can suggest audio-based
+pop/contact pairs for human review; it does not yet classify tricks, train
+a model, or play automatic judgments. A board-mounted IMU measures the board's
 motion, which does not always reveal whether the rider stayed on or fell.
 Start with [your first dataset recording](docs/first-recording.md). The
 [hardware and recording reference](docs/recording.md) covers wiring, file formats,
 and the model plan.
 
 ```
-firmware/imu_stream/   Arduino sketch: 100 Hz USB / optional Wi-Fi motion stream and LED sync
+firmware/imu_logger/   208 Hz sensor FIFO to onboard flash, timestamped LED sync
+firmware/imu_stream/   legacy live stream for the orientation viewer
+capture/onboard.py    onboard recording controls, verified download, recovery, CSV import
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
 capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
+viz/trick_review.py    local video/audio review, onset pairs, editable boundaries, LED alignment
 flash.sh               compile + upload with arduino-cli
 flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
 tests/                 sensor/video integrity, local HTTP, and webcam controller checks
@@ -58,54 +62,61 @@ is the fallback. See [power details and manufacturer sources](docs/recording.md#
 
 ## First dataset recording
 
-Follow the [step-by-step first-session guide](docs/first-recording.md) for setup,
-a USB bench check, battery/Wi-Fi recording, and video labels. Run the demo while
-the laptop still has internet access so `uv` can download its dependencies:
+Flash the onboard logger, then initialize its unused storage once over USB:
 
 ```bash
-# Exercise the recorder without hardware (synthetic data, not training data).
-uv run capture/session.py record --demo --duration 5
-
-# USB bench recording; do not skate while tethered to the laptop.
-uv run capture/session.py record --rider rider-01 --board deck-01
+./flash-feather.sh
+uv run capture/onboard.py --board serial:auto initialize
 ```
 
-While recording, enter `start ollie` before an attempt, then `make`, `bail`,
-or `fall` after observing the outcome. Use `background` for non-trick intervals,
-`unknown` for ambiguous attempts, `countdown` for a video marker after three
-seconds (`sync` skips the countdown), and `quit` to save and exit. Each command
-is followed by Enter. Keep the viewer closed when
-recording over USB; only one application should own the serial port.
+Initialization refuses to erase a nonblank, unrecognized partition. The logger
+keeps the preset's existing 1.5 MiB data partition; it does not repartition flash.
 
-For this Feather and stick, build with `./flash-feather.sh`, join the
-board's `SkateJudge-XXXX` Wi-Fi network (prototype password `skate-judge`), then:
+For battery operation, join **SkateJudge-XXXX** (password **skate-judge**), then:
 
 ```bash
-uv run --offline capture/session.py record --udp 192.168.4.1 --controls --rider rider-01 --board deck-01
+uv run --offline capture/onboard.py record --rider rider-01 --board-name deck-01
 ```
 
-Open the printed controls URL **on the recording computer**. With the Feather
-powered, Wi-Fi connected, and sensor recording running, click **Enable camera**,
-allow browser access, and click **Start video recording**. Preview alone is not
-recording. Microphone audio is off unless you opt in. Then click **Start 3-second
-countdown**; the Feather flashes the stick and supplies its timestamp.
+Open the printed localhost URL. Enable microphone audio if you want audio onset
+suggestions. **Record video + sync** starts webcam recording, waits for video
+bytes to reach the laptop, starts onboard motion recording, checks its measured
+rate, and only then begins the three-second LED countdown.
 
-Repeat the countdown near the end, then click **Stop & save video**. Wait for
-**Saved** before entering `quit` in the terminal. Video is written directly to
-the sensor-session folder as `webcam-<id>.mp4` when supported, with WebM as a
-fallback and a matching JSON sidecar. Keep the browser tab and terminal open
-until saving finishes. Match the visible flashes afterward using that actual
-filename; webcam recording does not
-automatically align the clocks. See [webcam details](docs/recording.md#webcam-recording-in-the-web-ui).
+Acceleration and rotation use **nominal 208 Hz** acquisition through the sensor FIFO and are
+saved on the Feather's flash. The page shows actual rates, errors, and free
+space. The tested sensor measures about 196.5 Hz, consistent with its factory
+clock calibration. Wi-Fi carries commands and status during capture; losing the connection
+does not stop motion logging. Download happens after acquisition stops.
 
-You can still record separately on an iPhone and leave the webcam off.
-There are no automatic flashes by default.
-The Feather's physical buttons are unchanged. Without `--controls`, the terminal
-`countdown` command does the same thing.
+Repeat the sync countdown near the end, wait for the flash, then choose
+**Stop & save video + board data**. Keep the tab and terminal open until both
+are saved. The raw file is checksum-verified, imported into `samples.csv` and
+`events.jsonl`, and retained on the board. Match the visible flashes in the
+[review tool](docs/trick-review.md) to align video and motion.
 
-The board streams to the laptop; it does not store data onboard. Sessions are
-saved under `sessions/` and excluded from Git. The Feather preset selects GPIO5
-and eight pixels; the generic `flash.sh` leaves the sync pin disabled by default.
+Start with **one-minute batches**: the existing flash partition holds minutes,
+not an entire outing. Download and verify each batch, then explicitly delete its
+onboard copy to reclaim space. See the [first recording guide](docs/first-recording.md)
+and [onboard storage/recovery reference](docs/onboard-recording.md).
+
+For a USB bench check, use `--board serial:auto` before `record`. For a separate
+phone camera, start that camera yourself and check the external-camera option
+before syncing. Sessions are saved under `sessions/` and excluded from Git.
+
+## Review a recorded trick
+
+The [audio/video review guide](docs/trick-review.md) explains onset detection,
+editable pop/contact boundaries, and matching LED flashes to the sensor clock.
+With FFmpeg installed, run:
+
+```bash
+uv run viz/trick_review.py sessions/<session>/webcam-<id>.webm
+```
+
+Open the printed local URL. Listen to suggested pairs, refine their start and
+finish, and save reviews beside the recording. Audio suggestions need human
+review; they do not determine whether a trick was made.
 
 ## One-time setup
 
@@ -120,8 +131,8 @@ Adafruit NeoPixel there, so nothing touches your global Arduino sketchbook.
 
 ## Flash the board
 
-For this Feather and stick, use `./flash-feather.sh`; for other boards, the
-generic entry point is `./flash.sh`.
+For onboard capture with this Feather, use `./flash-feather.sh`. The generic
+`./flash.sh` defaults to the legacy stream sketch used by the viewer.
 
 Both scripts accept `--compile-only` to build without uploading.
 
@@ -153,6 +164,14 @@ before connecting it. Direct-LiPo wiring uses `BAT`; the Feather's `USB` pin
 only supplies 5 V while USB is connected.
 
 ## Run the viewer
+
+The orientation viewer requires the legacy stream firmware. Switch explicitly:
+
+```bash
+SKETCH=firmware/imu_stream ./flash-feather.sh
+```
+
+Return to `./flash-feather.sh` and `capture/onboard.py` for onboard dataset capture.
 
 ```bash
 uv run viz/imu_viz.py
@@ -220,6 +239,8 @@ packets; sequence gaps and timing gaps are saved for quality review.
 
 ```bash
 python3 -m unittest discover -s tests -v
+node --test tests/test_webcam.mjs tests/test_trick_review.mjs
+./flash-feather.sh --compile-only
 ./flash.sh --compile-only
 SKATE_WIFI=1 ./flash.sh --compile-only
 ```

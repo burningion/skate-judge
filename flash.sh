@@ -18,6 +18,7 @@ cd "$(dirname "$0")"
 
 export ARDUINO_DIRECTORIES_USER="$PWD/.arduino"
 FQBN="${FQBN:-esp32:esp32:esp32s3:CDCOnBoot=cdc}"
+SKETCH="${SKETCH:-firmware/imu_stream}"
 PORT="${1:-${PORT:-}}"
 
 if ! command -v arduino-cli >/dev/null 2>&1; then
@@ -61,7 +62,7 @@ if [ "${SYNC_LED_RGB:-0}" != "0" ] || [ "${SYNC_LED_RGBW:-0}" != "0" ]; then
 fi
 
 echo "== compiling for $FQBN"
-arduino-cli compile --fqbn "$FQBN" ${EXTRA[@]+"${EXTRA[@]}"} firmware/imu_stream
+arduino-cli compile --fqbn "$FQBN" ${EXTRA[@]+"${EXTRA[@]}"} "$SKETCH"
 if [ "$PORT" = "--compile-only" ]; then exit 0; fi
 
 find_port() { ls /dev/cu.usbmodem* 2>/dev/null | head -n 1 || true; }
@@ -74,7 +75,7 @@ fi
 # esptool's reset can make the chip re-enumerate mid-connect, which kills the port node on
 # macOS. The chip is then usually sitting in the bootloader, so one retry normally succeeds.
 echo "== uploading to $PORT"
-if ! arduino-cli upload --fqbn "$FQBN" -p "$PORT" firmware/imu_stream; then
+if ! arduino-cli upload --fqbn "$FQBN" -p "$PORT" "$SKETCH"; then
   echo "== upload failed, waiting for the port and retrying once"
   sleep 3
   PORT=$(find_port)
@@ -82,6 +83,6 @@ if ! arduino-cli upload --fqbn "$FQBN" -p "$PORT" firmware/imu_stream; then
     echo "The port did not come back. Unplug and replug the board, then rerun ./flash.sh" >&2
     exit 1
   fi
-  arduino-cli upload --fqbn "$FQBN" -p "$PORT" firmware/imu_stream
+  arduino-cli upload --fqbn "$FQBN" -p "$PORT" "$SKETCH"
 fi
-echo "== done. Run the viewer with:  uv run viz/imu_viz.py"
+echo "== done. See README.md for the capture command for $SKETCH."

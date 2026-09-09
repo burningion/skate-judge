@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Skate Judge · Trick review</title>
+<style>
+  :root { color-scheme: dark; font: 14px/1.5 system-ui,sans-serif; background: #10191c; color: #e9f0ef; }
+  * { box-sizing: border-box; } body { margin: 0; } main { max-width: 1500px; margin: auto; padding: 24px; }
+  .brand { color: #a6c2b4; font-size: 11px; letter-spacing: .16em; font-weight: 750; }
+  h1 { font-size: 30px; line-height: 1.2; margin: 9px 0; } h2 { font-size: 16px; margin: 0; }
+  p { margin: 8px 0; } .muted, small { color: #a5b8b3; } .file { overflow-wrap: anywhere; font-size: 12px; }
+  .workspace { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr); gap: 18px; margin-top: 20px; align-items: start; }
+  .panel { border: 1px solid #354946; border-radius: 12px; background: #172523; padding: 16px; min-width: 0; }
+  video { display: block; width: 100%; aspect-ratio: 16/9; background: #080e10; border-radius: 7px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; } .between { justify-content: space-between; }
+  button, select, input, textarea { font: inherit; } button { padding: 8px 12px; border-radius: 7px; border: 1px solid #52665f; color: #edf4f0; background: #2c413b; cursor: pointer; }
+  button:hover { border-color: #c9f887; } button:disabled { opacity: .4; cursor: default; }
+  .primary { background: #c9f887; border-color: #c9f887; color: #15210e; font-weight: 700; }
+  .danger { color: #ffb69b; } input,select,textarea { background: #10191c; border: 1px solid #52665f; border-radius: 5px; padding: 7px; color: inherit; }
+  input[type=number] { width: 92px; } input[type=range] { width: 100%; padding: 0; accent-color: #c9f887; }
+  input[type=checkbox] { accent-color: #c9f887; } textarea { width: 100%; resize: vertical; }
+  button:focus-visible, input:focus-visible,select:focus-visible,textarea:focus-visible,canvas:focus-visible { outline: 2px solid #c9f887; outline-offset: 3px; }
+  label { display: block; } .transport { margin: 10px 0; } #time { font-variant-numeric: tabular-nums; color: #c9f887; margin-left: auto; }
+  .timeline { margin-top: 16px; } canvas { display: block; width: 100%; cursor: crosshair; touch-action: none; }
+  #overview { height: 80px; } #detail { height: 268px; } #imu { height: 220px; }
+  .legend { display: flex; gap: 15px; flex-wrap: wrap; font-size: 12px; margin-top: 6px; }
+  .start { color: #c9f887; } .finish { color: #ffb08a; } .onset { color: #bdacff; }
+  .settings { display: grid; gap: 12px; margin: 14px 0; } .gap { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .gap input { width: 100%; } .badge { font-size: 11px; color: #c9f887; padding: 3px 7px; border: 1px solid #607644; border-radius: 5px; }
+  #candidates { max-height: 300px; overflow-y: auto; display: grid; gap: 5px; margin: 12px 0; }
+  .candidate { text-align: left; display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+  .candidate[aria-pressed=true] { background: #38523d; border-color: #c9f887; } .candidate.rejected { opacity: .55; }
+  .editor { border-top: 1px solid #354946; padding-top: 14px; } .editor .row { margin: 10px 0; }
+  #status { min-height: 24px; overflow-wrap: anywhere; } #status[data-error=true],.warning { color: #ffbf92; }
+  details { margin-top: 16px; } summary { cursor: pointer; font-weight: 650; } .help { font-size: 12px; }
+  #sensor-panel { margin-top: 16px; border-top: 1px solid #354946; padding-top: 16px; }
+  #sensor-panel label { margin: 10px 0; }
+  [hidden] { display: none !important; }
+  @media(max-width:850px) { main { padding: 16px; } .workspace { grid-template-columns: 1fr; } #candidates { max-height: 200px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">SKATE JUDGE / REVIEW</div>
+  <h1>Find the pop. Find the contact.</h1>
+  <p class="muted">Listen, inspect the onsets, and refine the trick boundaries.</p>
+  <div class="row between"><span id="filename" class="file muted">Loading recording…</span><span class="badge">LOCAL AUDIO + VIDEO</span></div>
+  <div class="workspace">
+    <div>
+      <section class="panel" aria-label="Video and timeline">
+        <video id="video" controls playsinline preload="metadata" aria-label="Recorded skate session with audio"></video>
+        <div class="row transport">
+          <button id="play" type="button">Play / pause</button>
+          <button id="back" type="button" title="Step back 1/60 second">−1/60 s</button>
+          <button id="forward" type="button" title="Step forward 1/60 second">+1/60 s</button>
+          <label>Speed <select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option></select></label>
+          <span id="time">0:00.000</span>
+        </div>
+        <div class="timeline">
+          <div class="row between"><h2>Whole recording</h2><small>Click to seek</small></div>
+          <canvas id="overview" role="img" aria-label="Whole recording waveform, onset pairs, and playhead"></canvas>
+          <input id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="Video time">
+        </div>
+        <div class="timeline">
+          <div class="row between"><h2>Boundary detail</h2><label>Window <select id="zoom"><option value="3">3 s</option><option value="6" selected>6 s</option><option value="12">12 s</option><option value="24">24 s</option></select></label></div>
+          <canvas id="detail" role="img" aria-label="Detailed waveform and onset strength. Drag start and finish markers, or click to seek."></canvas>
+          <div class="legend"><span class="start">● Start / pop</span><span class="finish">● Finish / contact</span><span class="onset">│ Audio onset</span><span class="muted">Drag boundaries · click to seek</span></div>
+        </div>
+        <section id="sensor-panel" aria-labelledby="sensor-title">
+          <div class="row between"><h2 id="sensor-title">Accelerometer + gyroscope</h2><small id="sensor-count"></small></div>
+          <p class="help muted">Raw magnitudes on the same time window as the audio above. Click to seek.</p>
+          <p id="alignment" class="help"></p>
+          <canvas id="imu" role="img" aria-label="Acceleration magnitude in metres per second squared and angular speed in radians per second, with start and finish markers. Click to seek."></canvas>
+          <p id="sensor-quality" class="warning help"></p>
+          <details>
+          <summary>Align video and sensor clocks</summary>
+          <p class="help">Pause on the first frame where the LED lights up, choose that flash’s recorded ID, then save the match. Repeat near the end to measure clock drift.</p>
+          <div class="row"><label>Recorded flash <select id="sync-id" aria-label="Recorded LED flash"></select></label><button id="save-sync" type="button">Match flash to current frame</button></div>
+          <div class="row"><label>Session offset (s) <input id="offset" type="number" step="0.01" value="0"></label><label>Clock scale <input id="scale" type="number" step="0.00001" min="0.98" max="1.02" value="1"></label></div>
+          <p class="help muted">Session time = scale × original media timestamp + offset. Without matched LED flashes, the initial offset is only a file-time estimate. Manual changes are an exploratory overlay.</p>
+          <p id="syncs" class="help muted"></p>
+          </details>
+        </section>
+      </section>
+    </div>
+    <aside class="panel" aria-label="Candidate pairs and boundary editor">
+      <div class="row between"><h2>Suggested pairs</h2><span id="count" class="badge">Analyzing</span></div>
+      <p class="help muted">Proposed pop → contact, not a confirmed trick or outcome. Speech, steps, and board taps can also trigger onsets.</p>
+      <div class="settings">
+        <label>Onset threshold <output id="threshold-value">0.65</output><input id="threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
+        <div class="gap"><label>Min pop → contact (s)<input id="min-gap" type="number" min="0.1" max="4.9" step="0.05" value="0.18"></label><label>Max pop → contact (s)<input id="max-gap" type="number" min="0.15" max="5" step="0.05" value="0.9"></label></div>
+        <small>Lower threshold finds more onsets. Pairing favors two strong impacts with quieter audio between them; strength is relative to this clip.</small>
+      </div>
+      <div class="row"><button id="previous" type="button">← Previous</button><button id="next" type="button">Next →</button><button id="new" type="button">+ Manual pair</button></div>
+      <div id="candidates" aria-label="Candidate intervals"></div>
+      <div class="editor">
+        <div class="row between"><h2 id="selected-title">Select a pair</h2><span id="pair-duration" class="muted"></span></div>
+        <div class="gap"><label class="start">Start (s)<input id="start" type="number" min="0" step="0.01" disabled></label><label class="finish">Finish (s)<input id="end" type="number" min="0" step="0.01" disabled></label></div>
+        <div class="row"><button id="mark-start" type="button" disabled>Start at playhead [I]</button><button id="mark-end" type="button" disabled>Finish at playhead [O]</button></div>
+        <div class="row"><button id="audition" type="button" disabled>Play pair + context</button><label><input id="loop" type="checkbox"> Loop</label></div>
+        <label>Note<textarea id="note" rows="2" maxlength="2000" placeholder="What happened?" disabled></textarea></label>
+        <div class="row"><button id="save" class="primary" type="button" disabled>Save reviewed pair</button><button id="reject" class="danger" type="button" disabled>Reject suggestion</button></div>
+        <p id="status" role="status" aria-live="polite">Loading audio features…</p>
+        <button id="export" type="button">Export review JSON</button>
+        <p class="help muted">Save writes a sidecar beside this clip’s derived review files. These boundaries describe pop/contact; judging the outcome may need more roll-away footage.</p>
+      </div>
+      <details class="help"><summary>Timing &amp; shortcuts</summary><p>Space: play/pause · ←/→: step 1/60 s · I/O: set start/finish · N/P: next/previous pair. Steps are time increments, not guaranteed source frames.</p><p>Audio analysis uses 32 ms windows every 10 ms. Sound travel and microphone processing can shift an impact relative to its visible contact. Check the video before treating a boundary as exact.</p><p id="timing"></p></details>
+    </aside>
+  </div>
+</main>
+<script type="module" src="/trick_review.mjs"></script>
+</body>
+</html>

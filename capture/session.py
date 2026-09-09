@@ -494,7 +494,7 @@ class SyncTrigger:
 class ControlServer:
     """Optional local browser button; recording and timing remain in the main loop."""
 
-    def __init__(self, commands, session_path, port=0):
+    def __init__(self, commands, session_path, port=0, onboard=None):
         self.commands = commands
         self.lock = threading.Lock()
         self.status = dict(can_sync=False, message="Waiting for motion data.")
@@ -572,7 +572,20 @@ class ControlServer:
                         data = json.loads(self.read_body(8192) or b"{}")
                         if not isinstance(data, dict):
                             raise ValueError("Expected a JSON object.")
-                        if self.path == "/api/countdown":
+                        if self.path in ("/api/prepare", "/api/countdown"):
+                            if data.get("external") is not True and not control.videos.ready_for_sync(data.get("video_id")):
+                                raise VideoConflict("Start video and wait for the first saved data before syncing.")
+                        if self.path == "/api/prepare":
+                            if onboard:
+                                result = onboard.prepare()
+                            else:
+                                with control.lock:
+                                    if not control.status.get("fresh"):
+                                        raise VideoConflict("Wait for fresh motion data before syncing.")
+                                result = dict(ready=True)
+                        elif self.path == "/api/board/finish" and onboard:
+                            result = onboard.finish()
+                        elif self.path == "/api/countdown":
                             with control.lock:
                                 ready = control.status.get("can_sync", False)
                                 if ready:
@@ -580,7 +593,7 @@ class ControlServer:
                                     control.commands.put("countdown")
                             self.reply(202 if ready else 409, b"{}")
                             return
-                        if self.path == "/api/video/start":
+                        elif self.path == "/api/video/start":
                             result = control.videos.start(data)
                         elif self.path == "/api/video/finish":
                             result = control.videos.finish(data)
@@ -596,8 +609,8 @@ class ControlServer:
                     self.reply(400, json.dumps(dict(error=str(error))).encode())
                 except OSError as error:
                     self.reply(
-                        507,
-                        json.dumps(dict(error=f"Video save failed: {error}")).encode(),
+                        503 if onboard and self.path in ("/api/prepare", "/api/board/finish") else 507,
+                        json.dumps(dict(error=f"Recording operation failed: {error}")).encode(),
                     )
 
         self.server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
@@ -829,7 +842,13 @@ def video_mapping(path, video):
         raise ValueError(
             "No video sync points. Use align with the visible LED flash time first."
         )
-    points = list(points.values())
+    return fit_video_points(list(points.values()))
+
+
+def fit_video_points(points):
+    """Fit and validate already matched video/session flash correspondences."""
+    if not points:
+        raise ValueError("At least one video sync point is required")
     xs = [row["video_s"] for row in points]
     ys = [row["t_s"] for row in points]
     x_mean, y_mean = sum(xs) / len(xs), sum(ys) / len(ys)
