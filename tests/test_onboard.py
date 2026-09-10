@@ -6,13 +6,60 @@ import tempfile
 import threading
 import unittest
 from urllib.parse import parse_qs, urlsplit
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zlib
 
-from capture.onboard import BoardClient, SerialBoardClient, OnboardRecording, healthy
+from capture.onboard import BoardClient, SerialBoardClient, OnboardRecording, healthy, test_led
 from capture.onboard_log import CLOCK, END, FIFO, META, SYNC, decode_log, encode_packet, import_log, read_packets
 
 IDENTITY = "a" * 32
+
+
+class LEDTestTests(unittest.TestCase):
+    def status(self, **changes):
+        return dict(dict(phase="idle", boot_id="1234abcd", led_pin=5, led_count=8,
+                         led_format="GRB", led_brightness=48, led_tests=2), **changes)
+
+    def test_busy_board_is_not_sent_a_test_command(self):
+        for phase in ("recording", "starting", "stopping", "testing_led"):
+            with self.subTest(phase=phase):
+                client = Mock()
+                client.request.return_value = self.status(phase=phase)
+                with self.assertRaisesRegex(ValueError, "Stop recording"):
+                    test_led(client)
+                client.request.assert_called_once_with("/status")
+
+    def test_old_firmware_gets_upgrade_message_without_triggering(self):
+        client = Mock()
+        client.request.return_value = dict(phase="idle")
+        with self.assertRaisesRegex(ValueError, "updated logger"):
+            test_led(client)
+        client.request.assert_called_once_with("/status")
+
+    @patch("capture.onboard.time.sleep")
+    @patch("builtins.print")
+    def test_waits_for_completion_counter_not_just_acceptance(self, output, sleep):
+        client = Mock()
+        client.request.side_effect = [self.status(), dict(accepted=True),
+                                      self.status(phase="testing_led"), self.status(led_tests=3)]
+        self.assertEqual(test_led(client)["led_tests"], 3)
+        client.request.assert_any_call("/test-led", post=True)
+        sleep.assert_called_once()
+
+    @patch("builtins.print")
+    def test_restart_cannot_be_mistaken_for_completion(self, output):
+        client = Mock()
+        client.request.side_effect = [self.status(), dict(accepted=True),
+                                      self.status(boot_id="changed", led_tests=3)]
+        with self.assertRaisesRegex(ValueError, "restarted"):
+            test_led(client)
+
+    @patch("builtins.print")
+    def test_missing_completion_is_reported(self, output):
+        client = Mock()
+        client.request.side_effect = [self.status(), dict(accepted=True)]
+        with self.assertRaisesRegex(ValueError, "not acknowledged"):
+            test_led(client, timeout=0)
 
 
 def fixture(count=416, *, error="", start_tick=1000, fine=None):

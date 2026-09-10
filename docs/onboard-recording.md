@@ -81,6 +81,26 @@ invented. Prefer **Stop & save** before removing power.
 
 ## Record and download
 
+To check the physical LEDs without starting a recording, install the current
+logger with `./flash-feather.sh`, then run while the board is idle:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto test-led
+```
+
+This sends three one-second white pulses and leaves the stick off. Omit
+`--board serial:auto` to use Wi-Fi. Status reports the installed `led_pin`,
+`led_count`, `led_format`, and `led_brightness`; the Feather preset uses GPIO5,
+eight pixels, GRB, and 255/255. Completion confirms LED commands, not visible
+light. With the stick powered from `BAT`, leave the LiPo connected. GPIO5 must
+connect to the stick's `DIN` input. The test does not write recording files or
+sync markers, and it is blocked during recording.
+It also samples battery voltage before and during a pulse using the Feather's
+MAX17048 (unavailable on older gauge revisions), and checks that the GPIO's RMT
+transmitter is attached and idle after sending. These diagnostics cannot verify
+voltage at the stick's solder pads or detect visible light; `-1` means unavailable
+or not yet tested. Battery reads happen only during this idle test.
+
 Join the Feather's `SkateJudge-XXXX` network, password `skate-judge`, then:
 
 ```bash

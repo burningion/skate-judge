@@ -9,6 +9,7 @@
 #include <esp_timer.h>
 #include <esp_partition.h>
 #include <driver/gpio.h>
+#include <esp32-hal-periman.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -30,7 +31,7 @@
 #define SYNC_LED_COUNT 8
 #endif
 #ifndef SYNC_LED_BRIGHTNESS
-#define SYNC_LED_BRIGHTNESS 48
+#define SYNC_LED_BRIGHTNESS 255
 #endif
 #ifndef SYNC_LED_RGBW
 #define SYNC_LED_RGBW 0
@@ -49,7 +50,7 @@ static bool storageReady = false;
 static bool usbRequest = false;
 static String usbQuery;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
-enum Phase { IDLE, STARTING, RECORDING, STOPPING, SAVED, FAULT };
+enum Phase { IDLE, STARTING, RECORDING, STOPPING, SAVED, FAULT, TESTING_LED };
 struct State {
   Phase phase = IDLE;
   char id[33] = {};
@@ -57,11 +58,13 @@ struct State {
   bool sensorReady = false;
   uint32_t accel = 0, gyro = 0, zeroAccel = 0, ioErrors = 0, fifoOverruns = 0, busRetries = 0;
   uint32_t bytes = 0, freeBytes = 0, marker = 0;
+  uint32_t ledTests = 0;
+  int batteryBeforeMv = -1, batteryOnMv = -1, ledRmtReady = -1;
   uint64_t startedUs = 0, endedUs = 0, lastSyncUs = 0;
   float accelHz = 0, gyroHz = 0;
 };
 static State state;
-enum Action { START, STOP, FLASH, CHECK_SENSOR };
+enum Action { START, STOP, FLASH, CHECK_SENSOR, TEST_LED };
 struct Command { Action action; char id[33]; uint32_t marker; };
 static State snapshot() {
   portENTER_CRITICAL(&stateMux); State copy = state; portEXIT_CRITICAL(&stateMux); return copy;
@@ -247,6 +250,25 @@ static void led(bool on) {
     : pixels.Color(SYNC_LED_BRIGHTNESS, SYNC_LED_BRIGHTNESS, SYNC_LED_BRIGHTNESS)) : 0);
   pixels.show();
 }
+static int batteryMillivolts() {
+  // Optional read-only MAX17048 diagnostic, only on the acquisition task while
+  // idle. Do not reset the gauge or mix its read errors into IMU health.
+  // Adafruit_MAX1704X: VERSION[15:4] == 1; VCELL uses 78.125 uV/LSB, MSB first.
+  auto readWord = [](uint8_t reg) -> int {
+    Wire.beginTransmission(0x36); Wire.write(reg);
+    if (Wire.endTransmission(false) != 0) return -1;
+    if (Wire.requestFrom(uint8_t(0x36), size_t(2), true) != 2) {
+      while (Wire.available()) Wire.read();
+      return -1;
+    }
+    int high = Wire.read();
+    return (high << 8) | Wire.read();
+  };
+  int version = readWord(0x08);
+  if (version < 0 || (version & 0xfff0) != 0x0010) return -1;
+  int raw = readWord(0x02);
+  return raw < 0 ? -1 : (raw * 5 + 32) / 64;
+}
 static bool syncEdge(State &s, uint32_t marker, bool on) {
   uint8_t payload[6]; memcpy(payload, &marker, 4); payload[4] = on; payload[5] = ledReady;
   const uint64_t stamp = esp_timer_get_time();
@@ -321,7 +343,23 @@ static void acquire(void *) {
   for (;;) {
     Command cmd;
     while (xQueueReceive(commands, &cmd, 0) == pdTRUE) {
-      if (cmd.action == CHECK_SENSOR && s.phase != RECORDING && s.phase != STOPPING) {
+      if (cmd.action == TEST_LED && ledReady &&
+          (s.phase == IDLE || s.phase == SAVED || s.phase == FAULT)) {
+        // This task owns LED writes. Test only while idle; never add fake sync
+        // markers or touch a saved recording. Leave LEDs off when finished.
+        Phase previous = s.phase;
+        s.phase = TESTING_LED; publish(s);
+        s.batteryBeforeMv = batteryMillivolts();
+        s.batteryOnMv = -1; s.ledRmtReady = 1;
+        for (int i = 0; i < 3; ++i) {
+          led(true); vTaskDelay(pdMS_TO_TICKS(1000));
+          s.ledRmtReady &= perimanGetPinBus(SYNC_LED_PIN, ESP32_BUS_TYPE_RMT_TX) != nullptr &&
+                           rmtTransmitCompleted(SYNC_LED_PIN);
+          if (i == 0) s.batteryOnMv = batteryMillivolts();
+          led(false); vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        ++s.ledTests; s.phase = previous; publish(s);
+      } else if (cmd.action == CHECK_SENSOR && s.phase != RECORDING && s.phase != STOPPING) {
         s.phase = STARTING; publish(s);
         s.sensorReady = setupSensor();
         s.error = s.sensorReady ? "" : sensorError;
@@ -399,8 +437,8 @@ static void errorResponse(int code, const char *error) {
 }
 static bool idleOnly() {
   Phase phase = snapshot().phase;
-  if (phase == RECORDING || phase == STARTING || phase == STOPPING || uxQueueMessagesWaiting(commands)) {
-    errorResponse(409, "Stop recording before accessing stored files."); return false;
+  if (phase == RECORDING || phase == STARTING || phase == STOPPING || phase == TESTING_LED || uxQueueMessagesWaiting(commands)) {
+    errorResponse(409, "Board is busy; stop recording or wait for the current operation."); return false;
   }
   return true;
 }
@@ -416,10 +454,17 @@ static void checkSensor() {
   if (xQueueSend(commands, &cmd, 0) != pdTRUE) { errorResponse(503, "Control queue full; retry."); return; }
   reply(202, "application/json", "{\"accepted\":true}");
 }
+static void testLED() {
+  if (!controlAllowed() || !idleOnly()) return;
+  if (!ledReady) { errorResponse(409, "Sync LED is unavailable; check firmware settings."); return; }
+  Command cmd{TEST_LED, {}, 0};
+  if (xQueueSend(commands, &cmd, 0) != pdTRUE) { errorResponse(503, "Control queue full; retry."); return; }
+  reply(202, "application/json", "{\"accepted\":true}");
+}
 static void statusResponse() {
   State s = snapshot();
-  const char *phases[] = {"idle", "starting", "recording", "stopping", "saved", "fault"};
-  char response[1200];
+  const char *phases[] = {"idle", "starting", "recording", "stopping", "saved", "fault", "testing_led"};
+  char response[1400];
   snprintf(response, sizeof(response),
     "{\"protocol\":1,\"phase\":\"%s\",\"id\":\"%s\",\"boot_id\":\"%08lx\",\"error\":\"%s\",\"sensor_ready\":%s,\"storage_ready\":%s,\"led_enabled\":%s,\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bytes\":%lu,\"free_bytes\":%lu,\"started_us\":%llu,\"ended_us\":%llu,\"device_us\":%llu,\"accel_hz\":%.2f,\"gyro_hz\":%.2f,\"sync_id\":%lu,\"sync_us\":%llu,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"i2c_idle_sda\":%d,\"i2c_idle_scl\":%d,\"bus_retries\":%lu}",
     phases[s.phase], s.id, (unsigned long)bootId, s.error, s.sensorReady ? "true" : "false",
@@ -430,7 +475,14 @@ static void statusResponse() {
     s.startedUs, s.endedUs, (uint64_t)esp_timer_get_time(), s.accelHz, s.gyroHz,
     (unsigned long)s.marker, s.lastSyncUs,
     (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), idleSda, idleScl, (unsigned long)s.busRetries);
-  reply(200, "application/json", response);
+  // Report the settings actually flashed, rather than relying on host presets.
+  char ledStatus[300];
+  snprintf(ledStatus, sizeof(ledStatus),
+    ",\"led_pin\":%d,\"led_count\":%d,\"led_format\":\"%s\",\"led_brightness\":%d,\"led_tests\":%lu,\"led_test_battery_before_mv\":%d,\"led_test_battery_on_mv\":%d,\"led_test_rmt_ready\":%d}",
+    SYNC_LED_PIN, SYNC_LED_COUNT, SYNC_LED_RGBW ? "GRBW" : "GRB",
+    SYNC_LED_BRIGHTNESS, (unsigned long)s.ledTests, s.batteryBeforeMv, s.batteryOnMv, s.ledRmtReady);
+  response[strlen(response) - 1] = 0;
+  reply(200, "application/json", String(response) + ledStatus);
 }
 static void enqueueControl(Action action) {
   if (!controlAllowed()) return;
@@ -552,6 +604,7 @@ static void pollUSB() {
     else if (route == "/status") statusResponse();
     else if (route == "/initialize" && post) initializeStorage();
     else if (route == "/check-sensor" && post) checkSensor();
+    else if (route == "/test-led" && post) testLED();
     else if (route == "/start" && post) enqueueControl(START);
     else if (route == "/stop" && post) enqueueControl(STOP);
     else if (route == "/sync" && post) enqueueControl(FLASH);
@@ -581,6 +634,7 @@ void setup() {
   server.on("/status", HTTP_GET, statusResponse);
   server.on("/initialize", HTTP_POST, initializeStorage);
   server.on("/check-sensor", HTTP_POST, checkSensor);
+  server.on("/test-led", HTTP_POST, testLED);
   server.on("/start", HTTP_POST, [] { enqueueControl(START); });
   server.on("/stop", HTTP_POST, [] { enqueueControl(STOP); });
   server.on("/sync", HTTP_POST, [] { enqueueControl(FLASH); });

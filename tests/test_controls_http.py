@@ -119,6 +119,66 @@ class ControlHTTPTests(unittest.TestCase):
         onboard.finish.return_value = dict(saved=True, samples=2080)
         self.assertEqual(json.loads(self.call('/api/board/finish')[1])['samples'], 2080)
 
+    def onboard_control(self):
+        self.control.close()
+        onboard = Mock()
+        onboard.prepare.return_value = dict(ready=True, id="a" * 32)
+        self.control = ControlServer(self.commands, self.path, onboard=onboard)
+        self.stack.callback(self.control.close)
+        self.start()
+        self.call(f'/api/video/chunk/{self.clip_id}/0', b'video')
+        return onboard
+
+    def test_onboard_countdown_uses_current_readiness_after_prepare(self):
+        onboard = self.onboard_control()
+        # The main loop last saw the sensor warming up. prepare() has now
+        # confirmed its rate, but the next status publication has not happened.
+        self.control.status = dict(can_sync=False, fresh=False, phase="ready")
+        data = dict(video_id=self.clip_id)
+        self.assertEqual(self.call('/api/prepare', data)[0], 200)
+        code, body, _ = self.call('/api/countdown', data)
+        self.assertEqual(code, 202, body)
+        onboard.check_sync_ready.assert_called_once()
+        self.assertEqual(self.commands.get_nowait(), 'countdown')
+
+        # A publication from before the command was consumed must not allow
+        # a second countdown, even after the queue has been drained.
+        self.control.publish_status(dict(can_sync=True, phase="ready"))
+        self.assertFalse(self.control.status['can_sync'])
+        code, body, _ = self.call('/api/countdown', data)
+        self.assertEqual(code, 409)
+        self.assertIn('already', json.loads(body)['error'])
+        self.assertTrue(self.commands.empty())
+
+        self.control.publish_status(dict(can_sync=False, phase="countdown"), countdown_handled=True)
+        self.assertEqual(self.call('/api/countdown', data)[0], 409)
+        self.control.publish_status(dict(can_sync=True, phase="done"))
+        self.assertEqual(self.call('/api/countdown', data)[0], 202)
+        self.assertEqual(self.commands.get_nowait(), 'countdown')
+
+    def test_onboard_health_failure_or_disconnect_cannot_queue_countdown(self):
+        onboard = self.onboard_control()
+        data = dict(video_id=self.clip_id)
+        self.assertEqual(self.call('/api/prepare', data)[0], 200)
+        for error, expected_code in ((ValueError('Onboard recording is not healthy'), 409),
+                                     (OSError('Board disconnected'), 503)):
+            with self.subTest(error=error):
+                onboard.check_sync_ready.side_effect = error
+                self.control.status = dict(can_sync=True, phase="ready")
+                code, body, _ = self.call('/api/countdown', data)
+                self.assertEqual(code, expected_code)
+                self.assertIn(str(error), json.loads(body)['error'])
+                self.assertTrue(self.commands.empty())
+        onboard.check_sync_ready.side_effect = None
+        self.assertEqual(self.call('/api/countdown', data)[0], 202)
+
+    def test_streaming_countdown_explains_missing_motion_data(self):
+        self.control.status = dict(can_sync=False, fresh=False, phase="ready")
+        code, body, _ = self.call('/api/countdown', dict(external=True))
+        self.assertEqual(code, 409)
+        self.assertIn('fresh motion data', json.loads(body)['error'])
+        self.assertTrue(self.commands.empty())
+
     def test_malformed_oversized_and_reordered_uploads_rejected(self):
         self.start()
         path = f"/api/video/chunk/{self.clip_id}/1"

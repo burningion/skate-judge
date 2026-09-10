@@ -498,6 +498,7 @@ class ControlServer:
         self.commands = commands
         self.lock = threading.Lock()
         self.status = dict(can_sync=False, message="Waiting for motion data.")
+        self.countdown_pending = False
         self.videos = VideoStore(session_path)
         assets = {
             "/": ("controls.html", "text/html; charset=utf-8"),
@@ -586,12 +587,8 @@ class ControlServer:
                         elif self.path == "/api/board/finish" and onboard:
                             result = onboard.finish()
                         elif self.path == "/api/countdown":
-                            with control.lock:
-                                ready = control.status.get("can_sync", False)
-                                if ready:
-                                    control.status["can_sync"] = False
-                                    control.commands.put("countdown")
-                            self.reply(202 if ready else 409, b"{}")
+                            control.queue_countdown(onboard)
+                            self.reply(202, b"{}")
                             return
                         elif self.path == "/api/video/start":
                             result = control.videos.start(data)
@@ -609,7 +606,7 @@ class ControlServer:
                     self.reply(400, json.dumps(dict(error=str(error))).encode())
                 except OSError as error:
                     self.reply(
-                        503 if onboard and self.path in ("/api/prepare", "/api/board/finish") else 507,
+                        503 if onboard and self.path in ("/api/prepare", "/api/countdown", "/api/board/finish") else 507,
                         json.dumps(dict(error=f"Recording operation failed: {error}")).encode(),
                     )
 
@@ -619,13 +616,41 @@ class ControlServer:
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
-    def publish(self, session, trigger):
+    def queue_countdown(self, onboard=None):
+        with self.lock:
+            if self.countdown_pending or self.status.get("phase") in ("countdown", "waiting"):
+                raise VideoConflict("A sync is already in progress. Wait for it to finish before retrying.")
+            if not onboard and not self.status.get("can_sync"):
+                raise VideoConflict("Wait for fresh motion data before syncing.")
+            # Reserve the request across board I/O and main-loop publications.
+            self.countdown_pending = True
+            self.status["can_sync"] = False
+        try:
+            if onboard:
+                # prepare() can finish before the polling loop publishes its
+                # healthy reading. Check the board, not that older UI snapshot.
+                onboard.check_sync_ready()
+            self.commands.put("countdown")
+        except (ValueError, OSError) as error:
+            with self.lock:
+                self.countdown_pending = False
+            if isinstance(error, ValueError):
+                raise VideoConflict(str(error)) from error
+            raise
+
+    def publish_status(self, status, *, countdown_handled=False):
+        with self.lock:
+            if countdown_handled:
+                self.countdown_pending = False
+            self.status = dict(status, can_sync=bool(status.get("can_sync") and not self.countdown_pending))
+
+    def publish(self, session, trigger, *, countdown_handled=False):
         fresh = (
             session.last_host_ns is not None
             and time.monotonic_ns() - session.last_host_ns <= 500_000_000
         )
-        with self.lock:
-            self.status = dict(
+        self.publish_status(
+            dict(
                 session=session.path.name,
                 session_path=str(session.path.resolve()),
                 synthetic=session.metadata.get("synthetic", False),
@@ -638,7 +663,9 @@ class ControlServer:
                 message=trigger.message
                 if fresh or trigger.busy
                 else "Waiting for fresh motion data. Check the recorder connection.",
-            )
+            ),
+            countdown_handled=countdown_handled,
+        )
 
     def close(self):
         self.server.shutdown()
@@ -708,6 +735,7 @@ def record(args):
             )
         source.send(b"i")
         while args.duration is None or time.monotonic() - started < args.duration:
+            countdown_handled = False
             now = time.monotonic()
             if args.udp and now - last_heartbeat >= 2:
                 source.send(b"i" if session.samples == 0 else b"k")
@@ -728,6 +756,7 @@ def record(args):
                 if command:
                     try:
                         if command == "countdown":
+                            countdown_handled = True
                             trigger.start(session)
                             last_sync = now
                         elif command == "sync":
@@ -768,7 +797,7 @@ def record(args):
                 session.event("stream_timeout", t_s=session.latest)
                 last_warning = now
             if controls:
-                controls.publish(session, trigger)
+                controls.publish(session, trigger, countdown_handled=countdown_handled)
             if not session.samples and now - started > 15:
                 raise ValueError(
                     "No samples received. Check board firmware, sensor, and selected transport."

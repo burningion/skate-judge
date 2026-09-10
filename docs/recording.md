@@ -89,8 +89,8 @@ family ([Adafruit RGBW stick](https://www.adafruit.com/product/2868)).
 `flash.sh` installs the Adafruit NeoPixel library into `.arduino` when either
 pixel mode is selected.
 
-Brightness defaults to `48` out of `255`. Add `SYNC_LED_BRIGHTNESS=24` for a
-dimmer flash or increase it if needed outdoors. Check the camera image for
+Brightness defaults to the maximum `255` out of `255`. Add `SYNC_LED_BRIGHTNESS=48` for a
+dimmer flash. Check the camera image for
 visibility without washing out the board. This changes the PWM channel value,
 not a calibrated current limit. Pixel count defaults to one for compatibility
 with a single onboard pixel; `SYNC_LED_COUNT=8` is required for the entire stick.

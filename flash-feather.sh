@@ -13,7 +13,7 @@ export SKETCH="${SKETCH:-firmware/imu_logger}"
 export SYNC_LED_PIN="${SYNC_LED_PIN:-5}"
 export SYNC_LED_RGB="${SYNC_LED_RGB:-1}"
 export SYNC_LED_COUNT="${SYNC_LED_COUNT:-8}"
-export SYNC_LED_BRIGHTNESS="${SYNC_LED_BRIGHTNESS:-48}"
+export SYNC_LED_BRIGHTNESS="${SYNC_LED_BRIGHTNESS:-255}"
 if [ "${SYNC_LED_RGBW:-0}" = "1" ]; then export SYNC_LED_RGB=0; fi
 
 exec "$(dirname "$0")/flash.sh" "$@"

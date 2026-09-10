@@ -193,6 +193,34 @@ def board_client(address):
     return SerialBoardClient(address) if address.startswith("serial:") else BoardClient(address)
 
 
+def test_led(client, timeout=12):
+    before = client.request("/status")
+    if before.get("phase") not in ("idle", "saved", "fault"):
+        raise ValueError("Stop recording and wait for the board to be idle before testing LEDs.")
+    if "led_tests" not in before:
+        raise ValueError("Install the updated logger with ./flash-feather.sh to use test-led.")
+    print(f"Watch the stick on GPIO{before['led_pin']}: three one-second white pulses "
+          f"({before['led_count']} pixels, {before['led_format']}, brightness {before['led_brightness']}/255).",
+          flush=True)
+    client.request("/test-led", post=True)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = client.request("/status")
+        if status.get("boot_id") != before.get("boot_id"):
+            raise ValueError("Board restarted during the LED test; completion is unconfirmed.")
+        if status.get("led_tests", 0) > before["led_tests"]:
+            print("LED commands completed; LEDs commanded off. Confirm visible light by eye.", flush=True)
+            for key, label in (("led_test_battery_before_mv", "Battery before test"),
+                               ("led_test_battery_on_mv", "Battery with LEDs commanded on")):
+                value = status.get(key, -1)
+                print(f"{label}: {value / 1000:.3f} V" if value >= 0 else f"{label}: unavailable")
+            rmt_ready = status.get("led_test_rmt_ready", -1)
+            print("GPIO LED transmitter attached and idle: " + {1: "yes", 0: "no"}.get(rmt_ready, "unavailable"))
+            return status
+        time.sleep(.25)
+    raise ValueError("LED test completion was not acknowledged. Check board status.")
+
+
 def healthy(status):
     return (status.get("phase") == "recording" and 180 <= status.get("accel_hz", 0) <= 230
             and 180 <= status.get("gyro_hz", 0) <= 230 and not status.get("error")
@@ -252,10 +280,16 @@ class OnboardRecording:
                 time.sleep(.1)
             raise ValueError("Sensor has not reached 180 Hz on both axes groups. Countdown cancelled; inspect board status.")
 
-    def sync(self, marker):
+    def check_sync_ready(self):
+        if self.result or self.downloading:
+            raise ValueError("This batch is saving or already saved. Start a new recorder command for the next batch.")
         status = self.status()
-        if status.get("id") != self.identity or not healthy(status):
+        if not self.identity or status.get("id") != self.identity or not healthy(status):
             raise ValueError("Onboard recording is not healthy; sync cancelled.")
+        return status
+
+    def sync(self, marker):
+        self.check_sync_ready()
         self.client.request("/sync", dict(id=self.identity, marker=marker), post=True)
 
     def finish(self):
@@ -314,6 +348,7 @@ def record(args):
     print(f"Onboard capture controls: {control.url}\nSession: {path}\nCommands: status, finish, quit.\nQuitting the laptop does not stop the board or erase its log.", flush=True)
     try:
         while True:
+            countdown_handled = False
             try:
                 remote = recording.status()
                 connected = True
@@ -336,11 +371,19 @@ def record(args):
                     except (ValueError, OSError) as error:
                         print(error, file=sys.stderr, flush=True)
                 elif command == "countdown":
-                    if connected and healthy(remote) and remote.get("id") == recording.identity:
-                        phase, remaining, deadline = "countdown", 3, now + 3
-                        message = "Video and onboard data are recording. Sync in 3…"
-                    else:
-                        phase, message = "error", "Onboard recording is not ready; countdown cancelled."
+                    countdown_handled = True
+                    try:
+                        # The status at the top of this iteration may predate
+                        # prepare() reaching a healthy acquisition rate.
+                        remote = recording.check_sync_ready()
+                        connected = True
+                    except (ValueError, OSError) as error:
+                        remote, connected = recording.remote or {}, False
+                        phase, remaining, message = "error", None, str(error)
+                        continue
+                    now = time.monotonic()
+                    phase, remaining, deadline = "countdown", 3, now + 3
+                    message = "Video and onboard data are recording. Sync in 3…"
             if phase == "countdown":
                 if not connected or not healthy(remote):
                     phase, remaining, message = "error", None, "Countdown cancelled: board status unavailable or unhealthy."
@@ -378,12 +421,12 @@ def record(args):
                      and (not active or (remote.get("id") == recording.identity and healthy(remote))))
             own_recording = bool(recording.identity and remote.get("id") == recording.identity)
             elapsed = max(0, ((remote.get("ended_us") or remote.get("device_us", 0)) - remote.get("started_us", 0)) / 1e6) if own_recording and remote.get("started_us") else 0
-            with control.lock:
-                control.status = dict(onboard=True, session=path.name, session_path=str(path.resolve()),
+            control.publish_status(dict(onboard=True, session=path.name, session_path=str(path.resolve()),
                     synthetic=False, samples=remote.get("accel_samples", 0) if own_recording else 0, duration_s=elapsed,
                     fresh=bool(ready), can_sync=bool(ready and phase not in ("countdown", "waiting")),
                     phase=phase, remaining=remaining, message=message, board_message=recording.message,
-                    can_download=bool(recording.identity and not recording.result and not recording.downloading))
+                    can_download=bool(recording.identity and not recording.result and not recording.downloading)),
+                    countdown_handled=countdown_handled)
             time.sleep(.2)
     except KeyboardInterrupt:
         pass
@@ -405,6 +448,7 @@ def main():
     rec.add_argument("--board-name", default="deck-01")
     sub.add_parser("status")
     sub.add_parser("check-sensor", help="Reinitialize the IMU while idle, after checking its cable")
+    sub.add_parser("test-led", help="Three one-second LED pulses while idle; does not create a recording")
     sub.add_parser("initialize", help="Initialize a blank data partition; refuses to erase existing data")
     sub.add_parser("list")
     down = sub.add_parser("download")
@@ -432,6 +476,8 @@ def main():
             client.request("/check-sensor", post=True)
             time.sleep(.5)
             print(json.dumps(client.request("/status"), indent=2))
+        elif args.command == "test-led":
+            test_led(client)
         elif args.command == "initialize":
             print(json.dumps(client.request("/initialize", post=True, timeout=15), indent=2))
         elif args.command == "list":

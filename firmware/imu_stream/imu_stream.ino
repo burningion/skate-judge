@@ -48,7 +48,7 @@
 #define SYNC_LED_COUNT 1
 #endif
 #ifndef SYNC_LED_BRIGHTNESS
-#define SYNC_LED_BRIGHTNESS 48  // channel value out of 255; start dim for the camera
+#define SYNC_LED_BRIGHTNESS 255  // maximum PWM channel value for visible sync flashes
 #endif
 
 #if SYNC_LED_RGB || SYNC_LED_RGBW

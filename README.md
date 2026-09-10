@@ -157,7 +157,7 @@ The preset selects the board, IMU wiring, Wi-Fi, and all eight pixels:
 ```
 
 All eight pixels flash white for 150 ms on `sync`, then turn off. Brightness
-defaults to 48/255; override with `SYNC_LED_BRIGHTNESS`. For an RGBW stick,
+defaults to the maximum 255/255; override with `SYNC_LED_BRIGHTNESS`. For an RGBW stick,
 use `SYNC_LED_RGBW=1 ./flash-feather.sh`.
 See [stick wiring and power](docs/recording.md#eight-pixel-neopixel-stick)
 before connecting it. Direct-LiPo wiring uses `BAT`; the Feather's `USB` pin

@@ -6,7 +6,7 @@
 #   IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh   force the I2C pins instead of auto-probing
 #   FQBN=esp32:esp32:esp32s3:CDCOnBoot=cdc ./flash.sh   override the board definition
 #   SYNC_LED_PIN=N SYNC_LED_RGB=1 SYNC_LED_COUNT=8 ./flash.sh  RGB stick; replace N with verified GPIO
-#   SYNC_LED_RGBW=1 selects an RGBW stick instead; SYNC_LED_BRIGHTNESS=48 is the default (1-255)
+#   SYNC_LED_RGBW=1 selects an RGBW stick instead; SYNC_LED_BRIGHTNESS=255 is the default (1-255)
 #   ./flash.sh --compile-only                  build without uploading
 #
 # Needs arduino-cli with the esp32 core:
