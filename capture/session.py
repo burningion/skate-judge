@@ -12,6 +12,7 @@ alignment also work with plain Python (only USB recording needs pyserial).
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 import json
 import math
@@ -57,6 +58,19 @@ def read_jsonl(path):
         return []
     with Path(path).open(encoding="utf-8") as stream:
         return [json.loads(line) for line in stream if line.strip()]
+
+
+@contextmanager
+def file_lock(path):
+    """Serialize local writers, including separate review servers and the CLI."""
+    import fcntl
+
+    with Path(path).open("a") as stream:
+        fcntl.flock(stream, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream, fcntl.LOCK_UN)
 
 
 class BoardRestart(RuntimeError):
@@ -853,11 +867,16 @@ def sync_point(args):
         video_s=args.video_seconds,
         t_s=(matches[0]["device_us"] - meta["device_origin_us"]) / 1e6,
     )
+    points = {row["sync_id"]: row for row in read_jsonl(args.session / "video_sync.jsonl")
+              if row["video"] == args.video}
+    points[args.sync_id] = value
+    scale, offset, count = fit_video_points(list(points.values()))
     append_json(args.session / "video_sync.jsonl", value)
-    print(
-        f"Linked video {args.video_seconds:.3f}s to session {value['t_s']:.3f}s. "
-        "Add a second flash near the end to estimate clock drift."
-    )
+    summary = ("1 flash matched. Add a second flash near the end to estimate clock drift."
+               if count == 1 else
+               f"Using {count} flash matches; drift correction is active "
+               f"(clock scale {scale:.9f}, offset {offset:+.6f}s).")
+    print(f"Linked video {args.video_seconds:.3f}s to session {value['t_s']:.3f}s. {summary}")
 
 
 def video_mapping(path, video):
@@ -901,7 +920,14 @@ def fit_video_points(points):
     return scale, offset, len(points)
 
 
-def label(args):
+def build_label(args):
+    """Validate and map a human label without writing it."""
+    if args.outcome not in OUTCOMES:
+        raise ValueError("Choose make, bail, fall, background, or unknown.")
+    for name, limit in (("trick", 200), ("note", 2000)):
+        value = getattr(args, name)
+        if not isinstance(value, str) or len(value) > limit:
+            raise ValueError(f"{name.title()} must be at most {limit} characters.")
     meta = metadata(args.session)
     if "closed_utc" not in meta:
         raise ValueError("Stop recording before adding or correcting offline labels.")
@@ -937,8 +963,20 @@ def label(args):
         video_end_s=args.end if args.video else None,
         created_utc=datetime.now(timezone.utc).isoformat(),
     )
-    append_json(args.session / "labels.jsonl", row)
-    print(f"Saved {row['id']}: {args.outcome} {start:.3f}–{end:.3f}s")
+    if args.video:
+        row["video_mapping"] = dict(scale=scale, offset_s=offset, points=count)
+    if args.replace and existing[args.replace].get("video") == args.video:
+        for key in ("review_interval", "review_source", "review_algorithm", "source_pts_origin_s"):
+            if key in existing[args.replace]:
+                row[key] = existing[args.replace][key]
+    return row
+
+
+def label(args):
+    with file_lock(args.session / ".labels.lock"):
+        row = build_label(args)
+        append_json(args.session / "labels.jsonl", row)
+    print(f"Saved {row['id']}: {args.outcome} {row['start_s']:.3f}–{row['end_s']:.3f}s")
 
 
 def main(argv=None):

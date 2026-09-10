@@ -27,7 +27,7 @@
   .legend { display: flex; gap: 15px; flex-wrap: wrap; font-size: 12px; margin-top: 6px; }
   .start { color: #c9f887; } .finish { color: #ffb08a; } .onset { color: #bdacff; }
   .settings { display: grid; gap: 12px; margin: 14px 0; } .gap { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .gap input { width: 100%; } .badge { font-size: 11px; color: #c9f887; padding: 3px 7px; border: 1px solid #607644; border-radius: 5px; }
+  .gap input, .gap select { width: 100%; min-width: 0; } .badge { font-size: 11px; color: #c9f887; padding: 3px 7px; border: 1px solid #607644; border-radius: 5px; }
   #candidates { max-height: 300px; overflow-y: auto; display: grid; gap: 5px; margin: 12px 0; }
   .candidate { text-align: left; display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
   .candidate[aria-pressed=true] { background: #38523d; border-color: #c9f887; } .candidate.rejected { opacity: .55; }
@@ -43,8 +43,8 @@
 <body>
 <main>
   <div class="brand">SKATE JUDGE / REVIEW</div>
-  <h1>Find the pop. Find the contact.</h1>
-  <p class="muted">Listen, inspect the onsets, and refine the trick boundaries.</p>
+  <h1>Review an attempt. Save its label.</h1>
+  <p class="muted">Watch the video, mark the outcome, and move to the next suggestion.</p>
   <div class="row between"><span id="filename" class="file muted">Loading recording…</span><span class="badge">LOCAL AUDIO + VIDEO</span></div>
   <div class="workspace">
     <div>
@@ -52,9 +52,10 @@
         <video id="video" controls playsinline preload="metadata" aria-label="Recorded skate session with audio"></video>
         <div class="row transport">
           <button id="play" type="button">Play / pause</button>
-          <button id="back" type="button" title="Step back 1/60 second">−1/60 s</button>
-          <button id="forward" type="button" title="Step forward 1/60 second">+1/60 s</button>
+          <button id="back" type="button" title="Previous recorded frame">← Frame</button>
+          <button id="forward" type="button" title="Next recorded frame">Frame →</button>
           <label>Speed <select id="speed"><option value="0.25">¼×</option><option value="0.5">½×</option><option value="1" selected>1×</option></select></label>
+          <small id="video-rate"></small>
           <span id="time">0:00.000</span>
         </div>
         <div class="timeline">
@@ -65,7 +66,7 @@
         <div class="timeline">
           <div class="row between"><h2>Boundary detail</h2><label>Window <select id="zoom"><option value="3">3 s</option><option value="6" selected>6 s</option><option value="12">12 s</option><option value="24">24 s</option></select></label></div>
           <canvas id="detail" role="img" aria-label="Detailed waveform and onset strength. Drag start and finish markers, or click to seek."></canvas>
-          <div class="legend"><span class="start">● Start / pop</span><span class="finish">● Finish / contact</span><span class="onset">│ Audio onset</span><span class="muted">Drag boundaries · click to seek</span></div>
+          <div class="legend"><span class="start">● Pop</span><span class="finish">● Contact</span><span style="color:#82c9df">▭ Attempt window</span><span class="onset">│ Audio onset</span><span class="muted">Drag boundaries · click to seek</span></div>
         </div>
         <section id="sensor-panel" aria-labelledby="sensor-title">
           <div class="row between"><h2 id="sensor-title">Accelerometer + gyroscope</h2><small id="sensor-count"></small></div>
@@ -85,27 +86,41 @@
       </section>
     </div>
     <aside class="panel" aria-label="Candidate pairs and boundary editor">
-      <div class="row between"><h2>Suggested pairs</h2><span id="count" class="badge">Analyzing</span></div>
-      <p class="help muted">Proposed pop → contact, not a confirmed trick or outcome. Speech, steps, and board taps can also trigger onsets.</p>
-      <div class="settings">
+      <div class="row between"><h2>Review queue</h2><span id="count" class="badge">Analyzing</span></div>
+      <p class="help muted">Onsets suggest places to look. Confirm the attempt and roll-away, or mark a false positive as Not a trick.</p>
+      <details><summary>Onset detection settings</summary><div class="settings">
         <label>Onset threshold <output id="threshold-value">0.65</output><input id="threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
         <div class="gap"><label>Min pop → contact (s)<input id="min-gap" type="number" min="0.1" max="4.9" step="0.05" value="0.18"></label><label>Max pop → contact (s)<input id="max-gap" type="number" min="0.15" max="5" step="0.05" value="0.9"></label></div>
         <small>Lower threshold finds more onsets. Pairing favors two strong impacts with quieter audio between them; strength is relative to this clip.</small>
       </div>
-      <div class="row"><button id="previous" type="button">← Previous</button><button id="next" type="button">Next →</button><button id="new" type="button">+ Manual pair</button></div>
-      <div id="candidates" aria-label="Candidate intervals"></div>
+      </details>
+      <p id="progress" class="help"></p>
+      <label class="help"><input id="pending-only" type="checkbox"> Show only remaining</label>
+      <div class="row"><button id="previous" type="button">← Previous</button><button id="next" type="button">Next →</button><button id="new" type="button">+ Missed attempt</button></div>
       <div class="editor">
         <div class="row between"><h2 id="selected-title">Select a pair</h2><span id="pair-duration" class="muted"></span></div>
-        <div class="gap"><label class="start">Start (s)<input id="start" type="number" min="0" step="0.01" disabled></label><label class="finish">Finish (s)<input id="end" type="number" min="0" step="0.01" disabled></label></div>
-        <div class="row"><button id="mark-start" type="button" disabled>Start at playhead [I]</button><button id="mark-end" type="button" disabled>Finish at playhead [O]</button></div>
-        <div class="row"><button id="audition" type="button" disabled>Play pair + context</button><label><input id="loop" type="checkbox"> Loop</label></div>
-        <label>Note<textarea id="note" rows="2" maxlength="2000" placeholder="What happened?" disabled></textarea></label>
-        <div class="row"><button id="save" class="primary" type="button" disabled>Save reviewed pair</button><button id="reject" class="danger" type="button" disabled>Reject suggestion</button></div>
+        <div class="row"><button id="audition" type="button" disabled>Play attempt [Space]</button><label><input id="loop" type="checkbox"> Loop</label></div>
+        <div class="gap"><label>Trick<input id="trick" type="text" maxlength="200" placeholder="e.g. ollie" list="trick-names" disabled></label><label>Outcome<select id="outcome" disabled><option value="">Choose outcome…</option><option value="make">Make [1]</option><option value="bail">Bail / stepped off [2]</option><option value="fall">Fall [3]</option><option value="unknown">Unknown [4]</option><option value="background">Not a trick [0]</option></select></label></div>
+        <datalist id="trick-names"><option value="ollie"><option value="kickflip"><option value="heelflip"><option value="shuvit"><option value="pop shuvit"><option value="180"></datalist>
+        <div class="row"><button id="save" class="primary" type="button" disabled>Save label [S]</button><button id="background" type="button" disabled>Not a trick [0]</button></div>
+        <div class="row"><label><input id="auto-next" type="checkbox" checked> Advance after saving</label><button id="reject" type="button" disabled>Skip suggestion [X]</button></div>
+        <p class="help muted">Not a trick saves this window as background. Skip leaves it unlabeled—use it for duplicates or suggestions you cannot judge.</p>
         <p id="status" role="status" aria-live="polite">Loading audio features…</p>
-        <button id="export" type="button">Export review JSON</button>
-        <p class="help muted">Save writes a sidecar beside this clip’s derived review files. These boundaries describe pop/contact; judging the outcome may need more roll-away footage.</p>
+        <details><summary>Refine pop/contact markers</summary>
+        <p class="help muted">Pop/contact markers locate the action. The attempt window below is what gets labeled.</p>
+        <div class="gap"><label class="start">Pop (s)<input id="start" type="number" min="0" step="0.01" disabled></label><label class="finish">Contact (s)<input id="end" type="number" min="0" step="0.01" disabled></label></div>
+        <div class="row"><button id="mark-start" type="button" disabled>Pop at playhead</button><button id="mark-end" type="button" disabled>Contact at playhead</button></div>
+        </details>
+        <p id="label-availability" class="help"></p>
+        <div class="gap"><label>Attempt start (s)<input id="label-start" type="number" min="0" step="0.01" disabled></label><label>Attempt finish (s)<input id="label-end" type="number" min="0" step="0.01" disabled></label></div>
+        <div class="row"><button id="label-mark-start" type="button" disabled>Start at playhead [I]</button><button id="label-mark-end" type="button" disabled>Finish at playhead [O]</button></div>
+        <p class="help muted">New windows include up to 1 s before the pop and 2 s after contact. Adjust to include the outcome; saved windows cannot overlap.</p>
+        <label>Note<textarea id="note" rows="2" maxlength="2000" placeholder="What happened?" disabled></textarea></label>
+        <div class="row"><button id="export-labels" type="button">Download saved labels</button><button id="export" type="button">Export review JSON</button></div>
+        <p class="help muted">Saved labels go to the session’s labels.jsonl, aligned with samples.csv. Reopening this page restores them. Unreviewed suggestions stay unlabeled.</p>
       </div>
-      <details class="help"><summary>Timing &amp; shortcuts</summary><p>Space: play/pause · ←/→: step 1/60 s · I/O: set start/finish · N/P: next/previous pair. Steps are time increments, not guaranteed source frames.</p><p>Audio analysis uses 32 ms windows every 10 ms. Sound travel and microphone processing can shift an impact relative to its visible contact. Check the video before treating a boundary as exact.</p><p id="timing"></p></details>
+      <details open><summary>Suggestions and saved labels</summary><div id="candidates" aria-label="Candidate intervals"></div></details>
+      <details class="help"><summary>Timing &amp; shortcuts</summary><p>Space: play attempt/pause · ←/→: previous/next recorded frame · I/O: set attempt start/finish · N/P: next/previous · 1/2/3/4: save make/bail/fall/unknown · 0: save background · S: save selected outcome · X: skip. Shortcuts apply outside text fields and controls. Frame steps use recorded presentation timestamps, including variable frame intervals. Playback speed does not change label or sync timestamps.</p><p>Audio analysis uses 32 ms windows every 10 ms. Sound travel and microphone processing can shift an impact relative to its visible contact. Check the video before treating a boundary as exact.</p><p id="timing"></p></details>
     </aside>
   </div>
 </main>

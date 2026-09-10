@@ -194,6 +194,25 @@ class SessionTests(unittest.TestCase):
         self.assertEqual(row["source"], "video_human")
         self.assertAlmostEqual(row["start_s"], scale * 6 + offset)
 
+    def test_sync_summary_counts_distinct_flashes_and_invalid_fit_does_not_append(self):
+        self.recorded()
+        def match(identity, video_s):
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                sync_point(argparse.Namespace(session=self.path, sync_id=identity,
+                                               video="phone.mov", video_seconds=video_s))
+            return output.getvalue()
+        self.assertIn("Add a second flash", match(1, 5))
+        self.assertIn("1 flash matched", match(1, 5.01))
+        second = match(2, 24.01)
+        self.assertIn("Using 2 flash matches; drift correction is active", second)
+        self.assertNotIn("Add a second flash", second)
+        self.assertIn("Using 2 flash matches", match(1, 5))
+        original = (self.path / "video_sync.jsonl").read_bytes()
+        with self.assertRaises(ValueError):
+            match(2, 6)
+        self.assertEqual((self.path / "video_sync.jsonl").read_bytes(), original)
+
     def test_missing_or_disabled_led_cannot_claim_video_sync(self):
         session = Session(self.path, {})
         session.ingest(sample(1_000_000))

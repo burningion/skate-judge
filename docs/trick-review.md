@@ -12,32 +12,98 @@ address; use `--port 0` to choose a free port. Plain `python3` also works if
 NumPy and SciPy are already installed. No cloud service or frontend build is
 needed. Ctrl+C stops the server; saved edits remain on disk.
 
-## Find and refine boundaries
+## Label a session quickly
 
-The original video plays with its audio above two linked plots: a waveform
-overview and a zoomed waveform/onset-strength view. Click either plot to seek.
-Choose a proposed pair, then **Play pair + context** to hear the pop and contact
-with approach and roll-away. Slow playback and optional looping help with review.
+After matching the LED flashes, use the same page to label every attempt. For
+example, open the A7S clip with:
 
-- Adjust **Onset threshold** to include more or fewer sound transients.
-- Set the permitted time between pop and contact; defaults are 0.18–0.90 seconds.
-- Drag the green start and orange finish markers, edit their time fields, or
-  use **I**/**O** to capture the playhead. Add a manual pair for a missed attempt.
-- **Save reviewed pair** or **Reject suggestion** persists that decision. Tuning
-  thresholds does not erase saved reviews. Unsaved edits remain in the open tab
-  and trigger a warning on leaving; save each edited pair before closing.
-- **Export review JSON** downloads the current proposals and reviews, with
-  explicit suggested/reviewed/rejected/draft status and timestamp metadata.
+```bash
+uv run viz/trick_review.py sessions/a7s-001/C0642.MP4
+```
 
-Space toggles playback; left/right step 1/60 second; N/P choose the next/previous
-pair. Steps are time increments, not guaranteed source frames, because webcam
-frame intervals can vary. The visible video should decide final boundaries.
+1. Select a suggestion and choose **Play attempt** to watch it with approach and
+   roll-away. Slow playback and looping help when an outcome is unclear.
+2. Check the **Attempt start / finish** fields. New windows include up to one
+   second before the proposed pop and two seconds after contact, clipped to
+   sensor coverage. Use **I/O** to mark these boundaries at the playhead, or edit
+   the times. Include enough roll-away to judge the outcome. The blue outline
+   shows the full window; the green/orange markers are the pop/contact pair.
+3. Enter the trick name, then choose an outcome and **Save label**, or use a
+   shortcut below. The last saved trick name carries forward for repeated
+   attempts. Each new suggestion requires an explicit outcome.
+4. For a false positive, choose **Not a trick**. This immediately saves its
+   attempt window as `background` with an empty trick name. **Skip suggestion**
+   leaves a proposal unlabeled; use it for duplicates or proposals you cannot
+   judge. Existing rejections are not automatically converted to background.
+5. **Advance after saving** is on by default. **Show only remaining** hides
+   completed decisions; uncheck it to revise them. Revisions keep the same label
+   ID. If a window overlaps another saved label, shorten the window or edit the
+   existing label. A duplicate suggestion can be skipped.
+6. Scan the rest of the video for missed attempts, then use **+ Missed attempt**
+   at the playhead and refine its window. Manual windows can also label pushing,
+   rolling, carrying, or other observed background. Unreviewed time and
+   untouched suggestions never become background automatically.
 
-These are **pop/contact proposals**, not automatic trick labels or make/bail
-judgments. Speech, footsteps, trucks rattling, and handling the board can create
-false pairs. Some tricks have multiple contacts or no clear audio pair. The
-default gap bounds are adjustable search settings, not universal airtime limits.
-Outcome labeling may require a longer interval through roll-away.
+| Shortcut | Action |
+| --- | --- |
+| Space | Play the selected attempt / pause |
+| 1 / 2 / 3 / 4 | Save make / bail / fall / unknown |
+| 0 | Save not a trick (`background`) |
+| S | Save the chosen outcome |
+| X | Skip without a training label |
+| I / O | Set attempt start / finish at the playhead |
+| N / P | Next / previous interval |
+| Left / right | Previous / next recorded frame |
+
+Shortcuts apply outside text fields, dropdowns, and the native video controls.
+Space on a focused button activates that button. Frame stepping uses the review
+video's decoded presentation timestamps, including variable frame intervals.
+For the A7S 120 fps recording, the measured rate is 119.88 fps (120000/1001),
+so adjacent frames are about 8.342 ms apart. The player displays the measured
+rate and indexed frame count. Slow playback leaves label/sync timestamps in
+original-speed seconds; it does not stretch the alignment.
+
+The first launch indexes the review video's frames and caches `frames.json`.
+This does not re-encode the clip or replace saved flash matches and labels.
+Subsequent launches reuse the index unless the review media changes.
+
+After updating the review tool, **restart the Python server**, then reload the
+browser. Refreshing alone can load new page assets from an older running
+server. The page detects incompatible responses and shows restart instructions.
+
+**Make** means the rider lands and maintains control through the roll-away.
+**Bail** means they step or jump clear without falling; **fall** means they
+visibly fall to the ground. Use **unknown** when the outcome is unjudgeable.
+
+Saving writes directly to the session's `labels.jsonl`, using the measured LED
+alignment to map the attempt window onto `samples.csv` time. Reopening the page
+restores saved labels and skips. **Download saved labels** exports the latest
+revision of each label for this clip as JSONL, including background, original
+video timestamps, mapped sensor timestamps, and review provenance. Unsaved
+edits, skips, and unreviewed proposals are excluded. Use these intervals with
+`samples.csv` to build training examples; this tool does not train a model.
+
+If alignment changes, affected labels are flagged for review. Save them again
+after checking their windows; downloading labels is blocked until those flags
+are resolved. Manual offset/scale changes are exploratory and cannot be used
+for saving labels. A stale tab cannot overwrite another tab's or CLI's labels.
+
+## Find and refine pop/contact boundaries
+
+Expand **Onset detection settings** to tune the threshold and permitted gap
+(default 0.18–0.90 seconds). Expand **Refine pop/contact markers** to edit those
+boundaries, or drag their green/orange markers on the plot. They locate the
+action separately from the full attempt window used for training labels.
+Threshold changes preserve saved decisions and unsaved drafts in the open tab.
+Proposals fully inside a saved, current label window are omitted as duplicate
+work. A lower threshold can reveal missed attempts elsewhere.
+
+Audio proposals require human review: speech, footsteps, truck rattle, and
+handling the board can all trigger onsets. Some tricks have multiple contacts
+or no clear audio pair. Gap settings are search parameters, not universal airtime
+limits. **Export review JSON** includes the current suggestions, skips, labels,
+and explicit draft status for diagnostics; use **Download saved labels** for
+confirmed labels. Save each edited interval before closing the tab.
 
 ## Match the LED to the sensor clock
 
@@ -50,7 +116,10 @@ current frame**. Match another flash near the end to estimate drift. The app
 stores correspondences in the existing session `video_sync.jsonl` and uses the
 same alignment validation as `capture/session.py align`. Re-matching an ID
 updates its correspondence with an appended revision. Inconsistent fits are
-rejected before writing. A single point assumes no drift.
+rejected before writing. A single point assumes no drift. The terminal asks for
+a second flash only when one distinct flash is matched; with two or more it
+reports the active drift correction. Re-matching a flash updates its existing
+point rather than counting it as an additional flash.
 
 The motion plots show raw acceleration and angular-speed magnitudes.
 When no measured alignment exists, the suggested offset comes only from file
@@ -98,13 +167,17 @@ Derived files live in `sessions/<session>/review/<video-stem>/`:
 | File | Contents |
 | --- | --- |
 | `media.webm` or `media.mp4` | Seekable review copy |
+| `frames.json` | Cached video frame timestamps, frame rate, and review-media identity |
 | `analysis.json` | Cached waveform, onsets, timing, algorithm version, source identity |
-| `review.json` | Saved human boundaries, rejected proposals, settings, revision |
+| `review.json` | Skipped proposals, legacy boundary reviews, settings, revision |
 
 The original recording and acquisition files remain unchanged. Flash matches
-append to `video_sync.jsonl`; reviewed boundaries are separate from training
-`labels.jsonl`. The API checks revision numbers to prevent stale tabs from
-overwriting another tab's saved review. `--rebuild` recreates derived media/audio
+append to `video_sync.jsonl`. Human outcome/background labels and their revisions
+append to the session's `labels.jsonl`; they retain both the full attempt window
+and pop/contact markers. The latest row per label ID is authoritative. Legacy
+boundary-only reviews remain separate until an outcome is explicitly saved.
+The API checks review revisions, label-file revisions, and measured alignment
+to prevent stale saves; local file locks serialize writers. `--rebuild` recreates derived media/audio
 without deleting reviews. `--prepare-only` prepares files without starting a server.
 
 ```bash
@@ -115,4 +188,5 @@ node --test tests/test_trick_review.mjs tests/test_webcam.mjs
 Audio tests need NumPy/SciPy; when missing, run them with
 `uv run --with numpy --with scipy python -m unittest discover -s tests -v`.
 Tests cover transient detection, silence, delayed audio, media byte ranges,
-review persistence, stale revisions, and LED correspondence validation.
+review persistence, UI outcome/background actions, skip semantics, append-only label
+corrections, stale revisions, alignment changes, and LED correspondence validation.

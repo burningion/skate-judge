@@ -377,7 +377,9 @@ Re-enter an ID to correct its correspondence. The mapping rejects gross clock
 mismatches and inconsistent points, but cannot verify that you selected the
 correct flash. LED-disabled and demo markers cannot be used for video alignment.
 
-Then add an interval using the video's timestamps:
+The [review UI](trick-review.md#label-a-session-quickly) can now save trick and
+outcome labels directly, including **Not a trick** for background examples.
+For terminal use, add an interval using the video's timestamps:
 
 ```bash
 uv run capture/session.py label sessions/first-session \

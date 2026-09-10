@@ -4,7 +4,9 @@ Use Rerun as an optional desktop analysis tool for synchronized skateboard video
 six-axis IMU readings, and model predictions. Keep capture and saved labels
 independent of it. An embedded labeling panel is one possible review interface;
 a browser video player with linked plots is another. This is an implementation
-plan; the viewer, exporter, and labeling panel have not been built.
+plan for Rerun; its viewer, exporter, and embedded panel have not been built.
+The separate [browser review UI](trick-review.md) now supports synchronized
+playback, full attempt/outcome labels, background labels, and JSONL downloads.
 
 ## Primary capture workflow: tripod iPhone and Mac
 

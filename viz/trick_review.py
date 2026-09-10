@@ -12,10 +12,13 @@ Requires ffmpeg and ffprobe on PATH. All processing and playback stay local.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import csv
 from datetime import datetime, timezone
+from fractions import Fraction
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -25,9 +28,13 @@ import sys
 import threading
 
 VERSION = 1
+API_VERSION = 2
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping
 
 
 def read_json(path, fallback=None):
@@ -51,6 +58,38 @@ def probe(path):
     return json.loads(run([
         "ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)
     ]))
+
+
+def video_timing(media, duration):
+    """Index decoded presentation timestamps, including variable-rate footage."""
+    stream = next(row for row in probe(media)["streams"] if row["codec_type"] == "video")
+    try:
+        fps = float(Fraction(stream.get("avg_frame_rate", "0/1")))
+    except (ValueError, ZeroDivisionError):
+        fps = 0
+    frames = json.loads(run([
+        "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_frames",
+        "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", str(media),
+    ]))["frames"]
+    times = (float(row["best_effort_timestamp_time"]) for row in frames
+             if row.get("best_effort_timestamp_time") not in (None, "N/A"))
+    times = sorted({t for t in times if math.isfinite(t) and 0 <= t < duration})
+    if not times:
+        raise ValueError("No video frame timestamps found for stepping.")
+    return dict(fps=fps if math.isfinite(fps) and fps > 0 else None, frame_times_s=times)
+
+
+def cached_video_timing(directory, media, duration):
+    path = directory / "frames.json"
+    stat = media.stat()
+    identity = dict(name=media.name, bytes=stat.st_size, mtime_ns=stat.st_mtime_ns)
+    with file_lock(directory / ".frames.lock"):
+        cached = read_json(path, {})
+        if cached.get("media") != identity or cached.get("schema") != 1:
+            print("Indexing video frames for single-frame stepping (cached after this run)…", flush=True)
+            cached = dict(schema=1, media=identity, **video_timing(media, duration))
+            write_json(path, cached)
+    return dict(fps=cached["fps"], frame_times_s=cached["frame_times_s"])
 
 
 def extract_audio(path):
@@ -204,6 +243,8 @@ def prepare(source, rebuild=False):
                     media_url="/media" + extension, audio=audio_features(audio))
         write_json(analysis_path, data)
     # Refresh alignment/quality on every launch, even if audio is cached.
+    data["api_version"] = API_VERSION
+    data["video_timing"] = cached_video_timing(directory, media, data["duration_s"])
     data["sensor"] = sensor_context(source)
     return directory, media, data
 
@@ -263,14 +304,116 @@ def byte_range(header, size):
 
 
 def make_server(directory, media, data, port):
+    data["api_version"] = API_VERSION
     review_path = directory / "review.json"
-    lock = threading.Lock()
+    session = directory.parent.parent
+    thread_lock = threading.Lock()
+
+    @contextmanager
+    def lock():
+        with thread_lock, file_lock(directory / ".review.lock"), file_lock(session / ".labels.lock"):
+            yield
+
+    def label_state():
+        path = session / "labels.jsonl"
+        content = path.read_bytes() if path.exists() else b""
+        active = {row["id"]: row for row in (json.loads(line) for line in content.splitlines() if line.strip())}
+        meta = read_json(session / "metadata.json", {})
+        context = dict(available=False, reason="Align this clip to a closed sensor recording to save labels.",
+                       mapping=None, coverage=None)
+        try:
+            scale, offset, count = video_mapping(session, data["video"])
+            context["mapping"] = dict(scale=scale, offset_s=offset, points=count)
+            duration = meta.get("duration_s")
+            if "closed_utc" in meta and finite_number(duration) and duration > 0:
+                origin = data["source_pts_origin_s"]
+                lo, hi = max(0, -offset / scale - origin), min(data["duration_s"], (duration - offset) / scale - origin)
+                if lo < hi:
+                    context.update(available=True, reason="", coverage=[lo, hi])
+        except ValueError:
+            pass
+        return active, hashlib.sha256(content).hexdigest(), context
 
     def review():
         saved = read_json(review_path, dict(revision=0, intervals=[], settings=None))
         if saved.get("source", data["source"]) != data["source"]:
             raise ValueError("Source recording changed; saved edits refer to a different file.")
+        active, token, context = label_state()
+        intervals = {row["id"]: row for row in saved["intervals"]}
+        for row in active.values():
+            if row.get("video") != data["video"]:
+                continue
+            start, end = row.get("video_start_s"), row.get("video_end_s")
+            if not finite_number(start) or not finite_number(end):
+                continue
+            origin = data["source_pts_origin_s"]
+            pair = dict(row.get("review_interval") or dict(id=f"label-{row['id']}",
+                        start_s=start - origin, end_s=end - origin))
+            mapping = context["mapping"]
+            stale = not mapping or any(not math.isclose(mapping["scale"] * t + mapping["offset_s"],
+                        row[key], abs_tol=1e-6, rel_tol=0) for t, key in ((start, "start_s"), (end, "end_s")))
+            stale = stale or row.get("review_source", data["source"]) != data["source"]
+            pair.update(label_id=row["id"], label_start_s=start - origin, label_end_s=end - origin,
+                        outcome=row["outcome"], trick=row.get("trick", ""), note=row.get("note", ""),
+                        status="labeled", label_stale=stale)
+            intervals[pair["id"]] = pair
+        saved.update(intervals=sorted(intervals.values(), key=lambda row: row["start_s"]),
+                     labels_revision=token, label_context=context)
         return saved
+
+    def save_decision(value):
+        if not isinstance(value, dict):
+            raise ValueError("Expected a label decision.")
+        previous = review()
+        if (value.get("revision") != previous["revision"] or
+                value.get("labels_revision") != previous["labels_revision"]):
+            return 409, dict(error="Labels changed in another tab or command. Reload before saving.")
+        # Validate pop/contact boundaries and settings with the original review validator.
+        pair = value.get("interval")
+        validate_review(dict(intervals=[pair], settings=value.get("settings")), data["duration_s"])
+        identity = pair["id"]
+        existing = next((row for row in previous["intervals"] if row["id"] == identity), None)
+        decision = value.get("decision")
+        row = None
+        clean = {key: pair[key] for key in ("id", "start_s", "end_s", "status")}
+        clean["note"] = pair.get("note", "")
+        if decision == "skip":
+            if existing and existing.get("label_id"):
+                raise ValueError("This interval already has a label. Correct its outcome or boundaries and save it again.")
+            clean["status"] = "rejected"
+        elif decision == "label":
+            context = previous["label_context"]
+            if not context["available"]:
+                raise ValueError(context["reason"])
+            if value.get("mapping") != context["mapping"]:
+                return 409, dict(error="Alignment changed. Reload and check the attempt window before saving.")
+            start, end = pair.get("label_start_s"), pair.get("label_end_s")
+            if not (finite_number(start) and finite_number(end) and 0 <= start < end <= data["duration_s"]):
+                raise ValueError("Attempt window must have 0 <= start < finish <= video duration.")
+            origin = data["source_pts_origin_s"]
+            outcome = pair.get("outcome")
+            row = build_label(argparse.Namespace(session=session, video=data["video"],
+                start=start + origin, end=end + origin, outcome=outcome,
+                trick="" if outcome == "background" else pair.get("trick", ""), note=clean["note"],
+                replace=existing.get("label_id") if existing else None))
+            row.update(review_interval=clean, review_source=data["source"],
+                       review_algorithm=data["algorithm"], source_pts_origin_s=origin)
+        else:
+            raise ValueError("Choose label or skip.")
+        # Labels are authoritative. The review sidecar stores settings and skips only;
+        # reconstruct labeled rows from labels.jsonl after a crash or a CLI correction.
+        intervals = [p for p in previous["intervals"] if p["id"] != identity and not p.get("label_id")]
+        if decision == "skip":
+            intervals.append(clean)
+        saved = dict(schema=VERSION, revision=previous["revision"] + 1,
+                     source=data["source"], video=data["video"], source_pts_origin_s=data["source_pts_origin_s"],
+                     timeline="review_video_seconds", algorithm=data["algorithm"],
+                     updated_utc=datetime.now(timezone.utc).isoformat(), intervals=intervals,
+                     settings=value["settings"])
+        write_json(review_path, saved)
+        if row:
+            append_json(session / "labels.jsonl", row)
+        return 200, review()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
@@ -306,8 +449,20 @@ def make_server(directory, media, data, port):
                 return
             if self.path == "/api/review":
                 try:
-                    with lock:
+                    with lock():
                         self.json_response(200, review())
+                except ValueError as error:
+                    self.json_response(409, dict(error=str(error)))
+                return
+            if self.path == "/api/labels":
+                try:
+                    with lock():
+                        saved = review()
+                        if any(row.get("label_stale") for row in saved["intervals"]):
+                            raise ValueError("Alignment changed. Review and save the flagged labels before downloading.")
+                        active, _, _ = label_state()
+                        labels = [row for row in active.values() if row.get("video") == data["video"]]
+                        self.json_response(200, dict(labels=sorted(labels, key=lambda row: row["start_s"])))
                 except ValueError as error:
                     self.json_response(409, dict(error=str(error)))
                 return
@@ -354,7 +509,7 @@ def make_server(directory, media, data, port):
         def do_POST(self):
             if not self.allowed():
                 return
-            if self.path not in ("/api/review", "/api/sync"):
+            if self.path not in ("/api/review", "/api/sync", "/api/label"):
                 self.send_error(404)
                 return
             try:
@@ -362,6 +517,11 @@ def make_server(directory, media, data, port):
                 if not 0 < size <= 1024 * 1024 or self.headers.get("Content-Type") != "application/json":
                     raise ValueError("Expected JSON, at most 1 MiB.")
                 value = json.loads(self.rfile.read(size))
+                if self.path == "/api/label":
+                    with lock():
+                        code, result = save_decision(value)
+                    self.json_response(code, result)
+                    return
                 if self.path == "/api/sync":
                     if not isinstance(value, dict):
                         raise ValueError("Expected a flash correspondence.")
@@ -380,7 +540,7 @@ def make_server(directory, media, data, port):
                     if len(matches) != 1:
                         raise ValueError("Choose an available recorded LED flash.")
                     original_s = time_s + data["source_pts_origin_s"]
-                    with lock:
+                    with lock():
                         points = {row["sync_id"]: row for row in read_jsonl(session / "video_sync.jsonl")
                                   if row["video"] == data["video"]}
                         points[identity] = dict(video=data["video"], video_s=original_s,
@@ -393,8 +553,11 @@ def make_server(directory, media, data, port):
                     self.json_response(200, data["sensor"]["mapping"])
                     return
                 validated = validate_review(value, data["duration_s"])
-                with lock:
+                with lock():
                     previous = review()
+                    if any(row.get("label_id") for row in previous["intervals"]):
+                        self.json_response(409, dict(error="Use the label controls to revise saved labels."))
+                        return
                     if value.get("revision") != previous["revision"]:
                         self.json_response(409, dict(error="Review changed in another tab. Reload before saving."))
                         return
