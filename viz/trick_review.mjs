@@ -31,11 +31,33 @@ export function mergeReviews(proposals, reviewed) {
     .map(row => ({...row})).sort((a, b) => a.start_s - b.start_s);
 }
 
-export function attemptWindow(pair, duration, coverage) {
-  const lo = coverage ? Math.ceil(coverage[0] * 1000) / 1000 : 0;
-  const hi = coverage ? Math.floor(coverage[1] * 1000) / 1000 : duration;
+export function overlappingLabels(pair, window, reviewed) {
+  return window ? reviewed.filter(other => other.label_id && other.id !== pair.id &&
+    window[0] < other.label_end_s && window[1] > other.label_start_s) : [];
+}
+
+export function attemptWindow(pair, duration, coverage, reviewed = []) {
+  let lo = Math.max(0, coverage ? Math.ceil(coverage[0] * 1000) / 1000 : 0);
+  let hi = Math.min(duration, coverage ? Math.floor(coverage[1] * 1000) / 1000 : duration);
+  const coverageLo = lo, coverageHi = hi;
+  // Trim only suggested context. A human's explicit window is never moved.
+  for (const other of reviewed) {
+    if (!other.label_id || other.id === pair.id) continue;
+    if (other.label_end_s <= pair.start_s) lo = Math.max(lo, Math.ceil(other.label_end_s * 1000) / 1000);
+    if (other.label_start_s >= pair.end_s) hi = Math.min(hi, Math.floor(other.label_start_s * 1000) / 1000);
+  }
   const start = pair.label_start_s ?? Math.max(lo, pair.start_s - 1);
   const end = pair.label_end_s ?? Math.min(hi, pair.end_s + 2);
+  return validInterval(start, end, duration) && start >= coverageLo && end <= coverageHi ? [start, end] : null;
+}
+
+export function backgroundWindow(time, duration, coverage, reviewed) {
+  const lo = Math.max(0, coverage ? Math.ceil(coverage[0] * 1000) / 1000 : 0);
+  const hi = Math.min(duration, coverage ? Math.floor(coverage[1] * 1000) / 1000 : duration);
+  if (time < lo || time >= hi || reviewed.some(row => row.label_id && time >= row.label_start_s && time < row.label_end_s)) return null;
+  const start = Math.ceil(time * 1000) / 1000;
+  const next = Math.min(hi, ...reviewed.filter(row => row.label_id && row.label_start_s >= time).map(row => row.label_start_s));
+  const end = Math.floor(Math.min(start + 3, next) * 1000) / 1000;
   return validInterval(start, end, duration) && start >= lo && end <= hi ? [start, end] : null;
 }
 
@@ -107,29 +129,46 @@ export async function init() {
   function seek(time) { video.currentTime = clamp(time, 0, duration); center(video.currentTime); draw(); }
   async function play() { try { await video.play(); } catch (error) { status(error.message, true); } }
   function selection() { return rows.find(row => row.id === selected); }
+  const windowFor = pair => pair && attemptWindow(pair, duration, labelContext.coverage, reviewed);
+  const isBackground = pair => pair?.outcome === "background";
+  const savedDescription = row => `${isBackground(row) ? "background" : `${row.trick || "trick"} · ${row.outcome}`} (${format(row.label_start_s)}–${format(row.label_end_s)})`;
   function setEditor() {
     const pair = selection();
     for (const id of ["start", "end", "mark-start", "mark-end", "audition", "save", "background", "reject", "note", "trick", "outcome", "label-start", "label-end", "label-mark-start", "label-mark-end"]) $(id).disabled = !pair || saving;
-    for (const id of ["previous", "next", "new", "threshold", "min-gap", "max-gap", "offset", "scale", "pending-only", "save-sync"]) $(id).disabled = saving;
+    for (const id of ["previous", "next", "new", "new-background", "open-overlap", "threshold", "min-gap", "max-gap", "offset", "scale", "pending-only", "save-sync"]) $(id).disabled = saving;
     $("save-sync").disabled = saving || !data.sensor.syncs.length;
     $("save").disabled ||= !labelContext.available;
     $("background").disabled ||= !labelContext.available;
     $("reject").disabled ||= Boolean(pair?.label_id);
-    $("selected-title").textContent = pair ? pair.label_stale ? "Alignment changed · review label" : pair.status === "labeled" ? "Saved label" : pair.status === "rejected" ? "Skipped suggestion" : "Review suggestion" : "Select an interval";
+    $("selected-title").textContent = pair ? pair.label_stale ? "Alignment changed · review label" : pair.status === "labeled" ? "Saved label" : isBackground(pair) ? "Label a background range" : pair.status === "rejected" ? "Skipped suggestion" : "Review suggestion" : "Select an interval";
+    $("pop-markers").hidden = isBackground(pair);
+    $("audition").textContent = isBackground(pair) ? "Play range [Space]" : "Play attempt [Space]";
     $("start").value = pair ? pair.start_s.toFixed(3) : "";
     $("end").value = pair ? pair.end_s.toFixed(3) : "";
-    $("pair-duration").textContent = pair ? `${(pair.end_s - pair.start_s).toFixed(3)} s` : "";
+    const window = windowFor(pair);
+    $("pair-duration").textContent = pair ? `${(isBackground(pair) && window ? window[1] - window[0] : pair.end_s - pair.start_s).toFixed(3)} s` : "";
     $("note").value = pair?.note || "";
     $("trick").value = pair?.trick ?? lastTrick;
     $("outcome").value = pair?.outcome || "";
     $("trick").disabled ||= pair?.outcome === "background";
-    const window = pair && attemptWindow(pair, duration, labelContext.coverage);
     $("label-start").value = pair?.label_start_s ?? (window ? window[0].toFixed(3) : "");
     $("label-end").value = pair?.label_end_s ?? (window ? window[1].toFixed(3) : "");
     $("label-availability").textContent = labelContext.available
       ? window ? `Sensor coverage: ${format(labelContext.coverage[0])}–${format(labelContext.coverage[1])}.`
         : "This window is outside sensor coverage. Adjust the attempt times, or skip this suggestion."
       : labelContext.reason;
+    const overlaps = pair ? overlappingLabels(pair, window, reviewed) : [];
+    $("window-conflict").hidden = !overlaps.length;
+    const recovery = pair?.label_id ? "Adjust this range or open the other label to resolve the overlap."
+      : isBackground(pair) ? "Shorten the background range to exclude saved labels, or open the saved label to review it."
+      : "If this is the same attempt, skip the suggestion. For a separate event, adjust the ranges before saving.";
+    $("window-conflict-text").textContent = overlaps.length
+      ? `This range overlaps saved ${overlaps.map(savedDescription).join("; ")}. ${recovery}` : "";
+    $("window-help").textContent = isBackground(pair)
+      ? "Watch the whole range, set its start / finish with I / O, then Save label. One background range can cover many sounds. Include only time with no trick attempt."
+      : "New windows include up to 1 s before pop and 2 s after contact, trimmed at saved labels. Check that the roll-away still fits. Your edited boundaries stay as entered.";
+    $("save").disabled ||= overlaps.length > 0;
+    $("background").disabled ||= overlaps.length > 0;
   }
   function visibleRows() { return $("pending-only").checked ? rows.filter(needsReview) : rows; }
   function list() {
@@ -142,8 +181,10 @@ export async function init() {
       button.className = `candidate ${row.status}`; button.type = "button";
       button.setAttribute("aria-pressed", String(selected === row.id));
       const label = document.createElement("span"), detail = document.createElement("small");
-      label.textContent = `${String(index + 1).padStart(2, "0")} · ${format(row.start_s)} → ${format(row.end_s)}`;
+      const range = row.label_id || isBackground(row) ? windowFor(row) : null;
+      label.textContent = `${String(index + 1).padStart(2, "0")} · ${format(range?.[0] ?? row.start_s)} → ${format(range?.[1] ?? row.end_s)}`;
       detail.textContent = row.edited ? "unsaved" : row.label_stale ? "review alignment" : row.outcome === "background" ? "not a trick" : row.outcome ? `${row.trick || "trick"} · ${row.outcome}` : row.status === "rejected" ? "skipped" : "unlabeled";
+      if (needsReview(row) && overlappingLabels(row, windowFor(row), reviewed).length) detail.textContent += " · overlaps saved";
       button.disabled = saving;
       button.append(label, detail); button.onclick = () => choose(row.id); $("candidates").append(button);
     });
@@ -160,7 +201,7 @@ export async function init() {
   function choose(id) {
     if (saving) return;
     stashDraft(); selected = id; audition = null; video.pause();
-    const pair = selection(); if (pair) seek(attemptWindow(pair, duration, labelContext.coverage)?.[0] ?? Math.max(0, pair.start_s - .7));
+    const pair = selection(); if (pair) seek(windowFor(pair)?.[0] ?? Math.max(0, pair.start_s - .7));
     setEditor(); list(); draw();
   }
   function regenerate() {
@@ -209,28 +250,46 @@ export async function init() {
     if (label) { ctx.fillStyle = color; ctx.font = "11px system-ui"; ctx.fillText(label, Math.max(2, x - 15), 13); }
   }
   function drawAttempt(ctx, x, height, pair) {
-    const window = pair && attemptWindow(pair, duration, labelContext.coverage);
+    const window = windowFor(pair);
     if (!window) return;
     ctx.fillStyle = "#82c9df18";
     ctx.fillRect(x(window[0]), 20, x(window[1]) - x(window[0]), height - 43);
     ctx.strokeStyle = "#82c9df"; ctx.setLineDash([5, 4]);
     ctx.strokeRect(x(window[0]), 20, x(window[1]) - x(window[0]), height - 43);
     ctx.setLineDash([]); ctx.fillStyle = "#82c9df"; ctx.font = "11px system-ui";
-    ctx.fillText("ATTEMPT WINDOW", Math.max(5, x(window[0]) + 5), height - 30);
+    ctx.fillText(isBackground(pair) ? "BACKGROUND RANGE" : "ATTEMPT WINDOW", Math.max(5, x(window[0]) + 5), height - 30);
+  }
+  function drawSaved(ctx, x, height) {
+    for (const row of reviewed) {
+      if (!row.label_id || row.id === selected || row.label_end_s < windowStart || row.label_start_s > windowStart + span()) continue;
+      ctx.fillStyle = isBackground(row) ? "#9eafbd22" : "#c9f88720";
+      ctx.fillRect(x(row.label_start_s), 20, x(row.label_end_s) - x(row.label_start_s), height - 43);
+      ctx.strokeStyle = row.label_stale ? "#ffbf92" : "#819b7e";
+      ctx.strokeRect(x(row.label_start_s), 20, x(row.label_end_s) - x(row.label_start_s), height - 43);
+      ctx.fillStyle = ctx.strokeStyle; ctx.font = "11px system-ui";
+      const left = Math.max(0, x(row.label_start_s)), right = Math.min(x(windowStart + span()), x(row.label_end_s));
+      ctx.save(); ctx.beginPath(); ctx.rect(left, 0, right - left, 19); ctx.clip();
+      ctx.fillText(`${row.label_stale ? "REVIEW" : "SAVED"} · ${isBackground(row) ? "background" : row.trick || row.outcome}`, left + 5, 13);
+      ctx.restore();
+    }
   }
   function draw() {
     const pair = selection(), opts = settings(), length = span();
     const overview = canvas("overview"), o = overview.ctx;
     for (const row of rows) {
       o.fillStyle = row.status === "rejected" ? "#513b32" : row.id === selected ? "#587346" : "#2c4b35";
-      o.fillRect(row.start_s / duration * overview.w, 0, Math.max(2, (row.end_s - row.start_s) / duration * overview.w), overview.h);
+      const range = row.label_id || isBackground(row) ? windowFor(row) : null;
+      const start = range?.[0] ?? row.start_s, end = range?.[1] ?? row.end_s;
+      if (row.label_id) o.fillStyle = isBackground(row) ? "#344650" : "#49633d";
+      o.fillRect(start / duration * overview.w, 0, Math.max(2, (end - start) / duration * overview.w), overview.h);
     }
     waveform(o, overview.w, 0, duration, 6, overview.h - 12);
     o.strokeStyle = "#8aa68d"; o.strokeRect(windowStart / duration * overview.w, 1, length / duration * overview.w, overview.h - 2);
     marker(o, video.currentTime / duration * overview.w, overview.h, "#ffffff");
     const {ctx, w, h} = canvas("detail"), x = t => (t - windowStart) / length * w;
+    drawSaved(ctx, x, h);
     drawAttempt(ctx, x, h, pair);
-    if (pair) { ctx.fillStyle = "#304432"; ctx.fillRect(x(pair.start_s), 20, x(pair.end_s) - x(pair.start_s), h - 42); }
+    if (pair && !isBackground(pair)) { ctx.fillStyle = "#304432"; ctx.fillRect(x(pair.start_s), 20, x(pair.end_s) - x(pair.start_s), h - 42); }
     waveform(ctx, w, windowStart, length, 26, 108);
     ctx.font = "11px system-ui"; ctx.fillStyle = "#a5b8b3"; ctx.fillText("AUDIO WAVEFORM", 5, 33); ctx.fillText("ONSET STRENGTH", 5, 155);
     const y = value => h - 26 - Math.min(value, 3) / 3 * 87;
@@ -246,7 +305,7 @@ export async function init() {
       const t = windowStart + i / 6 * length;
       ctx.fillStyle = "#a5b8b3"; ctx.fillText(`${t.toFixed(2)}s`, clamp(i / 6 * w - 18, 0, w - 46), h - 5);
     }
-    if (pair) { marker(ctx, x(pair.start_s), h - 23, colors.start, "POP"); marker(ctx, x(pair.end_s), h - 23, colors.end, "CONTACT"); }
+    if (pair && !isBackground(pair)) { marker(ctx, x(pair.start_s), h - 23, colors.start, "POP"); marker(ctx, x(pair.end_s), h - 23, colors.end, "CONTACT"); }
     marker(ctx, x(video.currentTime), h - 23, "#ffffff");
     if (data.sensor.samples.length) drawImu();
   }
@@ -257,8 +316,9 @@ export async function init() {
     $("sensor-count").textContent = `${samples.length} samples in view`;
     const pair = selection(), plotHeight = h - 22, half = plotHeight / 2;
     const xAt = t => (t - windowStart) / length * w;
+    drawSaved(ctx, xAt, h);
     drawAttempt(ctx, xAt, h, pair);
-    if (pair) {
+    if (pair && !isBackground(pair)) {
       ctx.fillStyle = "#304432";
       ctx.fillRect(xAt(pair.start_s), 20, xAt(pair.end_s) - xAt(pair.start_s), plotHeight - 20);
     }
@@ -287,7 +347,7 @@ export async function init() {
       const t = (sync.session_s - opts.offset) / opts.scale - data.source_pts_origin_s;
       if (t >= windowStart && t <= windowStart + length) marker(ctx, xAt(t), plotHeight, "#ffffff", `LED ${sync.id}`);
     }
-    if (pair) {
+    if (pair && !isBackground(pair)) {
       marker(ctx, xAt(pair.start_s), plotHeight, colors.start, "POP");
       marker(ctx, xAt(pair.end_s), plotHeight, colors.end, "CONTACT");
     }
@@ -306,12 +366,15 @@ export async function init() {
       trick: chosenOutcome === "background" ? "" : $("trick").value.trim(),
       label_start_s: $("label-start").value === "" ? null : Number($("label-start").value),
       label_end_s: $("label-end").value === "" ? null : Number($("label-end").value)};
+    if (chosenOutcome === "background" && decision === "label") {
+      clean.start_s = clean.label_start_s; clean.end_s = clean.label_end_s;
+    }
     if (decision === "label" && (!validInterval(clean.label_start_s, clean.label_end_s, duration))) {
       status("Set an attempt start and finish inside sensor coverage, or skip this suggestion.", true); return;
     }
-    if (decision === "label" && reviewed.some(other => other.label_id && other.id !== pair.id &&
-        clean.label_start_s < other.label_end_s && clean.label_end_s > other.label_start_s)) {
-      status("The attempt window overlaps another saved label. Adjust its start/finish, or skip a duplicate suggestion.", true); return;
+    const overlaps = overlappingLabels(pair, [clean.label_start_s, clean.label_end_s], reviewed);
+    if (decision === "label" && overlaps.length) {
+      status(`Overlaps saved ${overlaps.map(savedDescription).join("; ")}. Open the saved label to adjust it, or skip this suggestion if it is the same attempt.`, true); return;
     }
     // Preserve an explicit outcome shortcut in the draft if saving fails.
     if (decision === "label") { Object.assign(pair, clean, {status: pair.status, edited: true}); stashDraft(); dirty = true; }
@@ -415,9 +478,24 @@ export async function init() {
     const row = {id: `manual-${crypto.randomUUID()}`, start_s: start, end_s: Math.min(duration, start + .5), status: "suggested", note: "", edited: true};
     rows.push(row); drafts.set(row.id, row); choose(row.id); changed();
   };
+  $("new-background").onclick = () => {
+    if (saving) return;
+    const window = backgroundWindow(video.currentTime, duration, labelContext.coverage, reviewed);
+    if (!window) { status("Start background in unlabeled time inside sensor coverage. The playhead may already be inside a saved label.", true); return; }
+    stashDraft();
+    const row = {id: `manual-${crypto.randomUUID()}`, start_s: window[0], end_s: window[1],
+      label_start_s: window[0], label_end_s: window[1], outcome: "background", trick: "",
+      status: "suggested", note: "", edited: true};
+    rows.push(row); drafts.set(row.id, row); choose(row.id); changed();
+    status("Background range started. Watch the stretch, press O at its end, then Save label. You do not need a label for each onset.");
+  };
+  $("open-overlap").onclick = () => {
+    const pair = selection(), other = pair && overlappingLabels(pair, windowFor(pair), reviewed)[0];
+    if (other) { $("pending-only").checked = false; choose(other.id); }
+  };
   $("audition").onclick = () => {
     const pair = selection(); if (!pair) return;
-    const window = attemptWindow(pair, duration, labelContext.coverage);
+    const window = windowFor(pair);
     audition = {start: window?.[0] ?? Math.max(0, pair.start_s - 1), end: window?.[1] ?? Math.min(duration, pair.end_s + 2)};
     seek(audition.start); play();
   };
@@ -428,14 +506,16 @@ export async function init() {
     const pair = selection(); if (!pair) return;
     pair[id] = $(id).value; pair.edited = true; changed();
     if (id === "outcome") setEditor();
-    list();
+    list(); draw();
   };
   function updateAttempt(key, value) {
     const pair = selection(); if (!pair || saving) return;
     const start = key === "label_start_s" ? value : Number($("label-start").value);
     const end = key === "label_end_s" ? value : Number($("label-end").value);
     if (!validInterval(start, end, duration)) { status("Attempt start must be before finish, within the video.", true); setEditor(); return; }
-    pair.label_start_s = start; pair.label_end_s = end; pair.edited = true; changed(); setEditor(); list(); draw();
+    pair.label_start_s = start; pair.label_end_s = end;
+    if (isBackground(pair)) { pair.start_s = start; pair.end_s = end; }
+    pair.edited = true; changed(); setEditor(); list(); draw();
   }
   $("label-start").onchange = () => updateAttempt("label_start_s", Number($("label-start").value));
   $("label-end").onchange = () => updateAttempt("label_end_s", Number($("label-end").value));
@@ -470,7 +550,7 @@ export async function init() {
   $("detail").onpointerdown = event => {
     const box = $("detail").getBoundingClientRect(), time = windowStart + (event.clientX - box.left) / box.width * span(), pair = selection();
     video.pause(); audition = null;
-    if (pair && !saving) {
+    if (pair && !isBackground(pair) && !saving) {
       const tolerance = 12 / box.width * span();
       const keys = ["start_s", "end_s"].sort((a, b) => Math.abs(pair[a] - time) - Math.abs(pair[b] - time));
       if (Math.abs(pair[keys[0]] - time) < tolerance) { drag = keys[0]; $("detail").setPointerCapture(event.pointerId); return; }

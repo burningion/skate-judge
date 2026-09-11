@@ -288,6 +288,26 @@ class ReviewHttpTests(unittest.TestCase):
         with self.assertRaises(HTTPError):
             self.request("/api/label", self.decision(decision="skip"))
 
+    def test_background_range_touches_saved_attempt_and_round_trips_as_one_label(self):
+        self.aligned()
+        with self.request("/api/label", self.decision()):
+            pass
+        value = self.decision(identity="manual-background", outcome="background", start=4, end=9)
+        value["interval"].update(start_s=4, end_s=9)
+        with self.request("/api/label", value) as response:
+            saved = json.load(response)
+        background = next(row for row in saved["intervals"] if row["id"] == "manual-background")
+        self.assertEqual((background["start_s"], background["end_s"], background["label_start_s"],
+                          background["label_end_s"], background["outcome"], background["trick"]),
+                         (4, 9, 4, 9, "background", ""))
+        with self.request("/api/review") as response:
+            self.assertEqual(len(json.load(response)["intervals"]), 2)
+        with self.request("/api/labels") as response:
+            labels = json.load(response)["labels"]
+        self.assertEqual([row["outcome"] for row in labels], ["make", "background"])
+        self.assertAlmostEqual(labels[0]["end_s"], labels[1]["start_s"])
+        self.assertEqual(labels[1]["video_end_s"], 8.75)
+
     def test_legacy_rejections_are_not_automatically_background(self):
         value = self.valid()
         value["intervals"][0]["status"] = "rejected"

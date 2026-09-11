@@ -23,35 +23,65 @@ uv run viz/trick_review.py sessions/a7s-001/C0642.MP4
 
 1. Select a suggestion and choose **Play attempt** to watch it with approach and
    roll-away. Slow playback and looping help when an outcome is unclear.
-2. Check the **Attempt start / finish** fields. New windows include up to one
+2. Check the **Range start / finish** fields. New windows include up to one
    second before the proposed pop and two seconds after contact, clipped to
-   sensor coverage. Use **I/O** to mark these boundaries at the playhead, or edit
-   the times. Include enough roll-away to judge the outcome. The blue outline
+   sensor coverage and neighboring saved labels. Use **I/O** to mark these
+   boundaries at the playhead, or edit the times. Include enough roll-away to
+   judge the outcome. The blue outline
    shows the full window; the green/orange markers are the pop/contact pair.
+   Saved ranges appear in both the audio and sensor plots and in the overview.
 3. Enter the trick name, then choose an outcome and **Save label**, or use a
    shortcut below. The last saved trick name carries forward for repeated
    attempts. Each new suggestion requires an explicit outcome.
-4. For a false positive, choose **Not a trick**. This immediately saves its
-   attempt window as `background` with an empty trick name. **Skip suggestion**
+4. For a false positive, choose **Not a trick** after watching the whole range.
+   This immediately saves its window as `background` with an empty trick name.
+   You do not need a separate background label for every onset. **Skip suggestion**
    leaves a proposal unlabeled; use it for duplicates or proposals you cannot
    judge. Existing rejections are not automatically converted to background.
 5. **Advance after saving** is on by default. **Show only remaining** hides
    completed decisions; uncheck it to revise them. Revisions keep the same label
-   ID. If a window overlaps another saved label, shorten the window or edit the
-   existing label. A duplicate suggestion can be skipped.
+   ID. Only automatically proposed padding is trimmed; explicit edits are preserved.
+   If the action itself or an edited range overlaps a saved label, the editor
+   shows its name and times before saving. **Open overlapping saved label** lets
+   you revise that label. Skip a duplicate suggestion; for separate attempts,
+   adjust their ranges so each includes its own outcome without overlapping.
 6. Scan the rest of the video for missed attempts, then use **+ Missed attempt**
-   at the playhead and refine its window. Manual windows can also label pushing,
-   rolling, carrying, or other observed background. Unreviewed time and
-   untouched suggestions never become background automatically.
+   at the playhead and refine its window. Use **+ Background range at playhead**
+   for pushing, rolling, carrying, waiting, or other observed background (see below).
+   Unreviewed time and untouched suggestions never become background automatically.
+
+## Label background by range
+
+Label the real attempts first, then review stretches between them. Onsets are
+places to look, not a checklist to complete.
+
+1. Seek to the start of a stretch with no trick attempt and choose
+   **+ Background range at playhead**. This creates an unsaved range starting
+   there, initially up to three seconds long, ending before the next saved label
+   or the end of sensor coverage.
+2. Use **Play / pause** to watch the stretch. Pause at its end and press **O**
+   (or **Finish at playhead**). **I** adjusts its start. The range can cover many
+   onsets; pop/contact markers do not apply to background and are hidden.
+3. Choose **Save label**. One background label covers the entire range.
+   Untouched suggestions fully contained in it leave the queue, including after
+   changing detection settings or reopening the page. Unsaved drafts remain for
+   you to resolve. Partially overlapping suggestions remain visible with overlap
+   guidance. Saving is blocked if the range overlaps an existing label.
+
+Do not include a trick attempt in a background range, even if it was a bail.
+Leave anything you have not watched unlabeled. Skipping suggestions does not
+create background labels.
+
+## Shortcuts and saved labels
 
 | Shortcut | Action |
 | --- | --- |
-| Space | Play the selected attempt / pause |
+| Space | Play the selected range / pause |
 | 1 / 2 / 3 / 4 | Save make / bail / fall / unknown |
 | 0 | Save not a trick (`background`) |
 | S | Save the chosen outcome |
 | X | Skip without a training label |
-| I / O | Set attempt start / finish at the playhead |
+| I / O | Set range start / finish at the playhead |
 | N / P | Next / previous interval |
 | Left / right | Previous / next recorded frame |
 

@@ -22,6 +22,7 @@ capture/onboard.py    onboard recording controls, verified download, recovery, C
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
 capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
+viz/render_overlay.py transparent 3D skateboard + synchronized sensor/audio graphics for video editing
 viz/trick_review.py    local video/audio review, onset pairs, editable boundaries, LED alignment
 flash.sh               compile + upload with arduino-cli
 flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
@@ -164,6 +165,21 @@ use `SYNC_LED_RGBW=1 ./flash-feather.sh`.
 See [stick wiring and power](docs/recording.md#eight-pixel-neopixel-stick)
 before connecting it. Direct-LiPo wiring uses `BAT`; the Feather's `USB` pin
 only supplies 5 V while USB is connected.
+
+## Export transparent graphics for editing
+
+After saving trick labels and matching the LED flashes, render a 3D skateboard
+with synchronized onset, accelerometer, and gyroscope graphics:
+
+```bash
+uv run viz/render_overlay.py sessions/a7s-001 --video C0642.MP4 \
+  --nose-axis x --up-axis=-z --width 1080 --height 1920
+```
+
+This writes one vertical transparent ProRes 4444 clip per attempt and PNG previews.
+Add `--reel` for a combined reel.
+See [transparent overlays](docs/transparent-overlays.md) for slow motion,
+mounting controls, timing, and editing instructions.
 
 ## Run the viewer
 

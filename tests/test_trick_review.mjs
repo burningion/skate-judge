@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {readFile} from "node:fs/promises";
-import {attemptWindow, init, mergeReviews, needsReview, nextPending, proposePairs, requireCurrentServer, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {attemptWindow, backgroundWindow, init, mergeReviews, needsReview, nextPending, overlappingLabels, proposePairs, requireCurrentServer, stepFrame, validInterval} from "../viz/trick_review.mjs";
 
 const opts = {threshold: .65, min_gap: .18, max_gap: .9};
 test("pairs impacts across a plausible gap and leaves isolated sounds unpaired", () => {
@@ -37,6 +37,40 @@ test("attempt windows include context, respect sensor coverage, and preserve edi
   assert.equal(attemptWindow({start_s: 1, end_s: 1.5}, 100, [15, 90]), null);
 });
 
+test("adjacent suggestions trim context at saved bounds without moving the action or human edits", () => {
+  const saved = [{id: "ollie", label_id: "one", label_start_s: 38.01, label_end_s: 38.871826},
+    {id: "next", label_id: "two", label_start_s: 40.2, label_end_s: 42}];
+  const pair = {id: "suggestion", start_s: 38.97, end_s: 39.33};
+  const window = attemptWindow(pair, 100, [15.5724, 90], saved);
+  assert.deepEqual(window, [38.872, 40.2]);
+  assert.deepEqual(overlappingLabels(pair, window, saved), []);
+  const edited = {...pair, label_start_s: 37.97, label_end_s: 41.33};
+  assert.deepEqual(attemptWindow(edited, 100, [15, 90], saved), [37.97, 41.33]);
+  assert.deepEqual(overlappingLabels(edited, [37.97, 41.33], saved).map(row => row.id), ["ollie", "next"]);
+  assert.deepEqual(attemptWindow({...saved[0], start_s: 38.188, end_s: 38.505}, 100, [15, 90], saved), [38.01, 38.871826]);
+});
+
+test("partially overlapping actions remain visible for review, including stale saved labels", () => {
+  const saved = [{id: "ollie", label_id: "one", status: "labeled", start_s: 2, end_s: 2.5,
+    label_start_s: 1, label_end_s: 4}];
+  const pair = {id: "partial", start_s: 3.8, end_s: 4.3};
+  assert.equal(mergeReviews([pair], saved).length, 2);
+  for (const stale of [false, true]) {
+    const labels = [{...saved[0], label_stale: stale}];
+    assert.equal(overlappingLabels(pair, attemptWindow(pair, 20, [0, 20], labels), labels).length, 1);
+  }
+});
+
+test("background ranges start at the playhead and stop at saved labels or coverage", () => {
+  const saved = [{label_id: "one", label_start_s: 5.1234, label_end_s: 9}];
+  assert.deepEqual(backgroundWindow(3.0012, 20, [1, 19], saved), [3.002, 5.123]);
+  assert.equal(backgroundWindow(6, 20, [1, 19], saved), null);
+  assert.equal(backgroundWindow(.5, 20, [1, 19], saved), null);
+  assert.equal(backgroundWindow(19, 20, [1, 19], saved), null);
+  assert.deepEqual(backgroundWindow(9, 20, [1, 19], saved), [9, 12]);
+  assert.deepEqual(backgroundWindow(18, 20, [1, 19], saved), [18, 19]);
+});
+
 test("queue advances through unlabeled and stale rows without inferring background", () => {
   const rows = [{id: "a", status: "labeled"}, {id: "b", status: "rejected"},
     {id: "c", status: "reviewed"}, {id: "d", status: "labeled", label_stale: true}];
@@ -55,7 +89,7 @@ test("new proposals fully covered by a human label do not return as duplicate wo
 
 // Exercise the real controller with a small DOM/media fixture. This verifies
 // user actions and requests without depending on a graphical browser or codec.
-async function controller(t, {legacyServer = false} = {}) {
+async function controller(t, {legacyServer = false, intervals = [], onsets = [2, 2.5, 8, 8.5]} = {}) {
   const html = await readFile(new URL("../viz/trick_review.html", import.meta.url), "utf8");
   const nodes = new Map(), listeners = new Map();
   function element() {
@@ -80,12 +114,12 @@ async function controller(t, {legacyServer = false} = {}) {
   }
   const get = id => { assert.ok(nodes.has(id), `missing control ${id}`); return nodes.get(id); };
   const mapping = {scale: 1, offset_s: 0, points: 2};
-  const state = {revision: 0, labels_revision: "0", intervals: [],
+  const state = {revision: 0, labels_revision: "0", intervals,
     settings: {...opts, offset: 999, scale: .99},
     label_context: {available: true, mapping, coverage: [0, 20]}};
   const data = {api_version: 2, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
     video_timing: {fps: 120000 / 1001, frame_times_s: [0, 1001 / 120000, 2002 / 120000]},
-    audio: {onsets: [2, 2.5, 8, 8.5].map(time_s => ({time_s, strength: 1})),
+    audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
     sensor: {mapping, samples: [], warnings: [], syncs: [], offset_hint_s: 0}};
   if (legacyServer) { delete data.api_version; delete state.label_context; delete state.labels_revision; }
@@ -143,6 +177,85 @@ test("UI saves background in one click, advances, and never labels untouched sug
   assert.equal(calls[1].decision, "skip");
   assert.equal(state.intervals.filter(row => row.label_id).length, 1);
   assert.match(get("status").textContent, /Queue complete/);
+});
+
+test("UI saves one watched background range covering multiple suggestions and restores it", async t => {
+  const {get, calls, state} = await controller(t, {onsets: [2, 2.5, 4, 4.5, 8, 8.5]});
+  get("video").currentTime = 1;
+  get("new-background").click();
+  assert.equal(get("outcome").value, "background");
+  assert.equal(get("pop-markers").hidden, true);
+  assert.equal(get("trick").disabled, true);
+  assert.equal(calls.length, 0, "creating a range requires explicit save");
+  get("video").currentTime = 6;
+  get("label-mark-end").click();
+  await get("save").click();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].interval.outcome, "background");
+  assert.equal(calls[0].interval.trick, "");
+  assert.deepEqual([calls[0].interval.start_s, calls[0].interval.end_s], [1, 6]);
+  assert.deepEqual([state.intervals[0].label_start_s, state.intervals[0].label_end_s], [1, 6]);
+  assert.equal(get("count").textContent, "1 remaining");
+  assert.equal(get("start").value, "8.000");
+  assert.equal(get("candidates").children.length, 2);
+  get("threshold").oninput();
+  assert.equal(get("count").textContent, "1 remaining");
+  await init();
+  assert.equal(get("candidates").children.length, 2);
+  assert.equal(get("outcome").value, "background");
+  assert.equal(Number(get("label-end").value), 6);
+});
+
+test("UI trims padding before saving a separate adjacent attempt", async t => {
+  const {get, calls} = await controller(t, {onsets: [2, 2.5, 4, 4.5]});
+  get("trick").value = "ollie"; get("trick").oninput();
+  get("outcome").value = "make"; get("outcome").oninput();
+  get("label-end").value = 3.871826; get("label-end").onchange();
+  await get("save").click();
+  assert.equal(get("start").value, "4.000");
+  assert.equal(Number(get("label-start").value), 3.872);
+  assert.equal(get("window-conflict").hidden, true);
+  get("outcome").value = "bail"; get("outcome").oninput();
+  await get("save").click();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].interval.label_start_s, 3.872);
+  assert.equal(calls[1].interval.start_s, 4);
+});
+
+test("UI identifies a partial overlap before save, opens the saved label, and preserves drafts", async t => {
+  const intervals = [{id: "saved", label_id: "one", status: "labeled", start_s: 2, end_s: 2.5,
+    label_start_s: 1, label_end_s: 4, trick: "ollie", outcome: "make"}];
+  const {get, calls, key} = await controller(t, {intervals, onsets: [3.8, 4.3]});
+  get("pending-only").checked = true; get("pending-only").onchange();
+  assert.equal(get("window-conflict").hidden, false);
+  assert.match(get("window-conflict-text").textContent, /ollie.*0:01.000–0:04.000/);
+  assert.equal(get("save").disabled, true);
+  key("0");
+  assert.equal(calls.length, 0, "keyboard actions also respect overlaps");
+  get("note").value = "check this contact"; get("note").oninput();
+  get("open-overlap").click();
+  assert.equal(get("selected-title").textContent, "Saved label");
+  assert.equal(get("pending-only").checked, false);
+  get("next").click();
+  assert.equal(get("note").value, "check this contact");
+  await get("reject").click();
+  assert.equal(calls[0].decision, "skip");
+  assert.equal(intervals[0].outcome, "make");
+});
+
+test("UI background range refuses saved time and keeps an overlapping edited range unsaved", async t => {
+  const intervals = [{id: "saved", label_id: "one", status: "labeled", start_s: 8, end_s: 8.5,
+    label_start_s: 7, label_end_s: 10, trick: "ollie", outcome: "make"}];
+  const {get, calls, key} = await controller(t, {intervals});
+  get("video").currentTime = 8; get("new-background").click();
+  assert.match(get("status").textContent, /inside a saved label/);
+  get("video").currentTime = 5; get("new-background").click();
+  assert.equal(Number(get("label-end").value), 7);
+  get("video").currentTime = 9; get("label-mark-end").click();
+  assert.equal(get("window-conflict").hidden, false);
+  key("s"); key("0");
+  assert.equal(calls.length, 0);
+  assert.equal(Number(get("label-end").value), 9, "never silently shrink an explicit range");
 });
 
 test("UI preserves drafts on failed saves and outcome shortcuts submit the selected trick", async t => {
