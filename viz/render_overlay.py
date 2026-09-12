@@ -36,9 +36,11 @@ from viz.overlay_motion import (  # noqa: E402
     MAX_GAP,
     check_alignment,
     estimate_attitude,
+    flat_sync_attitude,
     infer_mount,
     interpolate,
     latest_labels,
+    latest_syncs,
     load_samples,
     mount_matrix,
 )
@@ -205,6 +207,23 @@ def clock(t):
     return f"{int(t//60)}:{t%60:06.3f}"
 
 
+def attempt_segments(attempts, origin, coverage, before=0, after=0):
+    """Separate the saved labeling interval from the exported context interval."""
+    if any(not math.isfinite(value) or value < 0 for value in (before, after)):
+        raise ValueError("Context seconds must be finite and nonnegative.")
+    return [
+        dict(
+            start=max(coverage[0], row["video_start_s"] - origin - before),
+            end=min(coverage[1], row["video_end_s"] - origin + after),
+            label_start=row["video_start_s"] - origin,
+            label_end=row["video_end_s"] - origin,
+            label=row,
+            number=i + 1,
+        )
+        for i, row in enumerate(attempts)
+    ]
+
+
 class Renderer:
     def __init__(self, samples, attitudes, audio, mapping, mount, args):
         self.samples, self.attitudes, self.audio = samples, attitudes, audio
@@ -359,8 +378,21 @@ class Renderer:
         )
         self.draw = ImageDraw.Draw(self.layer)
         label = segment.get("label")
-        title = label.get("trick", "ATTEMPT").upper() if label else "SKATE JUDGE"
-        outcome = label.get("outcome", "").upper() if label else "SESSION REPLAY"
+        active = (
+            segment.get("label_start", segment["start"])
+            <= video_time
+            < segment.get("label_end", segment["end"])
+        )
+        title = (
+            (label.get("trick", "ATTEMPT").upper() if active else "")
+            if label
+            else "SKATE JUDGE"
+        )
+        outcome = (
+            (label.get("outcome", "").upper() if active else "")
+            if label
+            else "SESSION REPLAY"
+        )
         number = segment.get("number", 1)
         self.text(
             (60, 12) if portrait else (90, 38),
@@ -376,11 +408,13 @@ class Renderer:
             WHITE,
             True,
         )
+        timing = f"VIDEO {clock(video_time+self.origin)}"
+        detail = f"{number:02d}   {outcome}   ·   {timing}" if outcome else timing
         self.text(
             (62, 116) if portrait else (92, 136),
-            f"{number:02d}   {outcome}   ·   VIDEO {clock(video_time+self.origin)}",
+            detail,
             22 if portrait else 19,
-            LIME if outcome == "MAKE" else CORAL,
+            (LIME if outcome == "MAKE" else CORAL) if outcome else MUTED,
         )
         sensor_time = self.scale * (video_time + self.origin) + self.offset
         sample = interpolate(self.samples, self.attitudes, sensor_time)
@@ -650,6 +684,18 @@ def main(argv=None):
         help="Playback speed; .25 exports four-times-slower motion",
     )
     parser.add_argument("--fps", type=int, default=30)
+    parser.add_argument(
+        "--before",
+        type=float,
+        default=0,
+        help="Seconds of context before each saved attempt",
+    )
+    parser.add_argument(
+        "--after",
+        type=float,
+        default=0,
+        help="Seconds of context after each saved attempt",
+    )
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
     parser.add_argument(
@@ -657,6 +703,11 @@ def main(argv=None):
     )
     parser.add_argument(
         "--up-axis", default="auto", choices=["auto", "x", "y", "z", "-x", "-y", "-z"]
+    )
+    parser.add_argument(
+        "--flat-syncs",
+        action="store_true",
+        help="Declare the deck level and still at every saved flash; calibrate tilt and gyro bias",
     )
     parser.add_argument("--onset-threshold", type=float, default=0.65)
     parser.add_argument("--font", type=Path)
@@ -680,6 +731,10 @@ def main(argv=None):
         )
     if not shutil.which("ffmpeg"):
         parser.error("Install ffmpeg before rendering.")
+    if any(
+        not math.isfinite(value) or value < 0 for value in (args.before, args.after)
+    ):
+        parser.error("--before and --after must be finite and nonnegative.")
     session = args.session.resolve()
     if not args.video:
         from viz.overlay_motion import read_jsonl
@@ -730,12 +785,19 @@ def main(argv=None):
     scale, offset, points = video_mapping(session, args.video)
     check_alignment(labels, scale, offset, (samples[0, 0], samples[-1, 0]))
     origin = analysis["source_pts_origin_s"]
-    attitudes, calibration = estimate_attitude(samples)
     auto_nose, auto_up, method = infer_mount(samples, labels)
     nose = auto_nose if args.nose_axis == "auto" else args.nose_axis
     up = auto_up if args.up_axis == "auto" else args.up_axis
     mount_method = method if args.nose_axis == "auto" else "explicit nose axis"
     mount = mount_matrix(nose, up)
+    if args.flat_syncs:
+        attitudes, mount, calibration = flat_sync_attitude(
+            samples, latest_syncs(session, args.video), mount
+        )
+        attitude_method = "gyro integration with gated gravity correction and declared-flat flash anchors"
+    else:
+        attitudes, calibration = estimate_attitude(samples)
+        attitude_method = "gyro integration with gated gravity correction"
     print(
         f"{len(attempts)} saved attempts · {points} flash matches · nose {nose}, deck up {up}",
         flush=True,
@@ -743,18 +805,25 @@ def main(argv=None):
     print(
         f"Mounting: {mount_method}. Override with --nose-axis / --up-axis.", flush=True
     )
+    if args.flat_syncs:
+        for anchor in calibration["flat_sync_anchors"]:
+            print(
+                f"Flat flash {anchor['sync_id']} at sensor {anchor['sensor_s']:.3f}s: "
+                f"tilt {anchor['baseline_tilt_deg']:.3f}° → {anchor['anchored_tilt_deg']:.6f}°",
+                flush=True,
+            )
+        print(
+            "Flat tilt is enforced at anchors; motion between anchors remains an estimate.",
+            flush=True,
+        )
     renderer = Renderer(
         samples, attitudes, analysis["audio"], (scale, offset, origin), mount, args
     )
-    segments = [
-        dict(
-            start=r["video_start_s"] - origin,
-            end=r["video_end_s"] - origin,
-            label=r,
-            number=i + 1,
-        )
-        for i, r in enumerate(attempts)
-    ]
+    coverage = (
+        max(0, (samples[0, 0] - offset) / scale - origin),
+        min(analysis["duration_s"], (samples[-1, 0] - offset) / scale - origin),
+    )
+    segments = attempt_segments(attempts, origin, coverage, args.before, args.after)
     if args.mode == "session":
         segments = [
             dict(
@@ -774,6 +843,9 @@ def main(argv=None):
         "width": args.width,
         "height": args.height,
         "speed": args.speed,
+        "context_before_s": args.before if args.mode == "attempts" else 0,
+        "context_after_s": args.after if args.mode == "attempts" else 0,
+        "label_visibility": "saved attempt window only; hidden during added context",
         "codec": "ProRes 4444",
         "alpha": "straight",
         "mode": args.mode,
@@ -784,9 +856,11 @@ def main(argv=None):
             "nose_sensor_axis": nose,
             "up_sensor_axis": up,
             "method": mount_method,
+            "flat_sync_reference": args.flat_syncs,
+            "effective_board_to_sensor_matrix": mount.tolist(),
         },
         "attitude": {
-            "method": "gyro integration with gated gravity correction",
+            "method": attitude_method,
             **calibration,
         },
         "limitations": [
@@ -820,7 +894,9 @@ def main(argv=None):
             else "session-overlay"
         )
         start_sample = interpolate(
-            samples, attitudes, scale * (segment["start"] + origin) + offset
+            samples,
+            attitudes,
+            scale * (segment.get("label_start", segment["start"]) + origin) + offset,
         )
         attitude = start_sample[1] @ mount if start_sample else np.eye(3)
         yaw = math.atan2(attitude[1, 0], attitude[0, 0])
@@ -858,6 +934,12 @@ def main(argv=None):
                 "output_duration_s": frames / args.fps,
                 "review_start_s": segment["start"],
                 "review_end_s": segment["end"],
+                "label_review_start_s": segment.get("label_start"),
+                "label_review_end_s": segment.get("label_end"),
+                "actual_context_before_s": segment.get("label_start", segment["start"])
+                - segment["start"],
+                "actual_context_after_s": segment["end"]
+                - segment.get("label_end", segment["end"]),
                 "heading_reset_rad": yaw,
                 "label": label,
             }

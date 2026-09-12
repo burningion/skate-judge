@@ -178,8 +178,17 @@ uv run viz/render_overlay.py sessions/a7s-001 --video C0642.MP4 \
 
 This writes one vertical transparent ProRes 4444 clip per attempt and PNG previews.
 Add `--reel` for a combined reel.
+If the board was level and still at every matched flash, add `--flat-syncs`
+to use those moments as tilt and gyro-bias calibration references.
 See [transparent overlays](docs/transparent-overlays.md) for slow motion,
 mounting controls, timing, and editing instructions.
+
+For isolated images comparing makes and bails, run
+`uv run viz/plot_attempts.py sessions/a7s-001 --video C0642.MP4`.
+This exports comparison sheets and one detailed PNG per attempt to
+`sessions/a7s-001/plots/C0642-pop-contact/`, using shared scales and saved
+pop/contact markers. Each detailed image includes accelerometer and gyro
+magnitudes plus raw X/Y/Z traces.
 
 ## Run the viewer
 
