@@ -1,6 +1,6 @@
 {
-  "source_sha256": "30da4301441d971e006d7b25b9cd10ab2a96f1dfc5aff1b8e848b6d4104a0f18",
-  "revision": 3,
+  "source_sha256": "2701c1df346f115ee79d5a28e8b0d53ad6a9cd150738dcb6c041a77cbcf85c38",
+  "revision": 4,
   "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
   "contact_face_offset_mm": 0.02,
   "checks": {

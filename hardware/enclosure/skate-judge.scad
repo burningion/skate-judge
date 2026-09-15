@@ -1,5 +1,5 @@
 // Judgy Skateboard: PLA prototype enclosure. Units: mm.
-// Revision 3, 2026-09-08: physical lid flip and soldered LED lead passages.
+// Revision 4, 2026-09-15: exterior countersinks for the M3 lid screws.
 // OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
 // PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
 
@@ -19,6 +19,10 @@ lid_thickness = 3;
 corner_radius = 7;
 fit_clearance = 0.3; // Clearance per side, not total.
 mount_hole_diameter = 4.5;
+
+/* [Lid screws] */
+lid_countersink_diameter = 6.4; // DIN 7991 M3: 6 mm head + 0.4 mm print allowance.
+lid_countersink_angle = 90; // Included bevel angle, in degrees.
 
 /* [Battery: measure the complete wrapped cell] */
 battery_length = 36;
@@ -67,7 +71,9 @@ pcb_z = floor_thickness + pcb_standoff;
 usb_y = feather_xy[1]+11.43;
 nut_af = 5.8; // M3 standard hex nut, clearance included.
 nut_h = 2.8;
-nut_z = body_height-9; // M3x12 reaches just through the nut at default lid.
+nut_z = body_height-9; // M3x12 countersunk length includes the head; check engagement.
+lid_screw_clearance = 3.4;
+lid_countersink_depth = (lid_countersink_diameter-lid_screw_clearance)/(2*tan(lid_countersink_angle/2));
 boss_r = 6;
 bosses = [[7,7],[case_length-7,7],[7,case_width-7],[case_length-7,case_width-7]];
 ear_xs = [20,case_length-20];
@@ -93,6 +99,9 @@ led_sample_depth = led_wire_back+2;
 assert(case_length >= 108 && case_width >= 80, "Default PCB layout needs at least 108 x 80 mm.");
 assert(wall >= 2.4 && wall <= 3.5 && floor_thickness >= 3, "Keep 2.4-3.5 mm walls and >=3 mm floor; rework layout outside these limits.");
 assert(body_height >= 20 && body_height <= 40 && lid_thickness >= 2.4, "Insufficient PCB/port/lid clearance.");
+assert(lid_countersink_angle > 0 && lid_countersink_angle < 180, "Countersink angle must be between 0 and 180 degrees.");
+assert(lid_countersink_diameter > lid_screw_clearance && lid_countersink_diameter <= 2*boss_r-2, "Countersink must clear the shaft and stay within the supported boss area.");
+assert(lid_countersink_depth <= lid_thickness-1.2, "Countersink must leave at least 1.2 mm of lid beneath the bevel; increase lid_thickness or reduce the recess.");
 assert(fit_clearance >= 0.15 && fit_clearance <= 0.6, "Use 0.15-0.6 mm clearance per side.");
 assert(battery_length > 0 && battery_width > 0 && battery_thickness > 0 && battery_xy_clearance >= 1, "Battery dimensions/clearance invalid.");
 assert(battery_xy[0]+bay_l+8 <= case_length-wall, "Battery tray/strap anchor exceeds case length.");
@@ -258,7 +267,14 @@ module lid_features_in_case_xy() {
                 translate([x,led_slot_front+fit_clearance,lid_thickness-eps])
                     cube([1.6,led_pcb_thickness,body_height-led_top+1.5+eps]);
         }
-        for(p=bosses) translate([p[0],p[1],-eps]) cylinder(d=3.4,h=lid_thickness+1);
+        for(p=bosses) translate([p[0],p[1],0]) {
+            translate([0,0,-eps]) cylinder(d=lid_screw_clearance,h=lid_thickness+2*eps);
+            // Exterior is z=0 in print orientation. Widen below that plane
+            // so the surface opening is exactly the requested diameter.
+            translate([0,0,-eps])
+                cylinder(d1=lid_countersink_diameter+2*eps*tan(lid_countersink_angle/2),
+                         d2=lid_screw_clearance,h=lid_countersink_depth+eps);
+        }
         // Off by default: a plain first layer is easier to print reliably.
         if(lid_markings) {
             translate([case_length/2,case_width/2,0.45]) mirror([0,0,1]) linear_extrude(height=0.5)
@@ -344,7 +360,8 @@ module fit_coupon() {
 echo("Main shell incl lid, excluding screw heads",[case_length,case_width,body_height+lid_thickness]);
 echo("Base footprint",[case_length,case_width+(mount_ears?26:14)]);
 echo("Battery nominal",[battery_length,battery_width,battery_thickness],"loose bay",[bay_l,bay_w]);
-echo("Lid screw: M3 x",lid_thickness+9,"mm; standard M3 hex nuts, not nyloc");
+echo("Lid screw: M3 x",lid_thickness+9,"mm countersunk (length includes head); check full nut engagement and bottom clearance");
+echo("Lid countersink: exterior diameter / included angle / depth",lid_countersink_diameter,lid_countersink_angle,lid_countersink_depth);
 echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_clearance-(stick_height-led_pcb_thickness));
 
 if(part=="base") base();

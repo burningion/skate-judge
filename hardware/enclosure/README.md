@@ -8,6 +8,15 @@ and progressive riding trials; CAD checks do not establish impact survival.
 
 ![Enclosure with recessed side-facing LEDs](preview-assembly.png)
 
+**Revision 4 — 2026-09-15, DIN 7991 M3 flat-head lid screws.** All four lid holes
+now have a **6.4 mm exterior opening, 90° included bevel and 1.5 mm recess depth**,
+with the existing 3.4 mm shaft clearance. This leaves 1.5 mm of the 3 mm lid
+beneath each bevel. DIN 7991 M3 heads are 6 mm across with a 90° bevel
+([supplier drawing](https://belmetric.com/content/A-PDF_Drawings/SF3X6SS.pdf));
+the opening adds 0.4 mm of diameter for printed fit. Check seating with your
+actual screws; diameter and angle remain adjustable. The R4 lid fits the R3
+base, so only the lid needs reprinting for this change.
+
 **Revision 3 — 2026-09-08, fixes from the first physical print.** The previous
 lid preview reflected the printed part instead of rotating it into place. This
 hid the reversed position of its asymmetric wall-closing tabs. The lid STL now
@@ -24,9 +33,9 @@ Print the [LED fit sample base](exports/led-fit-base.stl) and
 [matching sample lid](exports/led-fit-lid.stl) first, and try your **soldered**
 stick. These reproduce the entire holder and its lid features in a
 **63.1 × 13 mm footprint**; hold the lid seated by hand. They do not test the
-USB tab or full enclosure screw alignment. Then print **both the revised full
-base and lid**. R3 lid corner locators occupy the old end-stop positions;
-do not mix R3 parts with the unmodified R2 base/lid.
+USB tab or full enclosure screw alignment. When upgrading from R2, print **both
+the revised full base and lid**. R3/R4 lid corner locators occupy the old end-stop
+positions; do not mix R3/R4 parts with the unmodified R2 base/lid.
 
 ![Small LED holder and matching lid test pieces](preview-led-fit.png)
 
@@ -91,14 +100,18 @@ The LED window is open to the rim in the base; its upper frame prints as part of
 the lid. The rear LED guides rise from the floor, inboard of the solder zones.
 The end wire slots are open to the top, so they introduce no roof bridges.
 The 0.3 mm lid clearance is **per side**. Deburr openings that contact wires.
-The default lid is plain. Optional `lid_markings=true` engraves the exterior;
+The countersink openings face the bed and taper inward as the lid prints.
+The default lid has no markings. Optional `lid_markings=true` engraves the exterior;
 that version triggered a long-bridge warning in PrusaSlicer and is not the
 supplied print default.
 
 ## Hardware and assembly
 
-- Four **M3 × 12 mm machine screws**, preferably button/pan head, and four ordinary
-  **M3 hex nuts** for the lid. Nut cavities allow 5.8 mm across flats × 2.8 mm height;
+- Four **DIN 7991 M3 flat-head machine screws**, starting with **12 mm overall length**,
+  and four ordinary **M3 hex nuts** for the lid. Countersunk screw length includes
+  the head. Confirm your head's diameter/angle fits the recess and the seated
+  screw fully engages the nut without bottoming; smaller heads can sit below
+  flush and move the screw tip deeper. Nut cavities allow 5.8 mm across flats × 2.8 mm height;
   these are not sized for nyloc nuts. Nuts load horizontally from inside the open
   base, 11 mm above its back. Seat them at the end of each channel before fitting
   the lid. The screw cannot reach the battery bay. Snug by hand; do not torque
@@ -202,6 +215,10 @@ increased for headers, but check the real assembly and USB position; the echo
 prints the lid screw length (12 mm for the default). Moving the standoffs changes
 USB height and needs port adjustment too. Changing layout dimensions requires
 fresh geometry and physical checks. The supplied STLs contain **only defaults**.
+`lid_countersink_diameter` sets the exterior opening and `lid_countersink_angle`
+sets the included head angle. Depth is calculated from those values and the
+3.4 mm shaft hole; an assertion keeps at least 1.2 mm of lid below the bevel.
+The screw/nut coupon checks the shaft and nut fit, not the new head recess.
 `stick_clearance` controls the LED's end clearance at the lid locators.
 `led_wire_end_space`, `led_wire_pad_space`, `led_wire_front`, and `led_wire_back`
 control the two lead passages. `led_wire_top` specifies the assumed assembled
@@ -237,7 +254,7 @@ and z=0 placement. Results are in [validation.json](exports/validation.json).
 Rendered views were visually reviewed. Print quality, exact hardware fit, deck
 clearance, RF performance and riding loads still require the physical checks above.
 
-R3's [fit-validation.json](exports/fit-validation.json) comes from checks against
+The current [fit-validation.json](exports/fit-validation.json) comes from checks against
 the **exported STLs**, with a real 180-degree lid rotation. It checks lid/base,
 electronics/base, electronics/lid, the sample pair, and the vertical insertion
 path of the wired LED, including the stated end envelopes. A 0.02 mm lift excludes intentional
@@ -245,8 +262,10 @@ contact faces. The previous reflection-based fit check was inadequate and is
 superseded. These checks still do not measure print shrinkage, warping, your solder
 joints or real components; use the sample pair before another full print.
 
-PrusaSlicer 2.9.6 generates toolpaths for the full base, full lid and both LED
-test pieces with the settings above. The lid and sample pair produced no slice
+The R3 PrusaSlicer 2.9.6 check generated toolpaths for the full base, full lid and both LED
+test pieces with the settings above. The R3 lid and sample pair produced no slice
 warnings. The base's bridge warning remains
-as described under printing. Trial G-code uses generic settings and is not
+as described under printing. The R4 countersunk lid also slices without warnings
+in PrusaSlicer 2.9.6 at 0.20 mm layers, a 0.4 mm nozzle, 5 perimeters,
+6 top/bottom layers and 40% gyroid infill. Trial G-code uses generic settings and is not
 supplied as printer-ready output.

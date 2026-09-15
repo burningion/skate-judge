@@ -44,7 +44,7 @@ def main():
         "wired_led_insertion": (base, 'translate([0,0,0.02]) wired_led_insertion();'),
         "sample_lid_to_base": (sample_base, sample_lid),
     }
-    report = {"source_sha256": manifest["source_sha256"], "revision": 3,
+    report = {"source_sha256": manifest["source_sha256"], "revision": 4,
               "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
               "contact_face_offset_mm": 0.02, "checks": {}}
     with tempfile.TemporaryDirectory(prefix="skate-enclosure-fit-") as directory:

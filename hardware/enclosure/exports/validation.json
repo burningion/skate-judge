@@ -1,7 +1,7 @@
 {
   "openscad": "OpenSCAD version 2021.01",
   "source": "../skate-judge.scad",
-  "source_sha256": "30da4301441d971e006d7b25b9cd10ab2a96f1dfc5aff1b8e848b6d4104a0f18",
+  "source_sha256": "2701c1df346f115ee79d5a28e8b0d53ad6a9cd150738dcb6c041a77cbcf85c38",
   "parts": {
     "base.stl": {
       "triangles": 7718,
@@ -52,7 +52,7 @@
       "sha256": "a62c7f32b38ec9cbf9c00a09fe6585cae39f4a48ee3711ead438262f324efd57"
     },
     "lid.stl": {
-      "triangles": 1148,
+      "triangles": 1916,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -72,8 +72,8 @@
         80.0,
         8.78
       ],
-      "solid_volume_cm3": 27.166,
-      "sha256": "77fc6970d893deb4683ceb320b7bc114ffc822866261b5ef472df78fdd0b72fc"
+      "solid_volume_cm3": 27.104,
+      "sha256": "32f18849f5a533044c1f70ba92978b4bd99627890146b01b545971c2ca34f98f"
     },
     "fit-coupon.stl": {
       "triangles": 2808,
