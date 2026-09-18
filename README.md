@@ -15,6 +15,9 @@ Start with [your first dataset recording](docs/first-recording.md). The
 [hardware and recording reference](docs/recording.md) covers wiring, file formats,
 and the model plan.
 
+[Research papers and reading notes](reference/README.md) cover skateboard IMU
+trick recognition, landing-outcome limitations, and audio-feedback precedents.
+
 ```
 firmware/imu_logger/   208 Hz sensor FIFO to onboard flash, timestamped LED sync
 firmware/imu_stream/   legacy live stream for the orientation viewer
