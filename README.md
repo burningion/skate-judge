@@ -23,6 +23,7 @@ firmware/imu_logger/   208 Hz sensor FIFO to onboard flash, timestamped LED sync
 firmware/imu_stream/   legacy live stream for the orientation viewer
 capture/onboard.py    onboard recording controls, verified download, recovery, CSV import
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
+capture/dataset.py    collection progress and versioned datasets across reviewed sessions
 capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
 viz/render_overlay.py transparent 3D skateboard + synchronized sensor/audio graphics for video editing
@@ -123,6 +124,23 @@ same page. Choose the trick and outcome, or **Not a trick** for an onset false
 positive; saving advances to the next suggestion. Labels save to `labels.jsonl`
 with aligned sensor times. **Download saved labels** exports this clip's current
 labels. Audio suggestions and unreviewed time remain unlabeled until you decide.
+
+## Accumulate labeled sessions
+
+Each session keeps its raw recordings and saved labels. See collection progress
+across all `sessions/a7s-*` directories, then export a versioned dataset:
+
+```bash
+python3 capture/dataset.py status
+python3 capture/dataset.py build --output datasets/a7s-v1
+```
+
+The command uses the latest revision of each label, checks alignment and sensor
+quality, and exports labeled IMU windows with session/rider IDs. After labeling
+more sessions, run status again and build a new version such as `a7s-v2`.
+See [dataset collection and export](docs/dataset.md) for exclusions, file formats,
+and how to plan the first 100 attempts. Sessions and exports are local and
+excluded from Git; back up the original session directories separately.
 
 ## One-time setup
 

@@ -7,4 +7,5 @@ firmware/imu_logger/build/
 imu_viz_*.png
 .DS_Store
 sessions/
+datasets/
 .build/

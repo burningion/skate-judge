@@ -112,6 +112,9 @@ revision of each label for this clip as JSONL, including background, original
 video timestamps, mapped sensor timestamps, and review provenance. Unsaved
 edits, skips, and unreviewed proposals are excluded. Use these intervals with
 `samples.csv` to build training examples; this tool does not train a model.
+To accumulate labels across clips and sessions, run
+`python3 capture/dataset.py status`, then use the
+[dataset export command](dataset.md) to create a versioned snapshot.
 
 If alignment changes, affected labels are flagged for review. Save them again
 after checking their windows; downloading labels is blocked until those flags
