@@ -97,7 +97,20 @@ explicit `storage_buffer_full` fault. Files stop before FAT32's 4 GiB file limit
 they are never automatically rotated or overwritten. Use separate manageable
 batches: laptop import currently holds decoded samples in memory.
 
-**Physical SD validation is still required.** After wiring and uploading:
+The Adafruit 254 and installed 32 GB card passed a USB-connected bench test on
+**2026-09-21**, using the 4 MHz SPI configuration above. A 300.25-second recording
+produced 58,853 samples at 196.01 Hz, with zero read errors, retries, FIFO overruns,
+or detected sample gaps (maximum spacing 5.102 ms). All three paired sync markers,
+download CRC32, packet CRCs, and import quality checks passed. The raw file was
+1,394,746 bytes. Peak queue occupancy was 343 of 32,768 bytes; maximum measured
+write and flush times were 0.390 ms and 21.564 ms. A second 10.45-second recording
+on the same boot also passed, including three sync markers. Verified test logs
+were removed from the board; SD free space returned to 31,902,334,976 bytes.
+These results establish SD operation for this USB bench setup; battery-only
+operation and skating impacts still need testing. Local raw files, status samples,
+imports, and the full report are under `.build/board-check-20260921/`.
+
+Repeat the bench check after changing the card, wiring, or firmware:
 
 1. Run `uv run --offline capture/onboard.py --board serial:auto status` and
    confirm `storage` is `sd` and free space matches the card, including above 4 GiB.
