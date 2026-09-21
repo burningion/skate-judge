@@ -22,6 +22,41 @@ def board_status(**changes):
 
 
 class OnboardSyncTests(unittest.TestCase):
+    def test_recording_publishes_storage_time_separately_and_clears_it_on_disconnect(self):
+        for connected in (True, False):
+            with self.subTest(connected=connected), tempfile.TemporaryDirectory() as directory:
+                remote = board_status(storage="sd", free_bytes=200000, bytes=45000,
+                                      started_us=1000000, device_us=11000000, storage_buffer_bytes=32768)
+                client = Mock()
+                client.request.side_effect = [remote if connected else OSError("Board disconnected")]
+                control = Mock()
+                control.videos.active = None
+
+                def controls(commands, path, port, onboard):
+                    onboard.identity, onboard.boot = IDENTITY, "1234abcd"
+                    onboard.remote = remote
+                    return control
+
+                args = SimpleNamespace(output=Path(directory) / "session", port=0,
+                                       rider="test", board_name="test", board="http://board")
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(contextlib.redirect_stdout(io.StringIO()))
+                    stack.enter_context(patch("capture.onboard.board_client", return_value=client))
+                    stack.enter_context(patch("capture.onboard.ControlServer", side_effect=controls))
+                    stack.enter_context(patch("capture.onboard.threading.Thread"))
+                    stack.enter_context(patch("capture.onboard.time.sleep", side_effect=KeyboardInterrupt))
+                    record(args)
+                published = control.publish_status.call_args.args[0]
+                self.assertIsNone(published["remaining"])  # LED countdown stays independent.
+                budget = published["storage_budget"]
+                self.assertEqual(budget["storage"], "sd")
+                if connected:
+                    self.assertEqual(budget["state"], "recording")
+                    self.assertAlmostEqual(budget["remaining_s"], (200000 - 65536) / 4500)
+                else:
+                    self.assertEqual(budget["state"], "offline")
+                    self.assertIsNone(budget["remaining_s"])
+
     def test_checks_live_health_and_identity_without_flashing(self):
         client = Mock()
         recording = OnboardRecording(client, ".")

@@ -19,7 +19,7 @@ and the model plan.
 trick recognition, landing-outcome limitations, and audio-feedback precedents.
 
 ```
-firmware/imu_logger/   208 Hz sensor FIFO to onboard flash, timestamped LED sync
+firmware/imu_logger/   208 Hz sensor FIFO to SD or internal flash, timestamped LED sync
 firmware/imu_stream/   legacy live stream for the orientation viewer
 capture/onboard.py    onboard recording controls, verified download, recovery, CSV import
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
@@ -287,7 +287,7 @@ packets; sequence gaps and timing gaps are saved for quality review.
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test tests/test_webcam.mjs tests/test_trick_review.mjs
+node --test tests/test_webcam.mjs tests/test_trick_review.mjs tests/test_storage.mjs
 ./flash-feather.sh --compile-only
 ./flash.sh --compile-only
 SKATE_WIFI=1 ./flash.sh --compile-only

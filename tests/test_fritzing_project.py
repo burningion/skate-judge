@@ -16,9 +16,9 @@ class FritzingProjectTests(unittest.TestCase):
 
     def test_bundle_contains_native_parts_and_checked_electrical_nets(self):
         result = validate(self.project)
-        self.assertEqual(result["hardware_parts"], 5)
-        self.assertEqual(result["electrical_nets"], 7)
-        self.assertEqual(result["editable_wire_segments"], 31)
+        self.assertEqual(result["hardware_parts"], 6)
+        self.assertEqual(result["electrical_nets"], 12)
+        self.assertEqual(result["editable_wire_segments"], 55)
 
     def test_vendored_archives_match_pinned_hashes(self):
         sources = json.loads((HERE / "sources/provenance.json").read_text())
@@ -96,6 +96,27 @@ class FritzingProjectTests(unittest.TestCase):
                 )
 
         self.mutate(short)
+
+    def swap_sd_connectors(self, a, b):
+        def swap(root):
+            for node in root.findall("./instances/instance[@modelIndex='6']/views/breadboardView/connectors/connector"):
+                old = node.get("connectorId")
+                if old in (a, b):
+                    node.set("connectorId", b if old == a else a)
+            for node in root.findall(".//connect[@modelIndex='6']"):
+                old = node.get("connectorId")
+                if old in (a, b):
+                    node.set("connectorId", b if old == a else a)
+        self.mutate(swap)
+
+    def test_swapped_sd_di_do_is_rejected(self):
+        self.swap_sd_connectors("connector37", "connector36")
+
+    def test_sd_power_on_5v_instead_of_3v_is_rejected(self):
+        self.swap_sd_connectors("connector33", "connector32")
+
+    def test_sd_cs_on_card_detect_is_rejected(self):
+        self.swap_sd_connectors("connector38", "connector39")
 
 
 if __name__ == "__main__":

@@ -518,6 +518,7 @@ class ControlServer:
             "/": ("controls.html", "text/html; charset=utf-8"),
             "/controls.mjs": ("controls.mjs", "text/javascript; charset=utf-8"),
             "/webcam.mjs": ("webcam.mjs", "text/javascript; charset=utf-8"),
+            "/storage.mjs": ("storage.mjs", "text/javascript; charset=utf-8"),
         }
         pages = {
             url: (Path(__file__).with_name(name).read_bytes(), mime)

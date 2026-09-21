@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pyserial>=3.5"]
 # ///
-"""Record motion on the ESP32 flash; download only after recording stops.
+"""Record motion on SD or ESP32 flash; download after recording stops.
 
 python3 capture/onboard.py record
 python3 capture/onboard.py list
@@ -82,9 +82,21 @@ class BoardClient:
         except (URLError, TimeoutError, OSError) as error:
             raise OSError(f"Board connection unavailable: {error}") from error
 
-    def download(self, identity, directory):
+    def download(self, identity, directory, storage=None):
         identity = valid_id(identity)
-        info = self.request("/file-info", {"id": identity})
+        params = {"id": identity}
+        if storage is not None:
+            if storage not in ("sd", "flash"):
+                raise ValueError("Storage must be sd or flash.")
+            params["storage"] = storage
+        info = self.request("/file-info", params, timeout=120)
+        backend = info.get("storage")
+        if storage is not None and backend is None:
+            raise ValueError("Install updated firmware to select a storage backend explicitly.")
+        if backend is not None:
+            if backend not in ("sd", "flash") or (storage and storage != backend):
+                raise ValueError("Invalid or changed storage backend from board.")
+            params["storage"] = backend
         if info.get("id") != identity or not isinstance(info.get("bytes"), int) or info["bytes"] <= 0:
             raise ValueError("Invalid file metadata from board.")
         directory = Path(directory)
@@ -102,7 +114,7 @@ class BoardClient:
                 raise ValueError("Partial file is larger than the board recording; keep it and use a new directory.")
             if offset == info["bytes"]:
                 break
-            url = self.address + "/file?" + urlencode(dict(id=identity, offset=offset))
+            url = self.address + "/file?" + urlencode(dict(params, offset=offset))
             try:
                 with self.lock, self.opener(url, timeout=5) as response:
                     if response.headers.get("X-Log-CRC32") != info["crc32"]:
@@ -174,7 +186,9 @@ class SerialBoardClient(BoardClient):
         self.port.write(f"{method} {route}\n".encode())
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            line = self.port.read_until(b"\n", size=4096)
+            # SD can retain far more recordings than flash; a files response
+            # readily exceeds the old 4 KiB status-line bound.
+            line = self.port.read_until(b"\n", size=1024 * 1024)
             if not line.startswith(b'{"status":'):
                 continue  # Skip boot diagnostics before the protocol reply.
             reply = json.loads(line)
@@ -228,6 +242,47 @@ def healthy(status):
             and status.get("zero_accel", 0) <= status.get("accel_samples", 0) * .25)
 
 
+def storage_budget(status, connected=True):
+    """Approximate time for one log, using the firmware's storage stop limits.
+
+    Older firmware supplies bytes/free_bytes too, so a reflash is not required.
+    Reserve the entire async buffer while recording: free_bytes is sampled by
+    the writer and may not account for the latest queued data yet.
+    """
+    backend = status.get("storage", "flash")
+    result = dict(storage=backend, state="unavailable", remaining_s=None,
+                  free_bytes=None, bytes_per_second=None, rate_source=None, limit=None)
+    if not connected:
+        return dict(result, state="offline")
+    free = status.get("free_bytes")
+    if not status.get("storage_ready") or not isinstance(free, (int, float)) or not math.isfinite(free) or free < 0:
+        return result
+    result["free_bytes"] = free
+    phase = status.get("phase")
+    if phase in ("starting", "stopping", "testing_led", "fault"):
+        return dict(result, state=phase)
+    active = phase == "recording"
+    if phase not in ("idle", "saved", "recording") or status.get("error"):
+        return result
+    reserve = 32768  # RESERVE_BYTES in imu_logger.ino; protects closing the log.
+    if not active and free < reserve + 65536:  # Firmware start preflight.
+        return dict(result, state="full", remaining_s=0, limit="storage")
+    rate, source = 5000, "typical"  # Conservative nominal 208 Hz + packet overhead.
+    size = max(0, status.get("bytes", 0))
+    start = status.get("started_us", 0)
+    end = status.get("device_us", 0) if active else status.get("ended_us", 0)
+    elapsed = max(0, end - start) / 1e6 if start else 0
+    if elapsed >= 5 and size > 0 and (not active or healthy(status)):
+        rate, source = size / elapsed, "measured"
+    pending = max(0, status.get("storage_buffer_bytes", 0)) if active else 0
+    available = max(0, free - reserve - pending)
+    file_available = max(0, 0xffffffff - reserve - (size if active else 0))
+    return dict(result, state="recording" if active else "ready",
+                remaining_s=min(available, file_available) / rate,
+                bytes_per_second=rate, rate_source=source,
+                limit="file" if file_available < available else "storage")
+
+
 class OnboardRecording:
     def __init__(self, client, path):
         self.client, self.path = client, Path(path)
@@ -244,7 +299,7 @@ class OnboardRecording:
         if status.get("protocol") != 1:
             raise ValueError("Install the onboard logger firmware first.")
         if self.boot and status.get("boot_id") != self.boot:
-            raise ValueError("Board restarted. The previous flash log is retained; use the download command to recover it.")
+            raise ValueError("Board restarted. The previous onboard log is retained; use the download command to recover it.")
         self.remote = status
         return status
 
@@ -263,19 +318,23 @@ class OnboardRecording:
                 self.identity, self.boot = uuid.uuid4().hex, status["boot_id"]
                 manifest = self.path / "metadata.json"
                 meta = json.loads(manifest.read_text())
-                meta.update(onboard_id=self.identity, onboard_address=self.client.address, boot_id=self.boot)
+                meta.update(onboard_id=self.identity, onboard_address=self.client.address, boot_id=self.boot,
+                            onboard_storage=status.get("storage", "flash"),
+                            transport="onboard_" + status.get("storage", "flash"))
                 temporary = manifest.with_suffix(".json.tmp")
                 temporary.write_text(json.dumps(meta, indent=2) + "\n")
                 temporary.replace(manifest)
             self.client.request("/start", {"id": self.identity}, post=True)
-            deadline = time.monotonic() + 3
+            deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
                 status = self.status()
                 if status.get("id") == self.identity:
                     if status["phase"] in ("fault", "saved"):
                         raise ValueError(status.get("error") or "This recording has already stopped; download it.")
                     if healthy(status):
-                        self.message = "Recording to onboard flash. Wi-Fi carries controls and status only."
+                        self.message = f"Recording to {status.get('storage', 'flash').upper()}. Wi-Fi carries controls and status only."
+                        if status.get("storage_warning"):
+                            self.message += " " + status["storage_warning"]
                         return dict(ready=True, id=self.identity)
                 time.sleep(.1)
             raise ValueError("Sensor has not reached 180 Hz on both axes groups. Countdown cancelled; inspect board status.")
@@ -305,7 +364,7 @@ class OnboardRecording:
                     raise ValueError("Board recording changed. Recover the original recording with the download command.")
                 self.message = "Stopping acquisition and closing the onboard file…"
                 self.client.request("/stop", {"id": self.identity}, post=True)
-                deadline = time.monotonic() + 8
+                deadline = time.monotonic() + 30
                 while time.monotonic() < deadline:
                     status = self.status()
                     if status["phase"] in ("saved", "fault"):
@@ -313,9 +372,17 @@ class OnboardRecording:
                     time.sleep(.1)
                 else:
                     raise OSError("Board has not acknowledged stopping. Reconnect and retry; its file remains onboard.")
+                # Retain errors from final fsync/close even if the subsequent
+                # download fails and is recovered by a later CLI invocation.
+                manifest = self.path / "metadata.json"
+                meta = json.loads(manifest.read_text())
+                meta["onboard_stop_error"] = status.get("error", "")
+                temporary = manifest.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps(meta, indent=2) + "\n")
+                temporary.replace(manifest)
                 self.message = "Downloading and verifying the raw onboard file…"
                 raw = self.client.download(self.identity, self.path)
-                meta = import_log(raw, self.path, allow_incomplete=True)
+                meta = import_log(raw, self.path, allow_incomplete=True, stop_error=status.get("error", ""))
                 quality = meta["onboard_quality"]
                 self.result = dict(saved=True, raw_file=raw.name, samples=meta["samples"], quality=quality)
                 self.message = f"Saved {meta['samples']:,} samples at {quality['measured_hz']:.1f} Hz. Original retained onboard."
@@ -406,15 +473,17 @@ def record(args):
             active = remote.get("phase") == "recording"
             if connected and not recording.downloading and not recording.result:
                 if active:
-                    recording.message = (f"ONBOARD FLASH · Accel {remote.get('accel_hz', 0):.1f} Hz · "
-                        f"Gyro {remote.get('gyro_hz', 0):.1f} Hz · {remote.get('free_bytes', 0) / 1024:.0f} KiB free · "
+                    recording.message = (f"{remote.get('storage', 'flash').upper()} · Accel {remote.get('accel_hz', 0):.1f} Hz · "
+                        f"Gyro {remote.get('gyro_hz', 0):.1f} Hz · {remote.get('free_bytes', 0) / (1024 * 1024):.1f} MiB free · "
                         f"Read retries {remote.get('bus_retries', 0)} · Read errors {remote.get('io_errors', 0)} · FIFO overruns {remote.get('fifo_overruns', 0)}")
                 elif remote.get("error"):
                     recording.message = remote["error"]
                 elif not remote.get("storage_ready"):
                     recording.message = "Initialize unused storage with: python3 capture/onboard.py initialize"
                 else:
-                    recording.message = "Board ready. Motion will be recorded to flash when you start video + sync."
+                    recording.message = f"Board ready. Motion will be recorded to {remote.get('storage', 'flash').upper()} when you start video + sync."
+                if remote.get("storage_warning"):
+                    recording.message += " " + remote["storage_warning"]
             ready = (connected and not recording.result and not recording.downloading
                      and remote.get("sensor_ready") and remote.get("storage_ready")
                      and remote.get("led_enabled") and remote.get("phase") in ("idle", "saved", "recording")
@@ -425,6 +494,7 @@ def record(args):
                     synthetic=False, samples=remote.get("accel_samples", 0) if own_recording else 0, duration_s=elapsed,
                     fresh=bool(ready), can_sync=bool(ready and phase not in ("countdown", "waiting")),
                     phase=phase, remaining=remaining, message=message, board_message=recording.message,
+                    storage_budget=storage_budget(remote, connected),
                     can_download=bool(recording.identity and not recording.result and not recording.downloading)),
                     countdown_handled=countdown_handled)
             time.sleep(.2)
@@ -450,13 +520,16 @@ def main():
     sub.add_parser("check-sensor", help="Reinitialize the IMU while idle, after checking its cable")
     sub.add_parser("test-led", help="Three one-second LED pulses while idle; does not create a recording")
     sub.add_parser("initialize", help="Initialize a blank data partition; refuses to erase existing data")
-    sub.add_parser("list")
+    listing = sub.add_parser("list")
+    listing.add_argument("--storage", choices=("sd", "flash"))
     down = sub.add_parser("download")
     down.add_argument("id")
+    down.add_argument("--storage", choices=("sd", "flash"))
     down.add_argument("--output", type=Path, required=True)
     down.add_argument("--allow-incomplete", action="store_true")
     delete = sub.add_parser("delete", help="Delete one verified downloaded recording from the board")
     delete.add_argument("id")
+    delete.add_argument("--storage", choices=("sd", "flash"))
     delete.add_argument("--downloaded", type=Path, required=True)
     stop = sub.add_parser("stop")
     stop.add_argument("id")
@@ -481,12 +554,12 @@ def main():
         elif args.command == "initialize":
             print(json.dumps(client.request("/initialize", post=True, timeout=15), indent=2))
         elif args.command == "list":
-            print(json.dumps(client.request("/files"), indent=2))
+            print(json.dumps(client.request("/files", {"storage": args.storage} if args.storage else None), indent=2))
         elif args.command == "stop":
             print(json.dumps(client.request("/stop", {"id": valid_id(args.id)}, post=True), indent=2))
         elif args.command in ("download", "import"):
             if args.command == "download":
-                raw = client.download(valid_id(args.id), args.output)
+                raw = client.download(valid_id(args.id), args.output, storage=args.storage)
                 print(f"Verified raw file: {raw}. Original retained onboard.")
             else:
                 raw = args.file
@@ -497,7 +570,10 @@ def main():
             packets, _, _ = read_packets(args.downloaded, allow_incomplete=True)
             if json.loads(packets[0][2]).get("id") != identity:
                 raise ValueError("The downloaded file has a different recording ID.")
-            print(json.dumps(client.request("/delete", dict(id=identity, crc32=checksum(args.downloaded)), post=True)))
+            params = dict(id=identity, crc32=checksum(args.downloaded))
+            if args.storage:
+                params["storage"] = args.storage
+            print(json.dumps(client.request("/delete", params, post=True, timeout=120)))
     except (ValueError, OSError, ImportError) as error:
         parser.exit(1, f"Error: {error}\n")
     finally:

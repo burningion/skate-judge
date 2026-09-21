@@ -25,6 +25,7 @@ SOURCE_PARTS = {
     "feather": "Adafruit ESP32-S3 Feather.fzpz",
     "imu": "Adafruit LSM6DSO32.fzpz",
     "stick": "Adafruit NeoPixel Stick.fzpz",
+    "sd": "Adafruit MicroSD card breakout board.fzpz",
 }
 COLORS = {
     "battery": "#cf202f",
@@ -32,6 +33,11 @@ COLORS = {
     "data": "#20964c",
     "sda": "#246bd1",
     "scl": "#d1ac00",
+    "3v3": "#e37a12",
+    "sck": "#9464b5",
+    "mosi": "#278d9d",
+    "miso": "#d05e9c",
+    "cs": "#6b6eab",
 }
 
 
@@ -220,7 +226,7 @@ class Part:
     def label_position(self, view):
         x, y = self.positions[view]
         if view == "breadboard" and self.name == "feather":
-            return 400, 337
+            return 480, 337
         if view == "breadboard" and self.name == "resistor":
             return 462, 130
         return x, y - 12
@@ -255,6 +261,10 @@ def parts():
                 "schematic": (435, 133.83),
                 "pcb": (330, 250),
             },
+        ),
+        (
+            "sd", 6, "U3 · Adafruit 254 microSD",
+            {"breadboard": (620, 470), "schematic": (730, 300), "pcb": (430, 350)},
         ),
     ]
     result = {}
@@ -451,6 +461,18 @@ def build(output, replace_generated=False):
             "scl",
             [(220, 287.7895), (280, 277.5168)],
         ),
+        ("3.3 V → SD 3V (regulated supply)", "feather", "connector61", "sd", "connector33", "3v3",
+         [(354.55, 390), (770, 390), (770, 537.95)]),
+        ("Common ground → SD GND", "feather", "connector60", "sd", "connector34", "ground",
+         [(363.55, 380), (760, 380), (760, 528.95)]),
+        ("SCK / GPIO36 → SD CLK", "feather", "connector53", "sd", "connector35", "sck",
+         [(426.55, 420), (790, 420), (790, 519.95)]),
+        ("MISO / GPIO37 ← SD DO", "feather", "connector51", "sd", "connector36", "miso",
+         [(444.55, 410), (800, 410), (800, 510.95)]),
+        ("MOSI / GPIO35 → SD DI", "feather", "connector52", "sd", "connector37", "mosi",
+         [(435.55, 400), (810, 400), (810, 501.95)]),
+        ("GPIO10 → SD CS", "feather", "connector70", "sd", "connector38", "cs",
+         [(426.55, 185), (820, 185), (820, 492.95)]),
     ]
     wire_id = 100
     preview_wires = []
@@ -550,8 +572,13 @@ def build(output, replace_generated=False):
             "GPIO5 (pad marked 5) is DATA, not 5 V. R1: recommended 330 Ω, near DIN. DOUT is unconnected. BAT supplies battery voltage, not regulated 5 V.",
         ),
         (
+            55, 465, 460, 110,
+            "ADAFRUIT 254 — SPI microSD",
+            "Feather 3.3V to 3V; GND to GND. SCK/GPIO36 to CLK, MOSI/GPIO35 to DI, MISO/GPIO37 to DO, GPIO10 to CS. Leave 5V and CD unconnected. Use short wires. Insert a FAT32 card before power-on. Firmware selects SD if mounted, otherwise internal flash. Stop and save before switching off or removing the card.",
+        ),
+        (
             55,
-            415,
+            600,
             690,
             75,
             "CHECK BEFORE SKATING",
@@ -596,12 +623,12 @@ def preview(path, ps, wires, notes):
     svg = ET.Element(
         "svg",
         xmlns="http://www.w3.org/2000/svg",
-        viewBox="0 0 810 515",
-        width="1620",
-        height="1030",
+        viewBox="0 0 850 700",
+        width="1700",
+        height="1400",
     )
     element(svg, "title", "Skate Judge direct-LiPo editable wiring project preview")
-    element(svg, "rect", width=810, height=515, fill="white")
+    element(svg, "rect", width=850, height=700, fill="white")
     for p in ps.values():
         node = ET.fromstring(p.svg_bytes("breadboard"))
         x, y = p.positions["breadboard"]
@@ -721,10 +748,10 @@ def main():
 
         app = QApplication([])
         renderer = QSvgRenderer(str(result.with_suffix(".svg")))
-        image = QImage(1620, 1030, QImage.Format.Format_ARGB32)
+        image = QImage(1700, 1400, QImage.Format.Format_ARGB32)
         image.fill(0xFFFFFFFF)
         painter = QPainter(image)
-        renderer.render(painter, QRectF(0, 0, 1620, 1030))
+        renderer.render(painter, QRectF(0, 0, 1700, 1400))
         painter.end()
         if not image.save(str(result.with_suffix(".png"))):
             raise RuntimeError("Could not save preview")

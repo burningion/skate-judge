@@ -59,7 +59,7 @@ def inspect_session(path):
     if not meta.get("closed_utc"):
         issues.append("recording not closed")
     quality = meta.get("onboard_quality", {})
-    if meta.get("transport") == "onboard_flash" and quality.get("usable") is not True:
+    if meta.get("transport") in ("onboard_flash", "onboard_sd") and quality.get("usable") is not True:
         issues.append("onboard quality: " + ", ".join(quality.get("issues") or ["not verified usable"]))
     rows, windows = [], {}
     for identity, label in sorted(latest.items()):

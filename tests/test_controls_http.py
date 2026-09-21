@@ -55,6 +55,7 @@ class ControlHTTPTests(unittest.TestCase):
             ("/", "text/html"),
             ("/controls.mjs", "text/javascript"),
             ("/webcam.mjs", "text/javascript"),
+            ("/storage.mjs", "text/javascript"),
         ):
             code, body, content_type = self.call(path, method="GET")
             self.assertEqual(code, 200)

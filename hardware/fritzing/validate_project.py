@@ -98,12 +98,17 @@ def validate(path):
 
     nets = {
         "VBAT": [(5, 0), (1, 218), (1, 64), (3, 24), (3, 21)],
-        "GND": [(5, 1), (1, 217), (1, 60), (1, 29), (2, 11), (3, 26)],
+        "GND": [(5, 1), (1, 217), (1, 60), (1, 29), (2, 11), (3, 26), (6, 34)],
         "GPIO5_before_resistor": [(1, 73), (4, 0)],
         "DIN_after_resistor": [(4, 1), (3, 25)],
         "QT_switched_3V3": [(1, 30), (2, 12)],
         "SDA_GPIO3": [(1, 31), (2, 13)],
         "SCL_GPIO4": [(1, 32), (2, 14)],
+        "SD_regulated_3V3": [(1, 61), (6, 33)],
+        "SD_SCK_GPIO36": [(1, 53), (6, 35)],
+        "SD_MOSI_GPIO35": [(1, 52), (6, 37)],
+        "SD_MISO_GPIO37": [(1, 51), (6, 36)],
+        "SD_CS_GPIO10": [(1, 70), (6, 38)],
     }
     roots = []
     for name, members in nets.items():
@@ -112,13 +117,13 @@ def validate(path):
         assert len(components) == 1, f"Broken {name} net"
         roots.append(next(iter(components)))
     assert len(set(roots)) == len(roots), "Two distinct electrical nets are shorted"
-    for index, connector in [(3, 20), (1, 66), (1, 61)]:
+    for index, connector in [(3, 20), (1, 66), (6, 32), (6, 39)]:
         assert (
             find((str(index), f"connector{connector}")) not in roots
-        ), "DOUT/USB/3V must not join the LED circuit"
+        ), "LED DOUT, Feather USB, SD 5V and SD CD must remain unconnected"
     resistor = lookup["4"].find("property[@name='resistance']")
     assert resistor.get("value") == "330", "Wrong data resistor value"
-    assert hardware == 5 and wires > 10
+    assert hardware == 6 and wires > 10
     return dict(
         hardware_parts=hardware,
         editable_wire_segments=wires,

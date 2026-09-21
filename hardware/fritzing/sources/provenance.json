@@ -14,5 +14,9 @@
   "resistor": {
     "upstream": "https://github.com/fritzing/fritzing-parts/tree/e64ffe973e92176b989ab390ab668638a85ee305",
     "sha256": "ee073e675e65976d7847d1adf3e74711e79224a2f8de37b2b64af4a1fdc8725d"
+  },
+  "sd": {
+    "upstream": "https://github.com/adafruit/Fritzing-Library/blob/7d905c3e982de3712c3033da4596cc71ea32de1c/parts/Adafruit MicroSD card breakout board.fzpz",
+    "sha256": "746b73dd606b114bbe3ec29a80ed71d7e024b0463d412cef5264c13f910c152a"
   }
 }

@@ -62,10 +62,12 @@ class LEDTestTests(unittest.TestCase):
             test_led(client, timeout=0)
 
 
-def fixture(count=416, *, error="", start_tick=1000, fine=None):
+def fixture(count=416, *, error="", start_tick=1000, fine=None, storage=None):
     meta = dict(schema=1, id=IDENTITY, boot_id="1234abcd", sensor="LSM6DSO32", odr_hz=208,
                 accel_g_per_lsb=.000976, gyro_dps_per_lsb=.070, timestamp_tick_us=25, initial_temp_C=25.)
     packets = []
+    if storage is not None:
+        meta["storage"] = storage
     if fine is not None:
         meta["frequency_fine"] = fine
 
@@ -202,6 +204,33 @@ class LogTests(unittest.TestCase):
             import_log(self.log, out)
         self.assertEqual((out / "samples.csv").read_bytes(), original)
 
+    def test_sd_import_preserves_backend_and_close_fault(self):
+        self.write(fixture(storage="sd"))
+        meta = import_log(self.log, self.root / "sd")
+        self.assertEqual(meta["transport"], "onboard_sd")
+        self.assertEqual(meta["onboard_storage"], "sd")
+        self.assertTrue(meta["onboard_quality"]["usable"])
+        failed = import_log(self.log, self.root / "failed", stop_error="storage_close_failed")
+        self.assertFalse(failed["onboard_quality"]["usable"])
+        self.assertIn("storage_close_failed", failed["onboard_quality"]["issues"])
+
+    def test_storage_fault_in_sd_footer_is_not_usable(self):
+        for error in ("storage_write_failed", "storage_buffer_full", "storage_capacity_reached"):
+            with self.subTest(error=error):
+                decoded = decode_log(self.write(fixture(storage="sd", error=error)))
+                self.assertFalse(decoded["quality"]["usable"])
+                self.assertIn(error, decoded["quality"]["issues"])
+
+    def test_overflow_recovery_preserves_intact_packets_and_saved_stop_error(self):
+        self.write(fixture(storage="sd")[:-1])
+        out = self.root / "recovery"; out.mkdir()
+        (out / "metadata.json").write_text(json.dumps(dict(onboard_stop_error="storage_buffer_full")))
+        meta = import_log(self.log, out, allow_incomplete=True)
+        self.assertEqual(meta["samples"], 416)
+        self.assertFalse(meta["onboard_quality"]["usable"])
+        self.assertIn("missing_footer", meta["onboard_quality"]["issues"])
+        self.assertIn("storage_buffer_full", meta["onboard_quality"]["issues"])
+
 
 class Response(io.BytesIO):
     def __init__(self, data, headers=None, fail_after=None):
@@ -218,6 +247,51 @@ class Response(io.BytesIO):
 
 
 class DownloadTests(unittest.TestCase):
+    def test_explicit_storage_cannot_silently_select_other_media(self):
+        for backend in (None, "flash", "unexpected"):
+            with self.subTest(backend=backend), tempfile.TemporaryDirectory() as directory:
+                info = dict(id=IDENTITY, bytes=100, crc32="12345678")
+                if backend is not None:
+                    info["storage"] = backend
+                opener = Mock(side_effect=lambda *args, **kwargs: Response(json.dumps(info).encode()))
+                with self.assertRaises(ValueError):
+                    BoardClient(opener=opener).download(IDENTITY, directory, storage="sd")
+                self.assertEqual(opener.call_count, 1)
+
+    def test_sd_selection_is_preserved_across_resumed_download(self):
+        data = b"".join(fixture(storage="sd"))
+        crc = f"{zlib.crc32(data):08x}"
+        offsets = []
+
+        def open_url(request, timeout):
+            parsed = urlsplit(request if isinstance(request, str) else request.full_url)
+            query = parse_qs(parsed.query)
+            self.assertEqual(query["storage"], ["sd"])
+            if parsed.path == "/file-info":
+                return Response(json.dumps(dict(id=IDENTITY, bytes=len(data), crc32=crc, storage="sd")).encode())
+            offset = int(query["offset"][0]); offsets.append(offset)
+            return Response(data[offset:], {"X-Log-CRC32": crc}, fail_after=1500 if len(offsets) == 1 else None)
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = BoardClient(opener=open_url).download(IDENTITY, directory, storage="sd")
+            self.assertEqual(path.read_bytes(), data)
+            self.assertEqual(offsets, [0, 1500])
+
+    def test_auto_selected_storage_is_pinned_for_transfer(self):
+        data = b"".join(fixture(storage="sd"))
+        crc = f"{zlib.crc32(data):08x}"
+
+        def open_url(request, timeout):
+            parsed = urlsplit(request if isinstance(request, str) else request.full_url)
+            if parsed.path == "/file-info":
+                self.assertNotIn("storage", parse_qs(parsed.query))
+                return Response(json.dumps(dict(id=IDENTITY, bytes=len(data), crc32=crc, storage="sd")).encode())
+            self.assertEqual(parse_qs(parsed.query)["storage"], ["sd"])
+            return Response(data, {"X-Log-CRC32": crc})
+
+        with tempfile.TemporaryDirectory() as directory:
+            BoardClient(opener=open_url).download(IDENTITY, directory)
+
     def test_resume_after_wifi_failure_and_keep_verified_board_original(self):
         data = b"".join(fixture())
         crc = f"{zlib.crc32(data):08x}"
@@ -252,6 +326,23 @@ class DownloadTests(unittest.TestCase):
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_stop_fault_is_saved_before_an_interrupted_download(self):
+        client = Mock()
+        status = dict(protocol=1, phase="fault", id=IDENTITY, boot_id="old", error="storage_close_failed")
+        client.request.side_effect = [status, dict(accepted=True), status]
+        client.download.side_effect = OSError("connection lost")
+        with tempfile.TemporaryDirectory() as directory:
+            manifest = Path(directory) / "metadata.json"
+            manifest.write_text(json.dumps(dict(onboard_id=IDENTITY, rider="test")))
+            recording = OnboardRecording(client, directory)
+            recording.identity, recording.boot = IDENTITY, "old"
+            with self.assertRaisesRegex(OSError, "connection lost"):
+                recording.finish()
+            saved = json.loads(manifest.read_text())
+            self.assertEqual(saved["onboard_stop_error"], "storage_close_failed")
+            self.assertEqual(saved["rider"], "test")
+            self.assertFalse(recording.downloading)
+
     def test_rate_errors_and_zero_data_block_sync(self):
         status = dict(phase="recording", accel_hz=208, gyro_hz=208, accel_samples=1000,
                       gyro_samples=1000, zero_accel=0, io_errors=0, fifo_overruns=0, error="")
@@ -280,6 +371,17 @@ class ReadinessTests(unittest.TestCase):
 
 
 class USBTests(unittest.TestCase):
+    def test_sd_file_listing_can_exceed_four_kib(self):
+        entries = [dict(id=f"{i:032x}", storage="sd", bytes=1000000) for i in range(150)]
+        reply = json.dumps(dict(status=200, body=entries), separators=(",", ":")).encode() + b"\n"
+        self.assertGreater(len(reply), 4096)
+        port = Mock()
+        port.read_until.side_effect = lambda separator, size: reply[:size]
+        client = SerialBoardClient.__new__(SerialBoardClient)
+        client.address, client.port = "serial:test", port
+        client.lock, client.opener = threading.Lock(), client._open
+        self.assertEqual(client.request("/files"), entries)
+
     def test_usb_transport_decodes_status_and_downloads_exact_binary(self):
         raw = b"".join(fixture())
         crc = f"{zlib.crc32(raw):08x}"

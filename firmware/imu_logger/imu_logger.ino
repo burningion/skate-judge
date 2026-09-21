@@ -1,5 +1,5 @@
-// LSM6DSO32 -> hardware FIFO -> onboard LittleFS. Wi-Fi never carries the
-// acquisition stream. A separate task owns all sensor and log-file operations.
+// LSM6DSO32 -> hardware FIFO -> RAM queue -> SD (preferred) or LittleFS.
+// Acquisition owns the sensor; a separate writer owns the recording file.
 #include <Arduino.h>
 #include <Wire.h>
 #include <WiFi.h>
@@ -39,6 +39,7 @@
 
 static constexpr uint32_t RESERVE_BYTES = 32768; // Footer and filesystem headroom.
 static constexpr uint16_t FIFO_BYTES = 896; // 128 raw tagged FIFO words.
+#include "log_storage.h"
 static Adafruit_NeoPixel pixels(SYNC_LED_COUNT, SYNC_LED_PIN,
   (SYNC_LED_RGBW ? NEO_GRBW : NEO_GRB) + NEO_KHZ800);
 static WebServer server(80);
@@ -57,7 +58,8 @@ struct State {
   const char *error = "";
   bool sensorReady = false;
   uint32_t accel = 0, gyro = 0, zeroAccel = 0, ioErrors = 0, fifoOverruns = 0, busRetries = 0;
-  uint32_t bytes = 0, freeBytes = 0, marker = 0;
+  uint64_t bytes = 0, freeBytes = 0;
+  uint32_t marker = 0, queuePeak = 0;
   uint32_t ledTests = 0;
   int batteryBeforeMv = -1, batteryOnMv = -1, ledRmtReady = -1;
   uint64_t startedUs = 0, endedUs = 0, lastSyncUs = 0;
@@ -150,30 +152,38 @@ static bool setupSensor() {
     checkedWrite(0x09, 0) && checkedWrite(0x0a, 0);
 }
 
-static FILE *logFile = nullptr;
 static uint32_t packetSequence = 0;
 static uint8_t fifoBuffer[FIFO_BYTES];
 static uint16_t fifoUsed = 0;
+static bool fifoDiscarded = false;
 static uint8_t fifoSlotCounter = 0xff, fifoSlotKinds = 0;
 static bool writePacket(State &s, uint8_t kind, uint64_t stamp, const void *payload, size_t size) {
-  LogHeader header = logHeader(kind, size, packetSequence++, stamp, payload);
-  if (!logFile || fwrite(&header, 1, sizeof(header), logFile) != sizeof(header) ||
-      fwrite(payload, 1, size, logFile) != size) { s.error = "flash_write_failed"; return false; }
+  WriterStatus writer = writerSnapshot();
+  if (!writer.open || *writer.error) { s.error = *writer.error ? writer.error : "log_not_open"; return false; }
+  // FAT32 files are limited to 4 GiB. Leave room for the stop/footer packets.
+  if (s.bytes + sizeof(LogHeader) + size >= 0xffffffffULL - RESERVE_BYTES && kind != END) {
+    s.error = "recording_file_size_limit"; return false;
+  }
+  LogHeader header = logHeader(kind, size, packetSequence, stamp, payload);
+  if (!logQueue.push(&header, sizeof(header), payload, size)) { s.error = "storage_buffer_full"; return false; }
+  ++packetSequence;
+  s.queuePeak = max(s.queuePeak, uint32_t(logQueue.used()));
   s.bytes += sizeof(header) + size;
   return true;
 }
 static bool flushFIFO(State &s) {
   if (!fifoUsed) return true;
   bool ok = writePacket(s, FIFO, esp_timer_get_time(), fifoBuffer, fifoUsed);
+  if (!ok) fifoDiscarded = true;
   fifoUsed = 0;
   return ok;
 }
 static bool durable(State &s) {
-  if (!logFile || fflush(logFile) || fsync(fileno(logFile))) {
-    s.error = "flash_flush_failed"; return false;
-  }
-  s.freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
-  return true;
+  bool ok = writerControl(SYNC_LOG);
+  WriterStatus writer = writerSnapshot();
+  s.freeBytes = writer.freeBytes;
+  if (!ok && !*s.error) s.error = writer.error;
+  return ok;
 }
 static bool clockAnchor(State &s) {
   uint8_t payload[12];
@@ -285,15 +295,22 @@ static void stopLog(State &s, bool &lit) {
   if (lit) { syncEdge(s, s.marker, false); lit = false; }
   drainFIFO(s); flushFIFO(s); clockAnchor(s);
   s.endedUs = esp_timer_get_time();
+  durable(s); // Batching is stopped; drain the queue before writing the footer.
   if (*firstError) s.error = firstError; // Keep the cause, not a cleanup failure.
-  char footer[440];
+  WriterStatus writer = writerSnapshot();
+  char footer[640];
   snprintf(footer, sizeof(footer),
-    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\"}",
+    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\",\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu}",
     (unsigned long)s.accel, (unsigned long)s.gyro, (unsigned long)s.zeroAccel,
-    (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long)s.busRetries, s.error, s.ioErrors ? firstBusError : "");
-  writePacket(s, END, s.endedUs, footer, strlen(footer)); durable(s);
-  if (logFile && fclose(logFile)) s.error = "flash_close_failed";
-  logFile = nullptr;
+    (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long)s.busRetries, s.error, s.ioErrors ? firstBusError : "",
+    (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs);
+  // If backpressure discarded raw words, do not claim a complete log with
+  // sample counts that cannot match it. Intact packets remain recoverable via
+  // --allow-incomplete; the host also retains the board's stop error.
+  if (!fifoDiscarded) writePacket(s, END, s.endedUs, footer, strlen(footer));
+  if (!writerControl(CLOSE_LOG) && !*s.error) s.error = writerSnapshot().error;
+  s.freeBytes = writerSnapshot().freeBytes;
+  if (*firstError) s.error = firstError;
   writeReg(0x0a, 0);
   s.phase = *s.error ? FAULT : SAVED; publish(s);
 }
@@ -301,8 +318,8 @@ static bool startLog(State &s, const Command &command) {
   s = State(); s.sensorReady = true; s.phase = STARTING;
   memcpy(s.id, command.id, sizeof(s.id)); publish(s);
   if (!storageReady) { s.error = "initialize_storage_first"; return false; }
-  s.freeBytes = LittleFS.totalBytes() - LittleFS.usedBytes();
-  if (s.freeBytes < RESERVE_BYTES + 65536) { s.error = "insufficient_flash_space"; return false; }
+  s.freeBytes = recordingStorage->freeBytes();
+  if (s.freeBytes < RESERVE_BYTES + 65536) { s.error = "insufficient_storage_space"; return false; }
   uint8_t temp[2], frequencyFine;
   if (!checkedWrite(0x12, 0x44) || !checkedWrite(0x18, 0x02) ||
       !checkedWrite(0x10, 0x54) || !checkedWrite(0x11, 0x5c) || !checkedWrite(0x19, 0x20) ||
@@ -310,20 +327,18 @@ static bool startLog(State &s, const Command &command) {
       !checkedWrite(0x09, 0) || !checkedWrite(0x0a, 0)) {
     ++s.ioErrors; s.error = "sensor_preflight_failed"; return false;
   }
-  char path[80]; snprintf(path, sizeof(path), "/littlefs/%s.bin", s.id);
-  int fd = open(path, O_WRONLY | O_CREAT | O_EXCL, 0600);
-  if (fd < 0) { s.error = "log_exists_or_flash_unavailable"; return false; }
-  logFile = fdopen(fd, "wb");
-  if (!logFile) { close(fd); s.error = "log_open_failed"; return false; }
-  fifoUsed = 0; packetSequence = 0;
+  logQueue.reset();
+  String path = String(recordingStorage->mount) + recordingStorage->path(s.id);
+  if (!writerControl(OPEN_LOG, path.c_str())) { s.error = writerSnapshot().error; return false; }
+  fifoUsed = 0; fifoDiscarded = false; packetSequence = 0;
   fifoSlotCounter = 0xff; fifoSlotKinds = 0;
   s.startedUs = esp_timer_get_time();
   int16_t rawTemp = int16_t(uint16_t(temp[0]) | (uint16_t(temp[1]) << 8));
   char meta[480];
   snprintf(meta, sizeof(meta),
-    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu}",
+    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\"}",
     s.id, (unsigned long)bootId, int(int8_t(frequencyFine)), 25.0 + rawTemp / 256.0,
-    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize());
+    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name);
   if (!writePacket(s, META, s.startedUs, meta, strlen(meta)) || !clockAnchor(s) || !durable(s)) return false;
   // 208 Hz accel + gyro batching, timestamp every slot, temperature 1.6 Hz,
   // stop-on-full FIFO. The sensor continues sampling during ESP32 flash writes.
@@ -338,11 +353,13 @@ static void acquire(void *) {
   if (!s.sensorReady) s.error = sensorError;
   publish(s);
   bool lit = false;
-  uint64_t lastBatch = 0, lastFlush = 0, lastClock = 0, rateAt = 0;
+  uint64_t lastBatch = 0, lastClock = 0, rateAt = 0;
   uint32_t previousAccel = 0, previousGyro = 0;
   for (;;) {
     Command cmd;
     while (xQueueReceive(commands, &cmd, 0) == pdTRUE) {
+      // Idle initialize/delete requests may have refreshed available space.
+      s.freeBytes = snapshot().freeBytes;
       if (cmd.action == TEST_LED && ledReady &&
           (s.phase == IDLE || s.phase == SAVED || s.phase == FAULT)) {
         // This task owns LED writes. Test only while idle; never add fake sync
@@ -368,10 +385,10 @@ static void acquire(void *) {
         // Do not reset the sensor or reopen a log on a retried start request.
         if (!strcmp(s.id, cmd.id)) continue;
         if (!s.sensorReady || !startLog(s, cmd)) {
-          if (logFile) stopLog(s, lit);
+          if (writerSnapshot().open) stopLog(s, lit);
           else { s.phase = FAULT; publish(s); }
         } else {
-          lastBatch = lastFlush = lastClock = rateAt = s.startedUs;
+          lastBatch = lastClock = rateAt = s.startedUs;
           previousAccel = previousGyro = 0;
         }
       } else if (cmd.action == STOP && s.phase == RECORDING && !strcmp(cmd.id, s.id)) {
@@ -389,7 +406,9 @@ static void acquire(void *) {
       ok = ok && drainFIFO(s);
       if (now - lastBatch >= 50000) { ok = ok && flushFIFO(s); lastBatch = now; }
       if (now - lastClock >= 1000000) { ok = ok && clockAnchor(s); lastClock = now; }
-      if (now - lastFlush >= 250000) { ok = ok && durable(s); lastFlush = now; }
+      WriterStatus writer = writerSnapshot();
+      s.freeBytes = writer.freeBytes;
+      if (*writer.error) { s.error = writer.error; ok = false; }
       if (now - rateAt >= 1000000) {
         s.accelHz = (s.accel - previousAccel) * 1e6 / (now - rateAt);
         s.gyroHz = (s.gyro - previousGyro) * 1e6 / (now - rateAt);
@@ -401,7 +420,7 @@ static void acquire(void *) {
           s.error = "excessive_zero_acceleration_check_sensor"; ok = false;
         }
       }
-      if (s.freeBytes <= RESERVE_BYTES) { s.error = "flash_capacity_reached"; ok = false; }
+      if (s.freeBytes <= RESERVE_BYTES && !*s.error) { s.error = "storage_capacity_reached"; ok = false; }
       if (!ok) stopLog(s, lit);
       else publish(s);
     }
@@ -466,12 +485,12 @@ static void statusResponse() {
   const char *phases[] = {"idle", "starting", "recording", "stopping", "saved", "fault", "testing_led"};
   char response[1400];
   snprintf(response, sizeof(response),
-    "{\"protocol\":1,\"phase\":\"%s\",\"id\":\"%s\",\"boot_id\":\"%08lx\",\"error\":\"%s\",\"sensor_ready\":%s,\"storage_ready\":%s,\"led_enabled\":%s,\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bytes\":%lu,\"free_bytes\":%lu,\"started_us\":%llu,\"ended_us\":%llu,\"device_us\":%llu,\"accel_hz\":%.2f,\"gyro_hz\":%.2f,\"sync_id\":%lu,\"sync_us\":%llu,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"i2c_idle_sda\":%d,\"i2c_idle_scl\":%d,\"bus_retries\":%lu}",
+    "{\"protocol\":1,\"phase\":\"%s\",\"id\":\"%s\",\"boot_id\":\"%08lx\",\"error\":\"%s\",\"sensor_ready\":%s,\"storage_ready\":%s,\"led_enabled\":%s,\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bytes\":%llu,\"free_bytes\":%llu,\"started_us\":%llu,\"ended_us\":%llu,\"device_us\":%llu,\"accel_hz\":%.2f,\"gyro_hz\":%.2f,\"sync_id\":%lu,\"sync_us\":%llu,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"i2c_idle_sda\":%d,\"i2c_idle_scl\":%d,\"bus_retries\":%lu}",
     phases[s.phase], s.id, (unsigned long)bootId, s.error, s.sensorReady ? "true" : "false",
     storageReady ? "true" : "false", ledReady ? "true" : "false",
     (unsigned long)s.accel, (unsigned long)s.gyro, (unsigned long)s.zeroAccel,
-    (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long)s.bytes,
-    (unsigned long)(s.phase == RECORDING ? s.freeBytes : storageReady ? LittleFS.totalBytes() - LittleFS.usedBytes() : 0),
+    (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long long)s.bytes,
+    (unsigned long long)s.freeBytes,
     s.startedUs, s.endedUs, (uint64_t)esp_timer_get_time(), s.accelHz, s.gyroHz,
     (unsigned long)s.marker, s.lastSyncUs,
     (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), idleSda, idleScl, (unsigned long)s.busRetries);
@@ -482,7 +501,15 @@ static void statusResponse() {
     SYNC_LED_PIN, SYNC_LED_COUNT, SYNC_LED_RGBW ? "GRBW" : "GRB",
     SYNC_LED_BRIGHTNESS, (unsigned long)s.ledTests, s.batteryBeforeMv, s.batteryOnMv, s.ledRmtReady);
   response[strlen(response) - 1] = 0;
-  reply(200, "application/json", String(response) + ledStatus);
+  String body = String(response) + ledStatus;
+  WriterStatus writer = writerSnapshot();
+  char storageStatus[600];
+  snprintf(storageStatus, sizeof(storageStatus),
+    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu}",
+    recordingStorage->name, storageWarning, sdStorage.ready ? "true" : "false", flashStorage.ready ? "true" : "false",
+    unsigned(LOG_QUEUE_BYTES), (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs);
+  body.remove(body.length() - 1);
+  reply(200, "application/json", body + storageStatus);
 }
 static void enqueueControl(Action action) {
   if (!controlAllowed()) return;
@@ -493,7 +520,8 @@ static void enqueueControl(Action action) {
     if (!strcmp(s.id, id.c_str())) { statusResponse(); return; }
     if (!idleOnly()) return;
     if (!storageReady || !s.sensorReady || !ledReady) { errorResponse(409, "Sensor, storage, and sync LED must be ready."); return; }
-    if (LittleFS.exists(("/" + id + ".bin").c_str())) { errorResponse(409, "Recording already exists; download it."); return; }
+    if ((flashStorage.ready && LittleFS.exists(flashStorage.path(id))) ||
+        (sdStorage.ready && SD.exists(sdStorage.path(id)))) { errorResponse(409, "Recording already exists; download it."); return; }
   } else if (strcmp(s.id, id.c_str())) { errorResponse(409, "Recording ID does not match."); return; }
   const long marker = parameter("marker").toInt();
   if (action == FLASH && (marker < 1 || s.phase != RECORDING)) { errorResponse(409, "Sync needs an active recording and positive marker."); return; }
@@ -515,25 +543,51 @@ static bool blankStoragePartition() {
 }
 static void initializeStorage() {
   if (!controlAllowed() || !idleOnly()) return;
-  if (!storageReady) {
+  if (!flashStorage.ready) {
     if (!blankStoragePartition()) { errorResponse(409, "Data partition is not blank. Back it up; initialization will not erase existing data."); return; }
-    storageReady = LittleFS.format() && LittleFS.begin(false);
+    flashStorage.ready = LittleFS.format() && LittleFS.begin(false);
+    storageReady = recordingStorage->ready;
   }
-  if (!storageReady) { errorResponse(507, "Storage initialization failed."); return; }
+  if (!flashStorage.ready) { errorResponse(507, "Storage initialization failed."); return; }
+  State s = snapshot(); s.freeBytes = recordingStorage->freeBytes(); publish(s);
   statusResponse();
+}
+// IDs may exist on either medium. An explicit backend also pins resumed downloads.
+static LogStorage *findStorage(const String &id) {
+  String requested = parameter("storage");
+  if (requested.length() && requested != "sd" && requested != "flash") {
+    errorResponse(400, "Storage must be sd or flash."); return nullptr;
+  }
+  LogStorage *found = nullptr;
+  for (LogStorage *backend : {&sdStorage, &flashStorage}) {
+    if (requested.length() && requested != backend->name) continue;
+    if (!backend->ready || !backend->fs->exists(backend->path(id))) continue;
+    if (found) { errorResponse(409, "ID exists on both media; specify storage=sd or flash."); return nullptr; }
+    found = backend;
+  }
+  if (!found) errorResponse(404, "Recording not found on mounted storage.");
+  return found;
 }
 static void listFiles() {
   if (!idleOnly()) return;
-  if (!storageReady) { errorResponse(409, "Storage is not mounted."); return; }
+  String requested = parameter("storage");
+  if (requested.length() && requested != "sd" && requested != "flash") {
+    errorResponse(400, "Storage must be sd or flash."); return;
+  }
+  if (!sdStorage.ready && !flashStorage.ready) { errorResponse(409, "Storage is not mounted."); return; }
   String result = "[";
-  File root = LittleFS.open("/");
-  for (File f = root.openNextFile(); f; f = root.openNextFile()) {
-    String name = f.name();
-    if (name.startsWith("/")) name.remove(0, 1);
-    String id = name.substring(0, 32);
-    if (name.length() != 36 || !name.endsWith(".bin") || !validId(id)) continue;
-    if (result.length() > 1) result += ',';
-    result += "{\"id\":\"" + id + "\",\"bytes\":" + String(f.size()) + "}";
+  for (LogStorage *backend : {&sdStorage, &flashStorage}) {
+    if (!backend->ready || (requested.length() && requested != backend->name)) continue;
+    File root = backend->fs->open(*backend->directory ? backend->directory : "/");
+    for (File f = root.openNextFile(); f; f = root.openNextFile()) {
+      if (f.isDirectory()) continue;
+      String name = f.name();
+      name = name.substring(name.lastIndexOf('/') + 1);
+      String id = name.substring(0, 32);
+      if (name.length() != 36 || !name.endsWith(".bin") || !validId(id)) continue;
+      if (result.length() > 1) result += ',';
+      result += "{\"id\":\"" + id + "\",\"storage\":\"" + backend->name + "\",\"bytes\":" + String(f.size()) + "}";
+    }
   }
   reply(200, "application/json", result + "]");
 }
@@ -541,25 +595,53 @@ static void fileRequest(bool infoOnly, bool remove) {
   if ((remove && !controlAllowed()) || !idleOnly()) return;
   String id = parameter("id");
   if (!validId(id)) { errorResponse(400, "Invalid recording ID."); return; }
-  String path = "/" + id + ".bin";
-  File file = LittleFS.open(path, FILE_READ);
-  if (!file) { errorResponse(404, "Recording not found."); return; }
+  LogStorage *backend = findStorage(id);
+  if (!backend) return;
+  String path = backend->path(id);
+  File file = backend->fs->open(path, FILE_READ);
+  if (!file || file.isDirectory()) { errorResponse(404, "Recording not found."); return; }
   const size_t size = file.size();
   uint8_t buffer[1024]; uint32_t crc = 0;
-  while (file.available()) { size_t n = file.read(buffer, sizeof(buffer)); if (!n) break; crc = logCRC(crc, buffer, n); }
+  // Cache the checksum between info and range requests. Files cannot be modified
+  // through the API; hot-swapping the card while powered is unsupported.
+  static String crcKey;
+  static size_t crcSize = 0;
+  static uint32_t crcValue = 0;
+  String key = String(backend->name) + ":" + id;
+  WriterStatus writer = writerSnapshot();
+  State current = snapshot();
+  if (!remove && !writer.open && !*writer.error && backend == recordingStorage &&
+      id == current.id && writer.written == size) {
+    crc = writer.crc;
+  } else if (!remove && key == crcKey && size == crcSize) {
+    crc = crcValue;
+  } else {
+    size_t read = 0;
+    while (file.available()) {
+      size_t n = file.read(buffer, sizeof(buffer)); if (!n) break;
+      read += n; crc = logCRC(crc, buffer, n);
+      delay(1);
+    }
+    if (read != size) { errorResponse(507, "Recording read failed."); return; }
+  }
+  crcKey = key; crcSize = size; crcValue = crc;
   char hex[9]; snprintf(hex, sizeof(hex), "%08lx", (unsigned long)crc);
   if (infoOnly) {
-    reply(200, "application/json", "{\"id\":\"" + id + "\",\"bytes\":" + String(size) + ",\"crc32\":\"" + hex + "\"}"); return;
+    reply(200, "application/json", "{\"id\":\"" + id + "\",\"bytes\":" + String(size) + ",\"storage\":\"" + backend->name + "\",\"crc32\":\"" + hex + "\"}"); return;
   }
   if (remove) {
     file.close();
     if (parameter("crc32") != hex) { errorResponse(409, "Download and verify this file before deleting it."); return; }
-    if (!LittleFS.remove(path)) { errorResponse(507, "Delete failed."); return; }
+    if (!backend->fs->remove(path)) { errorResponse(507, "Delete failed."); return; }
+    crcKey = "";
+    State s = snapshot(); s.freeBytes = recordingStorage->freeBytes(); publish(s);
     reply(200, "application/json", "{\"deleted\":true}"); return;
   }
-  long offset = parameter("offset").toInt();
-  if (offset < 0 || size_t(offset) > size) { errorResponse(416, "Offset outside file."); return; }
-  file.seek(offset);
+  String offsetText = parameter("offset");
+  char *end = nullptr;
+  uint64_t offset = offsetText.length() ? strtoull(offsetText.c_str(), &end, 10) : 0;
+  if ((offsetText.length() && (offsetText[0] < '0' || offsetText[0] > '9' || *end)) || offset > size) { errorResponse(416, "Offset outside file."); return; }
+  if (!file.seek(uint32_t(offset))) { errorResponse(507, "Recording seek failed."); return; }
   if (usbRequest) {
     Serial.printf("{\"status\":200,\"binary\":%u,\"crc32\":\"%s\"}\n", unsigned(size - offset), hex);
     while (file.available()) {
@@ -623,9 +705,13 @@ void setup() {
     SYNC_LED_PIN != IMU_SDA && SYNC_LED_PIN != IMU_SCL &&
     SYNC_LED_PIN != IMU_POWER && pixels.begin();
   if (ledReady) led(false);
-  storageReady = LittleFS.begin(false); // Never autoformat on mount failure.
+  setupStorage(); storageReady = recordingStorage->ready;
+  state.freeBytes = recordingStorage->freeBytes();
   commands = xQueueCreate(8, sizeof(Command));
-  if (!commands || xTaskCreatePinnedToCore(acquire, "imu-acquire", 8192, nullptr, 3, nullptr, 1) != pdPASS) {
+  writeCommands = xQueueCreate(1, sizeof(WriteCommand));
+  writeReplies = xQueueCreate(1, sizeof(bool));
+  if (!commands || !writeCommands || !writeReplies ||
+      xTaskCreatePinnedToCore(storageWriter, "log-writer", 12288, nullptr, 1, nullptr, 0) != pdPASS || xTaskCreatePinnedToCore(acquire, "imu-acquire", 8192, nullptr, 3, nullptr, 1) != pdPASS) {
     Serial.println("E,cannot start acquisition task"); return;
   }
   char apName[32]; snprintf(apName, sizeof(apName), "SkateJudge-%04x", unsigned(ESP.getEfuseMac() & 0xffff));

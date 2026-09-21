@@ -2,8 +2,8 @@
 
 Open **[skate-judge-direct-lipo.fzz](skate-judge-direct-lipo.fzz)** in Fritzing.
 It contains native components, electrical connections, movable wire bendpoints,
-labels, and editable notes—not a flattened drawing. All five part definitions
-and their artwork are bundled, including the three official Adafruit boards.
+labels, and editable notes—not a flattened drawing. All six part definitions
+and their artwork are bundled, including the four official Adafruit boards.
 No separate part-library download is required to open the bundle.
 
 ![Preview of the direct-LiPo wiring](skate-judge-direct-lipo.png)
@@ -41,12 +41,27 @@ battery graphic is a generic 1S 500 mAh illustration, not a model of your exact 
 | Feather pad **5**, GPIO5 | R1, **330 Ω**, then stick `DIN` |
 | Stick `DOUT` | Unconnected |
 | Feather STEMMA QT | IMU STEMMA QT: GND, switched 3.3 V, SDA/GPIO3, SCL/GPIO4 |
+| Feather `3.3V` | Adafruit **254** `3V` |
+| Feather `GND` | 254 `GND` |
+| Feather `SCK` / GPIO36 | 254 `CLK` |
+| Feather `MO` / MOSI / GPIO35 | 254 `DI` |
+| Feather `MI` / MISO / GPIO37 | 254 `DO` |
+| Feather **10** / GPIO10 | 254 `CS` |
+| 254 `5V`, `CD` | Unconnected |
 
 The four IMU wires represent **one STEMMA QT cable**. GPIO7 enables the Feather's
 QT supply in firmware; it is not a fifth wire. The red QT wire is **not** the same
 power net as red `BAT`. The 330 Ω resistor is the recommended data-input protection,
 not an LED current-limiting resistor. Crossing lines are not connected unless they
 meet at an electrical connector/junction.
+
+The [Adafruit 254](https://www.adafruit.com/product/254) is the level-shifted
+microSD breakout board+, with `DI`/`DO` labels. Its `3V` pin can accept a regulated
+3.3 V supply, as [Adafruit support confirms](https://forums.adafruit.com/viewtopic.php?p=755866).
+This uses the Feather's main 3.3 V rail, separate from the switched QT supply.
+Keep SPI wires short. Insert a FAT32 card before boot and stop/save before removing
+power or the card. See [SD recording and verification](../../docs/onboard-recording.md#sd-card-and-internal-flash)
+for storage selection, firmware settings, and the required physical bench test.
 
 This is the documented **direct-LiPo first test**, not the regulated 5 V alternative.
 The stick's listed supply range is 4–7 V, so operation as a single LiPo discharges
@@ -59,9 +74,9 @@ for the wiring caveats, manufacturer sources, and regulated-power alternative.
 
 The bundle was checked for valid XML, ZIP integrity, complete part/SVG references,
 reciprocal wire connections, and the expected isolated electrical nets. In particular,
-the checker rejects a bypassed/wrong data resistor, connections to DOUT/USB/3V, and
-shorts between BAT, ground, QT power, SDA, SCL, and the two sides of R1. The preview
-was rendered with Qt's SVG renderer and visually reviewed.
+the checker rejects a bypassed/wrong data resistor, connections to LED DOUT,
+Feather USB, SD 5V or CD, swapped SPI signals, and shorts between the twelve
+expected nets. The updated preview was rendered with librsvg and visually reviewed.
 
 **Native Fritzing open/save testing has not been performed** because the application
 was not installed in this environment. Check that it opens without missing-part
@@ -88,7 +103,7 @@ lose any hand edits to them; do not use it on your working Fritzing file.
 
 ## Parts and attribution
 
-- Feather ESP32-S3, LSM6DSO32, and RGB NeoPixel Stick artwork/definitions:
+- Feather ESP32-S3, LSM6DSO32, RGB NeoPixel Stick, and Adafruit 254 artwork/definitions:
   [Adafruit Fritzing Library](https://github.com/adafruit/Fritzing-Library), pinned
   at `7d905c3e982de3712c3033da4596cc71ea32de1c`. The Feather asset identifies the
   8 MB revision; the RGB stick asset is not the WWA or RGBW part.

@@ -206,7 +206,7 @@ def decode_log(path, allow_incomplete=False):
     return dict(metadata=meta, samples=samples, events=syncs, quality=quality)
 
 
-def import_log(path, directory, allow_incomplete=False):
+def import_log(path, directory, allow_incomplete=False, stop_error=""):
     path, directory = Path(path), Path(directory)
     data = decode_log(path, allow_incomplete)
     directory.mkdir(parents=True, exist_ok=True)
@@ -215,7 +215,18 @@ def import_log(path, directory, allow_incomplete=False):
     previous_path = directory / "metadata.json"
     previous = json.loads(previous_path.read_text()) if previous_path.exists() else {}
     samples, quality = data["samples"], data["quality"]
-    meta = dict(previous, schema=1, transport="onboard_flash", synthetic=False,
+    storage = data["metadata"].get("storage", "flash")
+    if storage not in ("sd", "flash"):
+        raise ValueError(f"Unknown recording storage: {storage}")
+    # Closing/fsync can fail after END was written. Preserve the board's final
+    # error as well as errors embedded in the raw file.
+    stop_error = stop_error or previous.get("onboard_stop_error", "")
+    if stop_error:
+        quality["usable"] = False
+        if stop_error not in quality["issues"]:
+            quality["issues"].append(stop_error)
+    meta = dict(previous, schema=1, transport="onboard_" + storage, synthetic=False,
+                onboard_storage=storage, onboard_stop_error=stop_error,
                 device_origin_us=samples[0]["device_us"], boot_id=data["metadata"]["boot_id"],
                 samples=len(samples), duration_s=samples[-1]["t_s"], malformed=0, stale=0,
                 missing_sequences=0, gaps_over_30ms=sum(b["t_s"] - a["t_s"] > .03 for a, b in zip(samples, samples[1:])),
