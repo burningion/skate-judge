@@ -26,7 +26,9 @@ class OnboardSyncTests(unittest.TestCase):
         for connected in (True, False):
             with self.subTest(connected=connected), tempfile.TemporaryDirectory() as directory:
                 remote = board_status(storage="sd", free_bytes=200000, bytes=45000,
-                                      started_us=1000000, device_us=11000000, storage_buffer_bytes=32768)
+                                      started_us=1000000, device_us=11000000, storage_buffer_bytes=32768,
+                                      battery_available=True, battery_percent=75.5, battery_mv=4000,
+                                      battery_age_ms=500)
                 client = Mock()
                 client.request.side_effect = [remote if connected else OSError("Board disconnected")]
                 control = Mock()
@@ -47,6 +49,9 @@ class OnboardSyncTests(unittest.TestCase):
                     stack.enter_context(patch("capture.onboard.time.sleep", side_effect=KeyboardInterrupt))
                     record(args)
                 published = control.publish_status.call_args.args[0]
+                self.assertEqual(published["battery"],
+                                 dict(state="ready", percent=75.5, voltage_mv=4000, age_ms=500) if connected
+                                 else dict(state="offline", percent=None, voltage_mv=None))
                 self.assertIsNone(published["remaining"])  # LED countdown stays independent.
                 budget = published["storage_budget"]
                 self.assertEqual(budget["storage"], "sd")

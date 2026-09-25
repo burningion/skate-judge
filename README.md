@@ -287,7 +287,7 @@ packets; sequence gaps and timing gaps are saved for quality review.
 
 ```bash
 python3 -m unittest discover -s tests -v
-node --test tests/test_webcam.mjs tests/test_trick_review.mjs tests/test_storage.mjs
+node --test tests/test_webcam.mjs tests/test_trick_review.mjs tests/test_storage.mjs tests/test_battery.mjs
 ./flash-feather.sh --compile-only
 ./flash.sh --compile-only
 SKATE_WIFI=1 ./flash.sh --compile-only

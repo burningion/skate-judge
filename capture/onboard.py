@@ -33,10 +33,10 @@ import zlib
 
 if __package__:
     from .onboard_log import import_log, read_packets
-    from .session import ControlServer
+    from .session import ControlServer, append_json
 else:
     from onboard_log import import_log, read_packets
-    from session import ControlServer
+    from session import ControlServer, append_json
 
 
 def valid_id(identity):
@@ -242,6 +242,26 @@ def healthy(status):
             and status.get("zero_accel", 0) <= status.get("accel_samples", 0) * .25)
 
 
+def battery_status(status, connected=True):
+    """Only expose fresh gauge readings, including while the board is idle."""
+    result = dict(state="unavailable", percent=None, voltage_mv=None)
+    if not connected:
+        return dict(result, state="offline")
+    if "battery_available" not in status:
+        return dict(result, state="unsupported")
+    age = status.get("battery_age_ms")
+    if type(age) not in (int, float) or not math.isfinite(age) or age < 0:
+        return result
+    if age > 15000:
+        return dict(result, state="stale")
+    percent, voltage = status.get("battery_percent"), status.get("battery_mv")
+    if (status.get("battery_available") is not True
+            or type(percent) not in (int, float) or not math.isfinite(percent) or not 0 <= percent <= 100
+            or type(voltage) not in (int, float) or not math.isfinite(voltage) or not 2500 <= voltage <= 4500):
+        return result
+    return dict(state="ready", percent=percent, voltage_mv=voltage, age_ms=age)
+
+
 def storage_budget(status, connected=True):
     """Approximate time for one log, using the firmware's storage stop limits.
 
@@ -293,15 +313,44 @@ class OnboardRecording:
         self.remote = None
         self.message = "Connect to the board's Wi-Fi to prepare recording."
         self.downloading = False
+        self.status_lock = threading.Lock()
+        self.last_status_key = None
+        self.last_status_saved = 0
 
     def status(self):
-        status = self.client.request("/status")
-        if status.get("protocol") != 1:
-            raise ValueError("Install the onboard logger firmware first.")
-        if self.boot and status.get("boot_id") != self.boot:
-            raise ValueError("Board restarted. The previous onboard log is retained; use the download command to recover it.")
-        self.remote = status
-        return status
+        with self.status_lock:
+            status = self.client.request("/status")
+            if status.get("protocol") != 1:
+                raise ValueError("Install the onboard logger firmware first.")
+            self.save_observation(status)
+            if self.boot and status.get("boot_id") != self.boot:
+                raise ValueError("Board restarted. The previous onboard log is retained; use the download command to recover it.")
+            self.remote = status
+            return status
+
+    def save_observation(self, status):
+        # Capture diagnostics while connected, before a fault prevents a footer
+        # or a reboot clears RAM. Only sessions created by the recorder get logs.
+        if not self.identity or not (self.path / "metadata.json").exists():
+            return
+        diagnostic = status.get("storage_diagnostics", {})
+        key = tuple(status.get(k) for k in ("boot_id", "id", "phase", "error")) + (
+            diagnostic.get("operation"), diagnostic.get("errno"), diagnostic.get("at_us"))
+        now = time.monotonic()
+        changed = key != self.last_status_key
+        if not changed and now - self.last_status_saved < 1:
+            return
+        observation = dict(status, observed_utc=datetime.now(timezone.utc).isoformat())
+        append_json(self.path / "board_status.jsonl", observation)
+        if (changed and status.get("error") and status.get("id") == self.identity
+                and status.get("boot_id") == self.boot):
+            temporary = self.path / "board_fault.json.tmp"
+            with temporary.open("w") as stream:
+                json.dump(observation, stream, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            temporary.replace(self.path / "board_fault.json")
+        self.last_status_key, self.last_status_saved = key, now
 
     def prepare(self):
         with self.operation:
@@ -377,6 +426,7 @@ class OnboardRecording:
                 manifest = self.path / "metadata.json"
                 meta = json.loads(manifest.read_text())
                 meta["onboard_stop_error"] = status.get("error", "")
+                meta["onboard_stop_status"] = status
                 temporary = manifest.with_suffix(".json.tmp")
                 temporary.write_text(json.dumps(meta, indent=2) + "\n")
                 temporary.replace(manifest)
@@ -495,6 +545,7 @@ def record(args):
                     fresh=bool(ready), can_sync=bool(ready and phase not in ("countdown", "waiting")),
                     phase=phase, remaining=remaining, message=message, board_message=recording.message,
                     storage_budget=storage_budget(remote, connected),
+                    battery=battery_status(remote, connected),
                     can_download=bool(recording.identity and not recording.result and not recording.downloading)),
                     countdown_handled=countdown_handled)
             time.sleep(.2)

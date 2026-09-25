@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "log_format.h"
+#include "battery_monitor.h"
 
 #ifndef IMU_SDA
 #define IMU_SDA 3
@@ -62,6 +63,8 @@ struct State {
   uint32_t marker = 0, queuePeak = 0;
   uint32_t ledTests = 0;
   int batteryBeforeMv = -1, batteryOnMv = -1, ledRmtReady = -1;
+  BatteryReading battery;
+  uint64_t batteryCheckedUs = 0;
   uint64_t startedUs = 0, endedUs = 0, lastSyncUs = 0;
   float accelHz = 0, gyroHz = 0;
 };
@@ -260,10 +263,11 @@ static void led(bool on) {
     : pixels.Color(SYNC_LED_BRIGHTNESS, SYNC_LED_BRIGHTNESS, SYNC_LED_BRIGHTNESS)) : 0);
   pixels.show();
 }
-static int batteryMillivolts() {
-  // Optional read-only MAX17048 diagnostic, only on the acquisition task while
-  // idle. Do not reset the gauge or mix its read errors into IMU health.
-  // Adafruit_MAX1704X: VERSION[15:4] == 1; VCELL uses 78.125 uV/LSB, MSB first.
+static BatteryReading readBattery() {
+  // Acquisition owns Wire. Bound optional gauge reads so an absent/faulty
+  // gauge cannot hold up FIFO draining; restore the IMU timeout afterwards.
+  uint16_t timeout = Wire.getTimeOut();
+  Wire.setTimeOut(5);
   auto readWord = [](uint8_t reg) -> int {
     Wire.beginTransmission(0x36); Wire.write(reg);
     if (Wire.endTransmission(false) != 0) return -1;
@@ -274,10 +278,9 @@ static int batteryMillivolts() {
     int high = Wire.read();
     return (high << 8) | Wire.read();
   };
-  int version = readWord(0x08);
-  if (version < 0 || (version & 0xfff0) != 0x0010) return -1;
-  int raw = readWord(0x02);
-  return raw < 0 ? -1 : (raw * 5 + 32) / 64;
+  BatteryReading reading = readMAX17048(readWord);
+  Wire.setTimeOut(timeout);
+  return reading;
 }
 static bool syncEdge(State &s, uint32_t marker, bool on) {
   uint8_t payload[6]; memcpy(payload, &marker, 4); payload[4] = on; payload[5] = ledReady;
@@ -298,12 +301,14 @@ static void stopLog(State &s, bool &lit) {
   durable(s); // Batching is stopped; drain the queue before writing the footer.
   if (*firstError) s.error = firstError; // Keep the cause, not a cleanup failure.
   WriterStatus writer = writerSnapshot();
-  char footer[640];
+  char diagnostics[320];
+  writer.diagnostics.json(diagnostics, sizeof(diagnostics), writer.written);
+  char footer[897]; // END payload shares the decoder's 896-byte packet bound.
   snprintf(footer, sizeof(footer),
-    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\",\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu}",
+    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\",\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_diagnostics\":%s}",
     (unsigned long)s.accel, (unsigned long)s.gyro, (unsigned long)s.zeroAccel,
     (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long)s.busRetries, s.error, s.ioErrors ? firstBusError : "",
-    (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs);
+    (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs, diagnostics);
   // If backpressure discarded raw words, do not claim a complete log with
   // sample counts that cannot match it. Intact packets remain recoverable via
   // --allow-incomplete; the host also retains the board's stop error.
@@ -315,7 +320,10 @@ static void stopLog(State &s, bool &lit) {
   s.phase = *s.error ? FAULT : SAVED; publish(s);
 }
 static bool startLog(State &s, const Command &command) {
+  BatteryReading battery = s.battery;
+  uint64_t batteryCheckedUs = s.batteryCheckedUs;
   s = State(); s.sensorReady = true; s.phase = STARTING;
+  s.battery = battery; s.batteryCheckedUs = batteryCheckedUs;
   memcpy(s.id, command.id, sizeof(s.id)); publish(s);
   if (!storageReady) { s.error = "initialize_storage_first"; return false; }
   s.freeBytes = recordingStorage->freeBytes();
@@ -334,11 +342,11 @@ static bool startLog(State &s, const Command &command) {
   fifoSlotCounter = 0xff; fifoSlotKinds = 0;
   s.startedUs = esp_timer_get_time();
   int16_t rawTemp = int16_t(uint16_t(temp[0]) | (uint16_t(temp[1]) << 8));
-  char meta[480];
+  char meta[560];
   snprintf(meta, sizeof(meta),
-    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\"}",
+    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\",\"storage_diagnostics_version\":1,\"sd_spi_hz\":%u}",
     s.id, (unsigned long)bootId, int(int8_t(frequencyFine)), 25.0 + rawTemp / 256.0,
-    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name);
+    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name, unsigned(SD_SPI_HZ));
   if (!writePacket(s, META, s.startedUs, meta, strlen(meta)) || !clockAnchor(s) || !durable(s)) return false;
   // 208 Hz accel + gyro batching, timestamp every slot, temperature 1.6 Hz,
   // stop-on-full FIFO. The sensor continues sampling during ESP32 flash writes.
@@ -366,13 +374,13 @@ static void acquire(void *) {
         // markers or touch a saved recording. Leave LEDs off when finished.
         Phase previous = s.phase;
         s.phase = TESTING_LED; publish(s);
-        s.batteryBeforeMv = batteryMillivolts();
+        s.batteryBeforeMv = readBattery().millivolts;
         s.batteryOnMv = -1; s.ledRmtReady = 1;
         for (int i = 0; i < 3; ++i) {
           led(true); vTaskDelay(pdMS_TO_TICKS(1000));
           s.ledRmtReady &= perimanGetPinBus(SYNC_LED_PIN, ESP32_BUS_TYPE_RMT_TX) != nullptr &&
                            rmtTransmitCompleted(SYNC_LED_PIN);
-          if (i == 0) s.batteryOnMv = batteryMillivolts();
+          if (i == 0) s.batteryOnMv = readBattery().millivolts;
           led(false); vTaskDelay(pdMS_TO_TICKS(1000));
         }
         ++s.ledTests; s.phase = previous; publish(s);
@@ -423,6 +431,14 @@ static void acquire(void *) {
       if (s.freeBytes <= RESERVE_BYTES && !*s.error) { s.error = "storage_capacity_reached"; ok = false; }
       if (!ok) stopLog(s, lit);
       else publish(s);
+    }
+    // Drain motion first, and defer gauge reads while a sync pulse is lit.
+    // These reads never contribute to sensor error counters or stop a log.
+    const uint64_t batteryNow = esp_timer_get_time();
+    if (!lit && (!s.batteryCheckedUs || batteryNow - s.batteryCheckedUs >= 5000000)) {
+      s.battery = readBattery();
+      s.batteryCheckedUs = esp_timer_get_time();
+      publish(s);
     }
     vTaskDelay(pdMS_TO_TICKS(5));
   }
@@ -502,12 +518,26 @@ static void statusResponse() {
     SYNC_LED_BRIGHTNESS, (unsigned long)s.ledTests, s.batteryBeforeMv, s.batteryOnMv, s.ledRmtReady);
   response[strlen(response) - 1] = 0;
   String body = String(response) + ledStatus;
+  int64_t batteryAgeMs = s.batteryCheckedUs ? (esp_timer_get_time() - s.batteryCheckedUs) / 1000 : -1;
+  bool batteryAvailable = s.battery.available() && batteryAgeMs >= 0 && batteryAgeMs <= 15000;
+  char batteryVoltage[16] = "null", batteryPercent[16] = "null", batteryStatus[240];
+  if (batteryAvailable) {
+    snprintf(batteryVoltage, sizeof(batteryVoltage), "%d", s.battery.millivolts);
+    snprintf(batteryPercent, sizeof(batteryPercent), "%.2f", s.battery.percent);
+  }
+  snprintf(batteryStatus, sizeof(batteryStatus),
+    ",\"battery_available\":%s,\"battery_mv\":%s,\"battery_percent\":%s,\"battery_age_ms\":%lld}",
+    batteryAvailable ? "true" : "false", batteryVoltage, batteryPercent, (long long)batteryAgeMs);
+  body.remove(body.length() - 1); body += batteryStatus;
   WriterStatus writer = writerSnapshot();
-  char storageStatus[600];
+  char diagnostics[320];
+  writer.diagnostics.json(diagnostics, sizeof(diagnostics), writer.written);
+  char storageStatus[1000];
   snprintf(storageStatus, sizeof(storageStatus),
-    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu}",
+    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_diagnostics_version\":1,\"sd_spi_hz\":%u,\"storage_diagnostics\":%s}",
     recordingStorage->name, storageWarning, sdStorage.ready ? "true" : "false", flashStorage.ready ? "true" : "false",
-    unsigned(LOG_QUEUE_BYTES), (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs);
+    unsigned(LOG_QUEUE_BYTES), (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs,
+    unsigned(SD_SPI_HZ), diagnostics);
   body.remove(body.length() - 1);
   reply(200, "application/json", body + storageStatus);
 }

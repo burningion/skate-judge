@@ -1,5 +1,6 @@
 import {WebcamCapture, recordThenCountdown, request} from './webcam.mjs';
 import {renderStorage} from './storage.mjs';
+import {renderBattery} from './battery.mjs';
 
 const $ = id => document.getElementById(id);
 const clock = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds) % 60).padStart(2, '0')}`;
@@ -120,6 +121,8 @@ async function refresh() {
     $('folder').textContent = status.session_path ? `Session folder: ${status.session_path}` : '';
     $('board-status').textContent = boardError || status.board_message || '';
     renderStorage(document, finishing ? {...status.storage_budget, state: 'stopping'} : status.storage_budget, onboard);
+    $('device-status').hidden = !onboard;
+    renderBattery(document, status.battery, onboard);
   } catch {
     fresh = false;
     canSync = false;
@@ -127,6 +130,7 @@ async function refresh() {
     $('number').textContent = '—';
     $('message').textContent = 'Recorder unavailable. Check the terminal; sensor recording may have stopped.';
     renderStorage(document, {state: 'offline'}, onboard);
+    renderBattery(document, {state: 'offline'}, onboard);
     if (++disconnected >= 3 && capture.phase === 'recording') capture.stop('Sensor recorder connection lost; video ended early.');
   } finally {
     renderCamera();

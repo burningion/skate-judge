@@ -512,6 +512,7 @@ class ControlServer:
         self.commands = commands
         self.lock = threading.Lock()
         self.status = dict(can_sync=False, message="Waiting for motion data.")
+        self.status_published_at = time.monotonic()
         self.countdown_pending = False
         self.videos = VideoStore(session_path)
         assets = {
@@ -519,6 +520,7 @@ class ControlServer:
             "/controls.mjs": ("controls.mjs", "text/javascript; charset=utf-8"),
             "/webcam.mjs": ("webcam.mjs", "text/javascript; charset=utf-8"),
             "/storage.mjs": ("storage.mjs", "text/javascript; charset=utf-8"),
+            "/battery.mjs": ("battery.mjs", "text/javascript; charset=utf-8"),
         }
         pages = {
             url: (Path(__file__).with_name(name).read_bytes(), mime)
@@ -547,7 +549,15 @@ class ControlServer:
                     self.reply(200, *pages[self.path])
                 elif self.path == "/api/status":
                     with control.lock:
-                        body = json.dumps(control.status).encode()
+                        status = dict(control.status)
+                        battery = status.get("battery")
+                        if battery and battery.get("state") == "ready":
+                            age = battery["age_ms"] + max(0, time.monotonic() - control.status_published_at) * 1000
+                            if age > 15000:
+                                status["battery"] = dict(state="stale", percent=None, voltage_mv=None)
+                            else:
+                                status["battery"] = dict(battery, age_ms=round(age))
+                        body = json.dumps(status).encode()
                     self.reply(200, body)
                 else:
                     self.reply(404, b"{}")
@@ -658,6 +668,7 @@ class ControlServer:
             if countdown_handled:
                 self.countdown_pending = False
             self.status = dict(status, can_sync=bool(status.get("can_sync") and not self.countdown_pending))
+            self.status_published_at = time.monotonic()
 
     def publish(self, session, trigger, *, countdown_handled=False):
         fresh = (

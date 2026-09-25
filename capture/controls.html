@@ -35,18 +35,24 @@
   #camera-state { font-weight: 700; color: #c9f887; }
   #camera-state[data-recording="true"] { color: #ffb398; }
   #saved-clips { padding-left: 20px; }
-  #storage-budget { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin-top: 22px; padding: 18px 22px; border: 1px solid #526760; border-radius: 12px; background: #172523; }
-  #storage-title { display: block; color: #c1d3cd; font-size: 14px; }
-  #storage-value { display: block; color: #c9f887; font-size: 32px; line-height: 1.3; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #device-status { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-top: 22px; }
+  #storage-budget, #battery-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 18px 22px; border: 1px solid #526760; border-radius: 12px; background: #172523; }
+  #storage-title, #battery-title { display: block; color: #c1d3cd; font-size: 14px; }
+  #storage-value, #battery-value { display: block; color: #c9f887; font-size: 32px; line-height: 1.3; font-weight: 700; font-variant-numeric: tabular-nums; }
   .storage-context { flex: 1 1 260px; }
-  #storage-detail { margin: 0; color: #e9f0ef; }
-  #storage-note { margin: 4px 0 0; }
+  #storage-detail, #battery-detail { margin: 0; color: #e9f0ef; }
+  #storage-note, #battery-note { margin: 4px 0 0; }
+  .battery-context { flex: 1 1 150px; }
   #storage-budget[data-level="low"] { border-color: #d5ac60; }
   #storage-budget[data-level="low"] #storage-value { color: #ffd082; }
   #storage-budget[data-level="critical"] { border-color: #e99a7e; }
   #storage-budget[data-level="critical"] #storage-value { color: #ffb398; }
+  #battery-status[data-level="low"] { border-color: #d5ac60; }
+  #battery-status[data-level="low"] #battery-value { color: #ffd082; }
+  #battery-status[data-level="critical"] { border-color: #e99a7e; }
+  #battery-status[data-level="critical"] #battery-value { color: #ffb398; }
   [hidden] { display: none !important; }
-  @media (max-width: 780px) { .workspace { grid-template-columns: 1fr; } main { padding: 24px 16px; } }
+  @media (max-width: 780px) { .workspace, #device-status { grid-template-columns: 1fr; } main { padding: 24px 16px; } }
 </style>
 </head>
 <body>
@@ -56,10 +62,16 @@
   <p>Frame the board and both feet. Record video + sync starts recording before the LED countdown.</p>
   <div class="meta"><span id="session">Waiting for session</span><span id="samples">0 samples</span><span id="duration">0:00</span></div>
   <p id="demo" hidden>Demo sensor session: no physical LED will flash. Webcam video is real, but this session is not training data.</p>
-  <section id="storage-budget" aria-labelledby="storage-title" hidden>
-    <div><span id="storage-title">Recording time left</span><span id="storage-value">—</span></div>
-    <div class="storage-context"><p id="storage-detail"></p><p id="storage-note" class="note"></p></div>
-  </section>
+  <div id="device-status" hidden>
+    <section id="storage-budget" aria-labelledby="storage-title" hidden>
+      <div><span id="storage-title">Recording time left</span><span id="storage-value">—</span></div>
+      <div class="storage-context"><p id="storage-detail"></p><p id="storage-note" class="note"></p></div>
+    </section>
+    <section id="battery-status" aria-labelledby="battery-title" hidden>
+      <div><span id="battery-title">Board battery</span><span id="battery-value">—</span></div>
+      <div class="battery-context"><p id="battery-detail"></p><p id="battery-note" class="note"></p></div>
+    </section>
+  </div>
   <div class="workspace">
     <section class="panel" aria-labelledby="camera-title">
       <h2 id="camera-title">1. Webcam recording</h2>

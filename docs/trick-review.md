@@ -142,7 +142,8 @@ confirmed labels. Save each edited interval before closing the tab.
 
 The **Accelerometer + gyroscope** plots are visible beneath the audio timeline
 by default, with a sample count, start/finish markers, and the same time window.
-Click the motion plot to seek. Expand **Align video and sensor clocks**, then
+Click the motion plot to seek. **LED sync & sensors** beneath the video jumps
+to the plots and the expanded **Match LED flashes · align video and sensors** controls. Then
 pause at the first frame where a known
 LED flash lights up, select its recorded sync ID, and click **Match flash to
 current frame**. Match another flash near the end to estimate drift. The app
@@ -153,6 +154,13 @@ rejected before writing. A single point assumes no drift. The terminal asks for
 a second flash only when one distinct flash is matched; with two or more it
 reports the active drift correction. Re-matching a flash updates its existing
 point rather than counting it as an additional flash.
+
+If sensor data is missing, this section stays visible and identifies the missing
+`samples.csv` or `events.jsonl`. Download or import the onboard recording into
+the same session folder (see [onboard recovery](onboard-recording.md#record-and-download)),
+then restart the review server and reload the page. Flash matching requires recorded
+LED events and a closed/imported session. Recovered recordings retain acquisition
+and storage warnings, including an incomplete recording after a failed stop.
 
 The motion plots show raw acceleration and angular-speed magnitudes.
 When no measured alignment exists, the suggested offset comes only from file

@@ -11,10 +11,56 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from viz.trick_review import (
-    audio_features, byte_range, cached_video_timing, extract_audio, make_server, probe, validate_review, video_timing,
+    audio_features, byte_range, cached_video_timing, extract_audio, make_server, probe, sensor_context, validate_review, video_timing,
 )
 
 HAS_SCIENCE = all(importlib.util.find_spec(name) for name in ("numpy", "scipy"))
+
+
+@unittest.skipUnless(HAS_SCIENCE, "sensor inspection requires numpy")
+class SensorContextTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.session = Path(temporary.name)
+        self.source = self.session / "clip.mp4"
+        self.meta = dict(onboard_id="recording", boot_id="board", device_origin_us=1000000,
+                         onboard_stop_error="storage_flush_failed")
+
+    def context(self):
+        (self.session / "metadata.json").write_text(json.dumps(self.meta))
+        return sensor_context(self.source)
+
+    def test_failed_download_explains_missing_files_and_preserves_board_error(self):
+        result = self.context()
+        self.assertEqual(result["samples"], [])
+        self.assertEqual(result["syncs"], [])
+        self.assertIn("samples.csv is missing", result["samples_message"])
+        self.assertIn("Download or import", result["samples_message"])
+        self.assertIn("events.jsonl is missing", result["sync_unavailable_reason"])
+        self.assertIn("storage_flush_failed", result["warnings"][0])
+
+    def test_recovered_samples_and_flashes_are_available_with_quality_warning(self):
+        self.meta.update(closed_utc="2026-09-24", onboard_quality=dict(issues=["missing_footer", "storage_flush_failed"]))
+        (self.session / "samples.csv").write_text("t_s,ax,ay,az,gx,gy,gz\n0,0,0,9.81,0,0,0\n0.005,0,0,9.81,1,0,0\n")
+        (self.session / "events.jsonl").write_text(json.dumps(dict(
+            kind="sync", edge=1, led_enabled=True, boot_id="board", device_us=2000000, sync_id=1)))
+        result = self.context()
+        self.assertEqual(result["samples"], [[0, 9.81, 0], [.005, 9.81, 1]])
+        self.assertEqual(result["syncs"], [dict(id=1, session_s=1)])
+        self.assertEqual(result["samples_message"], "")
+        self.assertEqual(result["sync_unavailable_reason"], "")
+        self.assertIn("missing_footer, storage_flush_failed", result["warnings"][0])
+        del self.meta["closed_utc"]
+        self.assertIn("Stop recording", self.context()["sync_unavailable_reason"])
+
+    def test_empty_import_and_events_from_another_boot_are_explained(self):
+        (self.session / "samples.csv").write_text("t_s,ax,ay,az,gx,gy,gz\n")
+        (self.session / "events.jsonl").write_text(json.dumps(dict(
+            kind="sync", edge=1, led_enabled=True, boot_id="other", device_us=2000000, sync_id=1)))
+        result = self.context()
+        self.assertIn("no usable sensor samples", result["samples_message"])
+        self.assertIn("no enabled LED flashes", result["sync_unavailable_reason"])
 
 
 class FrameTimingTests(unittest.TestCase):

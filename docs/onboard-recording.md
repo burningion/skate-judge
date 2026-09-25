@@ -160,6 +160,52 @@ retains valid whole packets and marks a missing footer or truncated tail
 incomplete. CRC and sequence failures are rejected; no missing samples are
 invented. Prefer **Stop & save** before removing power.
 
+## Diagnose an SD write or flush fault
+
+`storage_flush_failed` means `fflush` or `fsync` returned an error. A recording
+stops on the first failure. It does not establish whether the cause was the
+card, wiring, supply, or software. Repair any visibly loose connection first,
+with power off, and secure the wiring against movement. A stable common ground
+between the Feather and SD breakout is required.
+
+The diagnostic firmware reports `storage_diagnostics_version: 1`, the configured
+`sd_spi_hz`, and `storage_diagnostics` in `/status`. The diagnostics retain the
+first failing operation, its `errno`, the device timestamp and operation duration,
+bytes accepted by stdio, and the bytes/time of the last successful flush+fsync.
+An errno of zero means that the failing call did not supply an error code; it
+does not mean success. Accepted bytes are not a durability guarantee. A successful
+closing footer includes the pre-footer diagnostics; final status includes close
+errors too. No write retries or automatic remounts hide a failed recording.
+
+While connected, the laptop recorder saves `board_status.jsonl` approximately
+once per second and immediately on phase/error changes. It also saves an observed
+fault to `board_fault.json`, before Stop & save. The stop status is retained in
+`metadata.json` before download begins. Import after a reboot also picks up a
+saved fault when its recording ID and boot ID match the raw file. These host files
+cannot capture a failure that occurs while the laptop is disconnected.
+
+Build the diagnostic firmware with `./flash-feather.sh --compile-only`; upload
+with `./flash-feather.sh` once the board is idle and recordings are backed up.
+Then use a fresh session for each comparison:
+
+1. Keep the current 4 MHz SD clock and repaired wiring. Record at least ten
+   minutes on USB power, stop, download, and check `onboard_quality.usable`.
+2. Repeat on battery power with the laptop connected by Wi-Fi, so USB does not
+   change the power conditions. First keep the board still, then test ordinary
+   movement with secured wiring. Save the status journal for each run.
+3. If it still fails, compare a 1 MHz build (`SD_SPI_HZ=1000000 ./flash-feather.sh`)
+   under the same conditions. Espressif recommends lowering the clock as a
+   diagnostic for SD communication problems in its
+   [SD SPI example](https://github.com/espressif/esp-idf/blob/master/examples/storage/sd_card/sdspi/README.md).
+4. Compare another known-good FAT32 card only after preserving the original.
+   Keep the power, clock and wiring unchanged for that comparison.
+
+A pass on USB alone does not validate battery-powered skating. If failures
+follow movement or power source, inspect the ground/supply joints and SPI wiring
+and measure the SD board's supply during writes. If a particular card fails
+across stable configurations, investigate that card/filesystem. Keep the raw log
+and fault diagnostics before making further changes.
+
 ## Record and download
 
 To check the physical LEDs without starting a recording, install the current
@@ -180,7 +226,47 @@ It also samples battery voltage before and during a pulse using the Feather's
 MAX17048 (unavailable on older gauge revisions), and checks that the GPIO's RMT
 transmitter is attached and idle after sending. These diagnostics cannot verify
 voltage at the stick's solder pads or detect visible light; `-1` means unavailable
-or not yet tested. Battery reads happen only during this idle test.
+or not yet tested. These before/during-pulse readings are separate from the live
+battery display below.
+
+### Live battery level
+
+The recorder shows **Board battery** beside storage capacity, with estimated
+charge percentage and voltage. The logger polls the Feather's MAX17048 every
+five seconds while idle or recording. It reads the gauge's state-of-charge
+register, rather than converting voltage to percentage. A compatible, connected
+single-cell LiPo is required. The estimate does not measure current draw or
+predict recording time, and it does not identify whether USB is charging the cell.
+The gauge model and conversions follow the
+[MAX17048 datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf).
+
+The panel warns at 20% and 10%; it does not automatically stop recording.
+Disconnected, failed, or stale readings clear the displayed percentage. Older
+firmware shows an update message; older Feather gauge revisions are unavailable.
+Gauge reads share the acquisition task's I²C bus, have a short timeout, and are
+deferred during sync pulses. A gauge read failure does not count as an IMU error.
+
+Read the latest cached sample without flashing the LEDs:
+
+```bash
+uv run --offline capture/onboard.py status                     # Wi-Fi
+uv run --offline capture/onboard.py --board serial:auto status # USB
+```
+
+Look for `battery_available`, `battery_percent`, `battery_mv`, and
+`battery_age_ms`. An unavailable reading uses JSON `null` for percentage and
+voltage. The sample is valid for at most 15 seconds. Restart the laptop recorder
+after updating it to load the new panel. For the confirmed stick wiring on
+GPIO6, upload using `SYNC_LED_PIN=6 ./flash-feather.sh`.
+
+The GPIO6 build passed a USB-powered bench check on 2026-09-25: 6,605 samples
+at 196.47 Hz, six battery refreshes during capture, and three paired sync pulses.
+There were no read errors, retries, FIFO overruns, or sample gaps beyond the
+normal 5.09 ms spacing. The gauge reported about 82% at 4.16 V. This validates
+monitoring alongside acquisition, not battery-only runtime or percentage accuracy.
+The verified bench log and report are in `.build/battery-check-20260925/`.
+
+### Start recording
 
 Join the Feather's `SkateJudge-XXXX` network, password `skate-judge`, then:
 

@@ -214,13 +214,19 @@ def import_log(path, directory, allow_incomplete=False, stop_error=""):
         raise ValueError("Samples/events already exist; choose a new output directory.")
     previous_path = directory / "metadata.json"
     previous = json.loads(previous_path.read_text()) if previous_path.exists() else {}
+    stop_status = previous.get("onboard_stop_status", {})
+    fault_path = directory / "board_fault.json"
+    if not stop_status and fault_path.exists():
+        stop_status = json.loads(fault_path.read_text())
+    if any(stop_status.get(key) != data["metadata"].get(key) for key in ("id", "boot_id")):
+        stop_status = {}
     samples, quality = data["samples"], data["quality"]
     storage = data["metadata"].get("storage", "flash")
     if storage not in ("sd", "flash"):
         raise ValueError(f"Unknown recording storage: {storage}")
     # Closing/fsync can fail after END was written. Preserve the board's final
     # error as well as errors embedded in the raw file.
-    stop_error = stop_error or previous.get("onboard_stop_error", "")
+    stop_error = stop_error or previous.get("onboard_stop_error", "") or stop_status.get("error", "")
     if stop_error:
         quality["usable"] = False
         if stop_error not in quality["issues"]:
@@ -234,6 +240,8 @@ def import_log(path, directory, allow_incomplete=False, stop_error=""):
                 onboard_id=data["metadata"]["id"], onboard_quality=quality,
                 onboard_raw_file=path.name, onboard_sensor=data["metadata"],
                 sequence_note="Imported sequence numbers index complete FIFO slots; inspect onboard_quality for loss.")
+    if stop_status:
+        meta["onboard_stop_status"] = stop_status
     meta.setdefault("created_utc", datetime.now(timezone.utc).isoformat())
     with (directory / "samples.csv.tmp").open("w", newline="") as stream:
         writer = csv.DictWriter(stream, FIELDS)

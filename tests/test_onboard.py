@@ -231,6 +231,24 @@ class LogTests(unittest.TestCase):
         self.assertIn("missing_footer", meta["onboard_quality"]["issues"])
         self.assertIn("storage_buffer_full", meta["onboard_quality"]["issues"])
 
+    def test_recovery_retains_observed_storage_fault_without_stop_or_footer(self):
+        self.write(fixture(storage="sd")[:-1])
+        for boot, identity, matched in [("1234abcd", IDENTITY, True),
+                                         ("other", IDENTITY, False),
+                                         ("1234abcd", "f" * 32, False)]:
+            with self.subTest(boot=boot, identity=identity):
+                out = self.root / f"recovery-{boot}-{identity}"
+                out.mkdir()
+                fault = dict(id=identity, boot_id=boot, phase="fault", error="storage_flush_failed",
+                             storage_diagnostics=dict(operation="fsync", errno=5, at_us=287000000))
+                (out / "board_fault.json").write_text(json.dumps(fault))
+                meta = import_log(self.log, out, allow_incomplete=True)
+                self.assertEqual("storage_flush_failed" in meta["onboard_quality"]["issues"], matched)
+                if matched:
+                    self.assertEqual(meta["onboard_stop_status"]["storage_diagnostics"], fault["storage_diagnostics"])
+                else:
+                    self.assertNotIn("onboard_stop_status", meta)
+
 
 class Response(io.BytesIO):
     def __init__(self, data, headers=None, fail_after=None):
@@ -326,6 +344,36 @@ class DownloadTests(unittest.TestCase):
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_storage_fault_is_persisted_when_observed_before_finish_or_reboot(self):
+        client = Mock()
+        diagnostic = dict(operation="fsync", errno=5, at_us=287000000, synced_bytes=1300000)
+        base = dict(protocol=1, phase="recording", id=IDENTITY, boot_id="old", error="")
+        fault = dict(base, phase="fault", error="storage_flush_failed", storage_diagnostics=diagnostic)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "metadata.json").write_text(json.dumps(dict(onboard_id=IDENTITY)))
+            recording = OnboardRecording(client, root)
+            recording.identity, recording.boot = IDENTITY, "old"
+            with patch("capture.onboard.time.monotonic", return_value=10):
+                client.request.return_value = base
+                recording.status(); recording.status()
+                client.request.return_value = fault
+                recording.status(); recording.status()
+                rows = (root / "board_status.jsonl").read_text().splitlines()
+                self.assertEqual(len(rows), 2, "unchanged polls are limited to one per second")
+                saved = json.loads((root / "board_fault.json").read_text())
+                self.assertEqual(saved["storage_diagnostics"], diagnostic)
+                self.assertEqual(saved["error"], "storage_flush_failed")
+                client.request.return_value = dict(base, boot_id="rebooted", id="", phase="idle")
+                with self.assertRaisesRegex(ValueError, "restarted"):
+                    recording.status()
+                self.assertEqual(json.loads((root / "board_fault.json").read_text()), saved)
+                self.assertEqual(len((root / "board_status.jsonl").read_text().splitlines()), 3)
+            with patch("capture.onboard.time.monotonic", return_value=12):
+                client.request.return_value = fault
+                recording.status()
+                self.assertEqual(len((root / "board_status.jsonl").read_text().splitlines()), 4)
+
     def test_stop_fault_is_saved_before_an_interrupted_download(self):
         client = Mock()
         status = dict(protocol=1, phase="fault", id=IDENTITY, boot_id="old", error="storage_close_failed")
@@ -340,6 +388,7 @@ class ReadinessTests(unittest.TestCase):
                 recording.finish()
             saved = json.loads(manifest.read_text())
             self.assertEqual(saved["onboard_stop_error"], "storage_close_failed")
+            self.assertEqual(saved["onboard_stop_status"], status)
             self.assertEqual(saved["rider"], "test")
             self.assertFalse(recording.downloading)
 

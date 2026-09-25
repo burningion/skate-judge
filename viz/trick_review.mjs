@@ -111,6 +111,8 @@ export async function init() {
   requireCurrentServer(data, saved);
   const video = $("video"), audio = data.audio, duration = data.duration_s;
   const frameTimes = data.video_timing?.frame_times_s || [];
+  const syncUnavailable = data.sensor.sync_unavailable_reason || (data.sensor.syncs.length ? ""
+    : "Flash matching needs the recorded LED events from this session's events.jsonl. Download or import the sensor recording, then restart the review server.");
   let reviewed = saved.intervals, revision = saved.revision, rows = [], selected = null;
   let labelsRevision = saved.labels_revision, labelContext = saved.label_context;
   let lastTrick = [...reviewed].reverse().find(row => row.trick)?.trick || "";
@@ -136,7 +138,7 @@ export async function init() {
     const pair = selection();
     for (const id of ["start", "end", "mark-start", "mark-end", "audition", "save", "background", "reject", "note", "trick", "outcome", "label-start", "label-end", "label-mark-start", "label-mark-end"]) $(id).disabled = !pair || saving;
     for (const id of ["previous", "next", "new", "new-background", "open-overlap", "threshold", "min-gap", "max-gap", "offset", "scale", "pending-only", "save-sync"]) $(id).disabled = saving;
-    $("save-sync").disabled = saving || !data.sensor.syncs.length;
+    $("sync-id").disabled = $("save-sync").disabled = saving || Boolean(syncUnavailable);
     $("save").disabled ||= !labelContext.available;
     $("background").disabled ||= !labelContext.available;
     $("reject").disabled ||= Boolean(pair?.label_id);
@@ -399,6 +401,12 @@ export async function init() {
   $("back").disabled = $("forward").disabled = !frameTimes.length;
   $("timing").textContent = `All controls use the seekable review video's seconds. Original media PTS = review seconds + ${data.source_pts_origin_s.toFixed(6)} s. The original recording is preserved.`;
   $("sensor-quality").textContent = data.sensor.warnings.join(" ") || "Raw sensor magnitudes; gaps over 30 ms are not connected.";
+  $("sensor-empty").hidden = Boolean(data.sensor.samples.length);
+  $("sensor-empty").textContent = data.sensor.samples_message || "No accelerometer or gyroscope samples loaded. This session needs samples.csv; download or import the sensor recording, then restart the review server.";
+  $("imu").hidden = $("sensor-help").hidden = !data.sensor.samples.length;
+  $("sensor-count").textContent = `${data.sensor.samples.length.toLocaleString()} samples loaded`;
+  $("sync-unavailable").hidden = !syncUnavailable;
+  $("sync-unavailable").textContent = syncUnavailable;
   $("syncs").textContent = data.sensor.syncs.length ? `Recorded LED rises (session seconds): ${data.sensor.syncs.map(s => `#${s.id} at ${s.session_s.toFixed(3)}`).join(" · ")}` : "No recorded LED flashes.";
   let mapping = labelContext.mapping || data.sensor.mapping;
   data.sensor.mapping = mapping;
@@ -423,7 +431,7 @@ export async function init() {
     option.textContent = `#${sync.id} · session ${sync.session_s.toFixed(3)} s`;
     $("sync-id").append(option);
   }
-  $("save-sync").disabled = !data.sensor.syncs.length;
+  $("save-sync").disabled = Boolean(syncUnavailable);
   $("save-sync").onclick = async () => {
     video.pause(); $("save-sync").disabled = true;
     try {
@@ -437,9 +445,9 @@ export async function init() {
       regenerate(); draw();
       status(`Saved flash correspondence. ${mapping.points} point(s) now align this video with the sensor session.`);
     } catch (error) { status(`Could not save flash: ${error.message}`, true); }
-    finally { $("save-sync").disabled = false; }
+    finally { setEditor(); }
   };
-  $("sensor-panel").hidden = !data.sensor.samples.length;
+  $("sensor-panel").hidden = false;
   video.src = data.media_url; $("seek").max = duration;
   video.addEventListener("error", () => status("Video playback failed. Try a browser that supports this recording’s codec.", true));
   video.addEventListener("loadedmetadata", () => draw());

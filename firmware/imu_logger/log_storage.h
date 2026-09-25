@@ -2,6 +2,7 @@
 #include <SD.h>
 #include <SPI.h>
 #include "log_queue.h"
+#include "log_diagnostics.h"
 
 #ifndef SKATE_SD
 #define SKATE_SD 1
@@ -78,6 +79,7 @@ struct WriterStatus {
   const char *error = "";
   uint64_t written = 0, freeBytes = 0;
   uint32_t crc = 0, maxWriteUs = 0, maxFlushUs = 0;
+  StorageDiagnostics diagnostics;
 };
 static WriterStatus writerStatus;
 static portMUX_TYPE writerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -90,6 +92,13 @@ static void publishWriter(const WriterStatus &value) {
 enum WriteAction { OPEN_LOG, SYNC_LOG, CLOSE_LOG };
 struct WriteCommand { WriteAction action; char path[100]; };
 static QueueHandle_t writeCommands, writeReplies;
+
+struct LogFileIO {
+  FILE *file;
+  uint64_t now() { return esp_timer_get_time(); }
+  int flush() { return fflush(file); }
+  int sync() { return fsync(fileno(file)); }
+};
 
 // The writer owns the FILE throughout capture. Acquisition never waits for disk
 // during RECORDING, including fsync and FAT allocation; only start/stop wait.
@@ -104,20 +113,29 @@ static void storageWriter(void *) {
     size_t size = logQueue.pop(block, sizeof(block));
     if (size && file && !*result.error) {
       uint64_t start = esp_timer_get_time();
+      errno = 0;
       size_t written = fwrite(block, 1, size, file);
-      result.maxWriteUs = max(result.maxWriteUs, uint32_t(esp_timer_get_time() - start));
+      int error = errno;
+      uint64_t at = esp_timer_get_time();
+      result.maxWriteUs = max(result.maxWriteUs, uint32_t(at - start));
       result.crc = logCRC(result.crc, block, written);
       result.written += written;
-      if (written != size) fail("storage_write_failed");
+      if (written != size) {
+        result.diagnostics.fail("fwrite", error, at, at - start);
+        fail("storage_write_failed");
+      }
     }
     return size;
   };
   auto sync = [&]() {
     if (file && !*result.error) {
       uint64_t start = esp_timer_get_time();
-      if (fflush(file) || fsync(fileno(file))) fail("storage_flush_failed");
-      result.freeBytes = recordingStorage->freeBytes();
+      LogFileIO io{file};
+      if (!syncLogFile(io, result.diagnostics, result.written)) fail("storage_flush_failed");
       result.maxFlushUs = max(result.maxFlushUs, uint32_t(esp_timer_get_time() - start));
+      // Preserve the last known free-space reading after a storage failure.
+      // Another filesystem call cannot explain or repair the failed sync.
+      if (!*result.error) result.freeBytes = recordingStorage->freeBytes();
       if (result.freeBytes <= RESERVE_BYTES) fail("storage_capacity_reached");
       lastFlush = esp_timer_get_time();
     }
@@ -127,11 +145,25 @@ static void storageWriter(void *) {
     if (xQueueReceive(writeCommands, &command, pdMS_TO_TICKS(5)) == pdTRUE) {
       if (command.action == OPEN_LOG) {
         result = WriterStatus();
+        uint64_t start = esp_timer_get_time();
+        errno = 0;
         int fd = open(command.path, O_WRONLY | O_CREAT | O_EXCL, 0600);
-        if (fd < 0) fail("log_exists_or_storage_unavailable");
+        int error = errno;
+        if (fd < 0) {
+          uint64_t at = esp_timer_get_time();
+          result.diagnostics.fail("open", error, at, at - start);
+          fail("log_exists_or_storage_unavailable");
+        }
         else {
+          start = esp_timer_get_time();
+          errno = 0;
           file = fdopen(fd, "wb");
-          if (!file) { close(fd); fail("log_open_failed"); }
+          error = errno;
+          if (!file) {
+            uint64_t at = esp_timer_get_time();
+            result.diagnostics.fail("fdopen", error, at, at - start);
+            close(fd); fail("log_open_failed");
+          }
           else { setvbuf(file, stdioBuffer, _IOFBF, sizeof(stdioBuffer)); result.open = true; }
         }
         result.freeBytes = recordingStorage->freeBytes();
@@ -140,7 +172,14 @@ static void storageWriter(void *) {
         while (writePending()) {}
         sync();
         if (command.action == CLOSE_LOG && file) {
-          if (fclose(file)) fail("storage_close_failed");
+          uint64_t start = esp_timer_get_time();
+          errno = 0;
+          int closed = fclose(file), error = errno;
+          if (closed) {
+            uint64_t at = esp_timer_get_time();
+            result.diagnostics.fail("fclose", error, at, at - start);
+            fail("storage_close_failed");
+          }
           file = nullptr; result.open = false;
         }
       }

@@ -89,7 +89,7 @@ test("new proposals fully covered by a human label do not return as duplicate wo
 
 // Exercise the real controller with a small DOM/media fixture. This verifies
 // user actions and requests without depending on a graphical browser or codec.
-async function controller(t, {legacyServer = false, intervals = [], onsets = [2, 2.5, 8, 8.5]} = {}) {
+async function controller(t, {legacyServer = false, intervals = [], onsets = [2, 2.5, 8, 8.5], sensor = {}} = {}) {
   const html = await readFile(new URL("../viz/trick_review.html", import.meta.url), "utf8");
   const nodes = new Map(), listeners = new Map();
   function element() {
@@ -105,6 +105,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
     const node = element(), tag = match[0];
     node.value = tag.match(/\bvalue="([^"]*)"/)?.[1] ?? "";
     node.checked = /\bchecked\b/.test(tag); node.disabled = /\bdisabled\b/.test(tag);
+    node.hidden = /\bhidden\b/.test(tag); node.open = /\bopen\b/.test(tag);
     if (match[1] === "select") {
       const block = html.slice(match.index, html.indexOf("</select>", match.index));
       const options = [...block.matchAll(/<option\b[^>]*>/g)].map(row => row[0]);
@@ -121,7 +122,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
     video_timing: {fps: 120000 / 1001, frame_times_s: [0, 1001 / 120000, 2002 / 120000]},
     audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
-    sensor: {mapping, samples: [], warnings: [], syncs: [], offset_hint_s: 0}};
+    sensor: {mapping, samples: [], warnings: [], syncs: [], offset_hint_s: 0, ...sensor}};
   if (legacyServer) { delete data.api_version; delete state.label_context; delete state.labels_revision; }
   const calls = [];
   let fail = false;
@@ -157,6 +158,52 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
     listeners.get("keydown")({key, target: {closest: () => null}, preventDefault() {}});
   }};
 }
+
+test("missing sensor data keeps flash controls visible and explains recovery", async t => {
+  const {get, calls} = await controller(t, {sensor: {
+    samples_message: "samples.csv is missing. Download or import the recording.",
+    sync_unavailable_reason: "events.jsonl is missing.", warnings: ["storage_flush_failed"]}});
+  assert.equal(get("sensor-panel").hidden, false);
+  assert.equal(get("sync-controls").open, true);
+  assert.equal(get("sensor-empty").hidden, false);
+  assert.match(get("sensor-empty").textContent, /samples.csv.*Download/);
+  assert.equal(get("imu").hidden, true);
+  assert.equal(get("sensor-count").textContent, "0 samples loaded");
+  assert.match(get("sensor-quality").textContent, /storage_flush_failed/);
+  assert.equal(get("sync-unavailable").hidden, false);
+  assert.match(get("sync-unavailable").textContent, /events.jsonl/);
+  assert.equal(get("sync-id").disabled, true);
+  await get("save-sync").click();
+  assert.equal(calls.length, 0);
+});
+
+test("recovered data shows motion plots and enables recorded flash matching", async t => {
+  const {get} = await controller(t, {sensor: {samples: [[0, 9.81, 0], [.005, 9.82, 1]],
+    syncs: [{id: 1, session_s: 1}], warnings: ["missing_footer, storage_flush_failed"]}});
+  assert.equal(get("sensor-panel").hidden, false);
+  assert.equal(get("sensor-empty").hidden, true);
+  assert.equal(get("imu").hidden, false);
+  assert.match(get("sensor-count").textContent, /2 samples in view/);
+  assert.equal(get("sync-controls").open, true);
+  assert.equal(get("sync-unavailable").hidden, true);
+  assert.equal(get("save-sync").disabled, false);
+  assert.equal(get("sync-id").disabled, false);
+  assert.match(get("sync-id").children[0].textContent, /#1/);
+});
+
+test("recorded flashes stay accessible without samples but open recordings explain disabled matching", async t => {
+  const {get} = await controller(t, {sensor: {syncs: [{id: 1, session_s: 1}]}});
+  assert.equal(get("sensor-panel").hidden, false);
+  assert.equal(get("save-sync").disabled, false);
+  assert.equal(get("sensor-empty").hidden, false);
+});
+
+test("an unfinished recording explains why recorded flashes cannot be matched yet", async t => {
+  const {get} = await controller(t, {sensor: {syncs: [{id: 1, session_s: 1}],
+    sync_unavailable_reason: "Stop recording and finish importing the sensor data before matching flashes."}});
+  assert.equal(get("save-sync").disabled, true);
+  assert.match(get("sync-unavailable").textContent, /Stop recording/);
+});
 
 test("UI saves background in one click, advances, and never labels untouched suggestions", async t => {
   const {get, calls, state} = await controller(t);

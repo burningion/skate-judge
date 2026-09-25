@@ -56,12 +56,25 @@ class ControlHTTPTests(unittest.TestCase):
             ("/controls.mjs", "text/javascript"),
             ("/webcam.mjs", "text/javascript"),
             ("/storage.mjs", "text/javascript"),
+            ("/battery.mjs", "text/javascript"),
         ):
             code, body, content_type = self.call(path, method="GET")
             self.assertEqual(code, 200)
             self.assertIn(mime, content_type)
             self.assertTrue(body)
         self.assertEqual(self.call("/../session.py", method="GET")[0], 404)
+
+    def test_battery_expires_even_when_board_polling_is_blocked_by_a_download(self):
+        self.control.publish_status(dict(battery=dict(state="ready", percent=75.5,
+                                                     voltage_mv=4000, age_ms=14000)))
+        code, body, _ = self.call("/api/status", method="GET")
+        self.assertEqual(code, 200)
+        self.assertEqual(json.loads(body)["battery"]["percent"], 75.5)
+        self.control.status_published_at -= 2
+        _, body, _ = self.call("/api/status", method="GET")
+        self.assertEqual(json.loads(body)["battery"],
+                         dict(state="stale", percent=None, voltage_mv=None))
+        self.assertEqual(self.control.status["battery"]["percent"], 75.5)
 
     def test_cross_origin_and_wrong_host_cannot_start_video(self):
         self.assertEqual(

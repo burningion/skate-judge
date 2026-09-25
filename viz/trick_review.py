@@ -189,6 +189,24 @@ def sensor_context(source):
                     and meta.get("device_origin_us") is not None):
                 result["syncs"].append(dict(id=row["sync_id"],
                     session_s=(row["device_us"] - meta["device_origin_us"]) / 1e6))
+    result["samples_message"] = ""
+    if not result["samples"]:
+        result["samples_message"] = ("No accelerometer or gyroscope data: samples.csv is missing from this session."
+            if not csv_path.exists() else "samples.csv contains no usable sensor samples.")
+        if meta.get("onboard_id"):
+            result["samples_message"] += " Download or import this session's onboard recording, then restart the review server."
+    result["sync_unavailable_reason"] = ""
+    if not result["syncs"]:
+        result["sync_unavailable_reason"] = ("Flash matching is unavailable: events.jsonl is missing from this session."
+            if not (session / "events.jsonl").exists()
+            else "Flash matching is unavailable: no enabled LED flashes were recorded for this session's device clock.")
+    elif "closed_utc" not in meta:
+        result["sync_unavailable_reason"] = "Stop recording and finish importing the sensor data before matching flashes."
+    issues = list(meta.get("onboard_quality", {}).get("issues", []))
+    if meta.get("onboard_stop_error") and meta["onboard_stop_error"] not in issues:
+        issues.append(meta["onboard_stop_error"])
+    if issues:
+        result["warnings"].append(f"Board recording reported {', '.join(issues)}; sensor data may be incomplete.")
     if (session / "video_sync.jsonl").exists():
         sys.path.insert(0, str(ROOT)) if str(ROOT) not in sys.path else None
         from capture.session import video_mapping
@@ -319,7 +337,9 @@ def make_server(directory, media, data, port):
         content = path.read_bytes() if path.exists() else b""
         active = {row["id"]: row for row in (json.loads(line) for line in content.splitlines() if line.strip())}
         meta = read_json(session / "metadata.json", {})
-        context = dict(available=False, reason="Align this clip to a closed sensor recording to save labels.",
+        context = dict(available=False, reason=data["sensor"].get("samples_message")
+                       or data["sensor"].get("sync_unavailable_reason")
+                       or "Align this clip to a closed sensor recording to save labels.",
                        mapping=None, coverage=None)
         try:
             scale, offset, count = video_mapping(session, data["video"])
