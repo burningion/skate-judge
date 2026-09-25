@@ -15,6 +15,11 @@ function space(bytes) {
 
 export function storageView(budget) {
   const state = budget?.state ?? 'unavailable';
+  if (state === 'recovering') return {
+    title: 'SD card interrupted', value: 'Buffering', detail: 'Motion capture continues in RAM',
+    note: 'Retrying the card for up to five seconds. Recording will stop if recovery fails or the buffer fills.',
+    level: 'critical',
+  };
   const active = state === 'recording';
   const available = ['ready', 'recording', 'full'].includes(state) && Number.isFinite(budget?.remaining_s);
   const seconds = available ? budget.remaining_s : null;
@@ -32,6 +37,7 @@ export function storageView(budget) {
     note = budget.rate_source === 'measured' ? 'Based on the measured log rate.' : 'Initial estimate; updates once recording gets underway.';
     if (budget.limit === 'file') note += ' Limited by the size of one recording file.';
     if (active && level !== 'normal') note += ' Space is running low—stop and save soon.';
+    if (active && budget.recoveries > 0) note += ` Recovered SD interruptions: ${budget.recoveries}. Recording continues.`;
   }
   return {
     title: active ? 'Recording time left' : 'Time available for next recording',

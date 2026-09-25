@@ -6,6 +6,17 @@ import unittest
 
 
 class LogQueueTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler needed for writer recovery test")
+    def test_storage_recovery_replays_unconfirmed_bytes_and_bounds_permanent_faults(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            binary = str(Path(directory) / "writer-test")
+            subprocess.run(["c++", "-std=c++17", "-O2", "-Wall", "-Wextra",
+                            "-I", str(root / "firmware/imu_logger"),
+                            str(root / "tests/native/log_writer_test.cpp"), "-o", binary],
+                           check=True, capture_output=True, timeout=30)
+            subprocess.run([binary], check=True, capture_output=True, timeout=30)
+
     @unittest.skipUnless(shutil.which("c++"), "C++ compiler needed for storage diagnostics test")
     def test_storage_failures_preserve_operation_errno_and_last_successful_sync(self):
         root = Path(__file__).resolve().parents[1]

@@ -305,10 +305,11 @@ static void stopLog(State &s, bool &lit) {
   writer.diagnostics.json(diagnostics, sizeof(diagnostics), writer.written);
   char footer[897]; // END payload shares the decoder's 896-byte packet bound.
   snprintf(footer, sizeof(footer),
-    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\",\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_diagnostics\":%s}",
+    "{\"accel_samples\":%lu,\"gyro_samples\":%lu,\"zero_accel\":%lu,\"io_errors\":%lu,\"fifo_overruns\":%lu,\"bus_retries\":%lu,\"error\":\"%s\",\"bus_error\":\"%s\",\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_recoveries\":%lu,\"storage_recovery_attempts\":%lu,\"storage_diagnostics\":%s}",
     (unsigned long)s.accel, (unsigned long)s.gyro, (unsigned long)s.zeroAccel,
     (unsigned long)s.ioErrors, (unsigned long)s.fifoOverruns, (unsigned long)s.busRetries, s.error, s.ioErrors ? firstBusError : "",
-    (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs, diagnostics);
+    (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs,
+    (unsigned long)writer.recoveries, (unsigned long)writer.recoveryAttempts, diagnostics);
   // If backpressure discarded raw words, do not claim a complete log with
   // sample counts that cannot match it. Intact packets remain recoverable via
   // --allow-incomplete; the host also retains the board's stop error.
@@ -344,7 +345,7 @@ static bool startLog(State &s, const Command &command) {
   int16_t rawTemp = int16_t(uint16_t(temp[0]) | (uint16_t(temp[1]) << 8));
   char meta[560];
   snprintf(meta, sizeof(meta),
-    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\",\"storage_diagnostics_version\":1,\"sd_spi_hz\":%u}",
+    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\",\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u}",
     s.id, (unsigned long)bootId, int(int8_t(frequencyFine)), 25.0 + rawTemp / 256.0,
     (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name, unsigned(SD_SPI_HZ));
   if (!writePacket(s, META, s.startedUs, meta, strlen(meta)) || !clockAnchor(s) || !durable(s)) return false;
@@ -534,10 +535,11 @@ static void statusResponse() {
   writer.diagnostics.json(diagnostics, sizeof(diagnostics), writer.written);
   char storageStatus[1000];
   snprintf(storageStatus, sizeof(storageStatus),
-    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_diagnostics_version\":1,\"sd_spi_hz\":%u,\"storage_diagnostics\":%s}",
+    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_recovering\":%s,\"storage_recoveries\":%lu,\"storage_recovery_attempts\":%lu,\"storage_pending_bytes\":%lu,\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u,\"storage_diagnostics\":%s}",
     recordingStorage->name, storageWarning, sdStorage.ready ? "true" : "false", flashStorage.ready ? "true" : "false",
     unsigned(LOG_QUEUE_BYTES), (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs,
-    unsigned(SD_SPI_HZ), diagnostics);
+    writer.recovering ? "true" : "false", (unsigned long)writer.recoveries,
+    (unsigned long)writer.recoveryAttempts, (unsigned long)writer.pendingBytes, unsigned(SD_SPI_HZ), diagnostics);
   body.remove(body.length() - 1);
   reply(200, "application/json", body + storageStatus);
 }

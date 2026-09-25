@@ -19,6 +19,16 @@ class StorageBudgetTests(unittest.TestCase):
         self.assertAlmostEqual(budget["remaining_s"], (200000 - 32768 - 32768) / 4500)
         self.assertEqual(budget["state"], "recording")
 
+    def test_recovery_hides_capacity_estimate_then_reports_success(self):
+        status = self.status(storage="sd", storage_recovering=True, storage_recoveries=1)
+        budget = storage_budget(status)
+        self.assertEqual(budget["state"], "recovering")
+        self.assertIsNone(budget["remaining_s"])
+        self.assertEqual(storage_budget(status, connected=False)["state"], "offline")
+        self.assertEqual(storage_budget(dict(status, phase="fault"))["state"], "fault")
+        budget = storage_budget(dict(status, storage_recovering=False))
+        self.assertEqual((budget["state"], budget["recoveries"]), ("recording", 1))
+
     def test_old_flash_firmware_needs_no_upgrade(self):
         status = self.status()
         del status["storage_buffer_bytes"]
@@ -80,4 +90,3 @@ class StorageBudgetTests(unittest.TestCase):
     def test_slow_unhealthy_sampling_does_not_promise_extra_recording_time(self):
         budget = storage_budget(self.status(accel_hz=8, gyro_hz=8, bytes=1000))
         self.assertEqual(budget["rate_source"], "typical")
-

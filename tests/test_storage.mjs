@@ -52,6 +52,16 @@ test('offline, unknown, fault and transition states clear old time values', () =
   assert.equal(storageView(undefined).value, '—');
 });
 
+test('SD recovery replaces the storage estimate with buffering status and keeps its outcome visible', () => {
+  const view = storageView({...budget, state: 'recovering', storage: 'sd'});
+  assert.equal(view.value, 'Buffering');
+  assert.equal(view.level, 'critical');
+  assert.match(view.note, /stop if recovery fails/);
+  const recovered = storageView({...budget, recoveries: 2});
+  assert.match(recovered.note, /Recovered SD interruptions: 2/);
+  assert.equal(recovered.value, '≈ 1:34');
+});
+
 test('rendering updates the visible panel, clears stale time and hides it for legacy capture', () => {
   const nodes = Object.fromEntries(['budget', 'title', 'value', 'detail', 'note']
     .map(key => [`storage-${key}`, {hidden: true, textContent: '', dataset: {}}]));

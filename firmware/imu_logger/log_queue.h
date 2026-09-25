@@ -34,15 +34,26 @@ public:
     head_.store(head + length, std::memory_order_release);
     return true;
   }
-  size_t pop(void *destination, size_t capacity) {
+  // The consumer may inspect/replay bytes, but releases them only after fsync.
+  size_t peek(void *destination, size_t capacity, size_t skip = 0) const {
     uint32_t tail = tail_.load(std::memory_order_relaxed);
     size_t length = head_.load(std::memory_order_acquire) - tail;
+    if (skip >= length) return 0;
+    tail += skip;
+    length -= skip;
     if (length > capacity) length = capacity;
     size_t offset = tail & (Capacity - 1);
     size_t first = length < Capacity - offset ? length : Capacity - offset;
     if (first) memcpy(destination, data_ + offset, first);
     if (length > first) memcpy(static_cast<uint8_t *>(destination) + first, data_, length - first);
-    tail_.store(tail + length, std::memory_order_release);
+    return length;
+  }
+  void consume(size_t length) {
+    tail_.store(tail_.load(std::memory_order_relaxed) + length, std::memory_order_release);
+  }
+  size_t pop(void *destination, size_t capacity) {
+    size_t length = peek(destination, capacity);
+    consume(length);
     return length;
   }
 };

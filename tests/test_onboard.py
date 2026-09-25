@@ -117,6 +117,18 @@ class LogTests(unittest.TestCase):
         self.log.write_bytes(b"".join(packets if packets is not None else fixture()))
         return self.log
 
+    def test_successful_storage_recovery_is_reported_without_hiding_real_loss(self):
+        for error in ("", "storage_recovery_failed"):
+            directory = self.root / (error or "recovered")
+            directory.mkdir()
+            (directory / "metadata.json").write_text(json.dumps(dict(onboard_stop_status=dict(
+                id=IDENTITY, boot_id="1234abcd", storage_recoveries=2, error=error))))
+            result = import_log(self.write(), directory)
+            self.assertEqual(result["onboard_quality"]["storage_recoveries"], 2)
+            self.assertEqual(result["onboard_quality"]["usable"], not bool(error))
+            if error:
+                self.assertIn(error, result["onboard_quality"]["issues"])
+
     def test_208hz_reconstruction_uses_sensor_clock_and_preserves_axes_and_led(self):
         decoded = decode_log(self.write())
         self.assertEqual(len(decoded["samples"]), 416)
@@ -344,6 +356,24 @@ class DownloadTests(unittest.TestCase):
 
 
 class ReadinessTests(unittest.TestCase):
+    def test_recovery_transitions_are_journaled_even_between_one_second_polls(self):
+        client = Mock()
+        base = dict(protocol=1, phase="recording", id=IDENTITY, boot_id="old", error="",
+                    storage_diagnostics=dict(operation="fsync", errno=5, at_us=10))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "metadata.json").write_text("{}")
+            recording = OnboardRecording(client, root)
+            recording.identity, recording.boot = IDENTITY, "old"
+            with patch("capture.onboard.time.monotonic", return_value=10):
+                for recovering, count in ((True, 0), (False, 1), (True, 1), (False, 2)):
+                    client.request.return_value = dict(base, storage_recovering=recovering,
+                                                       storage_recoveries=count)
+                    recording.status(); recording.status()
+            rows = [json.loads(row) for row in (root / "board_status.jsonl").read_text().splitlines()]
+            self.assertEqual([r["storage_recoveries"] for r in rows], [0, 1, 1, 2])
+            self.assertFalse((root / "board_fault.json").exists())
+
     def test_storage_fault_is_persisted_when_observed_before_finish_or_reboot(self):
         client = Mock()
         diagnostic = dict(operation="fsync", errno=5, at_us=287000000, synced_bytes=1300000)

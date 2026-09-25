@@ -282,6 +282,8 @@ def storage_budget(status, connected=True):
     if phase in ("starting", "stopping", "testing_led", "fault"):
         return dict(result, state=phase)
     active = phase == "recording"
+    if active and status.get("storage_recovering"):
+        return dict(result, state="recovering")
     if phase not in ("idle", "saved", "recording") or status.get("error"):
         return result
     reserve = 32768  # RESERVE_BYTES in imu_logger.ino; protects closing the log.
@@ -298,6 +300,7 @@ def storage_budget(status, connected=True):
     available = max(0, free - reserve - pending)
     file_available = max(0, 0xffffffff - reserve - (size if active else 0))
     return dict(result, state="recording" if active else "ready",
+                recoveries=status.get("storage_recoveries", 0) if active else 0,
                 remaining_s=min(available, file_available) / rate,
                 bytes_per_second=rate, rate_source=source,
                 limit="file" if file_available < available else "storage")
@@ -335,7 +338,8 @@ class OnboardRecording:
             return
         diagnostic = status.get("storage_diagnostics", {})
         key = tuple(status.get(k) for k in ("boot_id", "id", "phase", "error")) + (
-            diagnostic.get("operation"), diagnostic.get("errno"), diagnostic.get("at_us"))
+            diagnostic.get("operation"), diagnostic.get("errno"), diagnostic.get("at_us"),
+            status.get("storage_recovering"), status.get("storage_recoveries"), status.get("storage_recovery_attempts"))
         now = time.monotonic()
         changed = key != self.last_status_key
         if not changed and now - self.last_status_saved < 1:
@@ -436,6 +440,8 @@ class OnboardRecording:
                 quality = meta["onboard_quality"]
                 self.result = dict(saved=True, raw_file=raw.name, samples=meta["samples"], quality=quality)
                 self.message = f"Saved {meta['samples']:,} samples at {quality['measured_hz']:.1f} Hz. Original retained onboard."
+                if quality.get("storage_recoveries"):
+                    self.message += f" Recovered SD interruptions: {quality['storage_recoveries']}."
                 if not quality["usable"]:
                     self.message += " Quality issues: " + ", ".join(quality["issues"])
                 return self.result

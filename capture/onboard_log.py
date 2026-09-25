@@ -231,6 +231,10 @@ def import_log(path, directory, allow_incomplete=False, stop_error=""):
         quality["usable"] = False
         if stop_error not in quality["issues"]:
             quality["issues"].append(stop_error)
+    # Successful recovery is diagnostic information, not evidence of lost
+    # samples. The usual CRC/sequence/count/timing checks still determine use.
+    quality["storage_recoveries"] = max(quality["footer"].get("storage_recoveries", 0),
+                                        stop_status.get("storage_recoveries", 0))
     meta = dict(previous, schema=1, transport="onboard_" + storage, synthetic=False,
                 onboard_storage=storage, onboard_stop_error=stop_error,
                 device_origin_us=samples[0]["device_us"], boot_id=data["metadata"]["boot_id"],

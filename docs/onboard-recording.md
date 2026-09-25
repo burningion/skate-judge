@@ -77,8 +77,8 @@ creates `/skate-judge/`; recordings are `/skate-judge/<32-character-id>.bin`.
 No card, a mount failure, or an unusable recording directory selects internal
 flash instead. Status and the recorder show `storage: "sd"` or `"flash"`,
 `sd_ready`, `flash_ready`, free bytes, and a fallback warning. Selection remains
-fixed until reboot. A write failure during capture stops that recording and
-reports a fault; it does not start a second file on another medium. There is no
+fixed until reboot. Temporary SD write/flush failures trigger on-board recovery
+while acquisition continues. It does not start a second file on another medium. There is no
 hot-swap support. A read-only/full card that mounts can still fail at recording
 start; correct that issue or power down and remove it to use flash.
 
@@ -91,6 +91,8 @@ SPI runs at **4 MHz**, a raw ceiling of 500 kB/s. The log requires approximately
 4.5 KiB/s (roughly 16 MiB/hour). Protocol/filesystem overhead and card write
 pauses reduce actual throughput; the clock rate is not a card benchmark.
 The 32 KiB queue provides roughly seven seconds of buffering at that log rate.
+Bytes remain in that queue until a successful flush and fsync, so unconfirmed
+writes can be replayed after a temporary SD error.
 Disk writes, flushes and free-space queries run on the writer task while the
 acquisition task continues draining the sensor FIFO. Buffer exhaustion is an
 explicit `storage_buffer_full` fault. Files stop before FAT32's 4 GiB file limit;
@@ -162,23 +164,71 @@ invented. Prefer **Stop & save** before removing power.
 
 ## Diagnose an SD write or flush fault
 
-`storage_flush_failed` means `fflush` or `fsync` returned an error. A recording
-stops on the first failure. It does not establish whether the cause was the
+`storage_flush_failed` means `fflush` or `fsync` returned an error. The older
+firmware stopped on the first failure. It does not establish whether the cause was the
 card, wiring, supply, or software. Repair any visibly loose connection first,
 with power off, and secure the wiring against movement. A stable common ground
 between the Feather and SD breakout is required.
 
-The diagnostic firmware reports `storage_diagnostics_version: 1`, the configured
+Current firmware reports `storage_diagnostics_version: 2`, the configured
 `sd_spi_hz`, and `storage_diagnostics` in `/status`. The diagnostics retain the
 first failing operation, its `errno`, the device timestamp and operation duration,
 bytes accepted by stdio, and the bytes/time of the last successful flush+fsync.
 An errno of zero means that the failing call did not supply an error code; it
 does not mean success. Accepted bytes are not a durability guarantee. A successful
 closing footer includes the pre-footer diagnostics; final status includes close
-errors too. No write retries or automatic remounts hide a failed recording.
+errors too. The first error stays visible even after successful recovery;
+`synced_bytes` and `last_sync_us` advance again only when recovery succeeds.
+
+For an SD write or flush error, the writer now retains every byte since the last
+successful fsync in RAM. It closes the failed file, remounts without formatting,
+and reopens the same file without creating or truncating it. Before replay it
+checks the file size and the retained boundary of the previously synced data.
+It replays the pending bytes at the last synced offset, performs flush+fsync,
+and reads back the replayed bytes before releasing the RAM. This avoids duplicate
+packets and avoids trusting a simple fsync retry on a failed FatFs file object.
+FatFs documents that an I/O error can abort an open file object in its
+[return-code reference](https://elm-chan.org/fsw/ff/doc/rc.html).
+
+Sampling and LED sync continue on the acquisition task during recovery, without
+any laptop connection. Recovery attempts have a five-second budget; individual
+driver calls can take longer. Buffer exhaustion, an unrecoverable changed file,
+or failure to recover stops the recording with an explicit fault. This cannot
+repair damaged FAT metadata, survive a board power loss, or record indefinitely
+with an unavailable card. Internal flash retains its existing fail-fast behavior.
+
+Status reports `storage_recovering`, `storage_recoveries`,
+`storage_recovery_attempts`, and `storage_pending_bytes`. The recorder shows
+**Buffering** during recovery and retains the recovery count after it succeeds.
+The footer and downloaded metadata retain the count too. A recovered recording
+must still pass the normal packet CRC, sequence, sample-count, and timing checks;
+a recovery count alone does not make it unusable. Restart the laptop recorder
+to load the updated display.
+
+On 2026-09-25 the GPIO6 / 4 MHz build passed a hardware recovery check with two
+deliberately injected fsync errors. Both occurred during a 15-second period with
+the USB control client closed; the board recovered twice and collected 2,954
+additional samples without host commands. The verified 46.7-second raw log
+contained 9,175 matched samples at 196.46 Hz, three paired sync markers, no
+incomplete slots, and maximum sample spacing of 5.091 ms. The injected errors
+were returned after real fsync calls succeeded, so this checks remount/replay on
+the actual card without deliberately corrupting it. Native tests separately
+cover partial writes, a vanished unconfirmed tail, failed flushes, failed
+remounts/read-back, changed files, and permanent outages. This bench check does
+not reproduce a loose connection or a battery supply interruption. Test firmware
+was replaced with the production build; saved artifacts are under
+`.build/recovery-check-20260925/`.
+
+The restored production build then passed a 361.5-second USB-powered recording:
+71,014 matched samples at 196.46 Hz, no storage interruptions, read errors,
+FIFO overruns or incomplete slots, three paired sync markers, and maximum sample
+spacing of 5.091 ms. The queue peaked at 1,569 of 32,768 bytes and the longest
+flush took 20.524 ms. Download CRC, packet checks and the closing footer passed.
+Only the locally verified bench recordings were deleted; the original board
+recording list and sizes were unchanged across both firmware uploads and tests.
 
 While connected, the laptop recorder saves `board_status.jsonl` approximately
-once per second and immediately on phase/error changes. It also saves an observed
+once per second and immediately on phase/error/recovery changes. It also saves an observed
 fault to `board_fault.json`, before Stop & save. The stop status is retained in
 `metadata.json` before download begins. Import after a reboot also picks up a
 saved fault when its recording ID and boot ID match the raw file. These host files
