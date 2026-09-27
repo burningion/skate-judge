@@ -37,6 +37,16 @@ class StorageBudgetTests(unittest.TestCase):
         self.assertEqual(budget["storage"], "flash")
         self.assertAlmostEqual(budget["remaining_s"], (200000 - 32768) / 4500)
 
+    def test_sd_fallback_warning_requires_current_confirmed_internal_storage(self):
+        fallback = self.status(sd_ready=False)
+        for phase in ("idle", "starting", "recording", "stopping", "saved", "fault"):
+            with self.subTest(phase=phase):
+                self.assertTrue(storage_budget(dict(fallback, phase=phase))["sd_fallback"])
+        for status in (self.status(), dict(fallback, storage="sd", sd_ready=True),
+                       dict(fallback, storage_ready=False)):
+            self.assertFalse(storage_budget(status)["sd_fallback"])
+        self.assertFalse(storage_budget(fallback, connected=False)["sd_fallback"])
+
     def test_new_recording_warms_up_without_dividing_by_zero_or_extrapolating_headers(self):
         for start, now, size in ((0, 0, 0), (1000000, 1000000, 500), (1000000, 4000000, 13500)):
             with self.subTest(now=now):

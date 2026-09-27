@@ -63,7 +63,7 @@ test('SD recovery replaces the storage estimate with buffering status and keeps 
 });
 
 test('rendering updates the visible panel, clears stale time and hides it for legacy capture', () => {
-  const nodes = Object.fromEntries(['budget', 'title', 'value', 'detail', 'note']
+  const nodes = Object.fromEntries(['warning', 'budget', 'title', 'value', 'detail', 'note']
     .map(key => [`storage-${key}`, {hidden: true, textContent: '', dataset: {}}]));
   const document = {getElementById: id => nodes[id]};
   renderStorage(document, budget, true);
@@ -74,4 +74,20 @@ test('rendering updates the visible panel, clears stale time and hides it for le
   assert.match(nodes['storage-note'].textContent, /disconnected/);
   renderStorage(document, null, false);
   assert.equal(nodes['storage-budget'].hidden, true);
+});
+
+test('SD fallback warning is visible before and during recording, and clears with current storage', () => {
+  const nodes = Object.fromEntries(['warning', 'budget', 'title', 'value', 'detail', 'note']
+    .map(key => [`storage-${key}`, {hidden: true, textContent: '', dataset: {}}]));
+  const document = {getElementById: id => nodes[id]};
+  for (const state of ['ready', 'starting', 'recording', 'stopping', 'fault', 'full']) {
+    renderStorage(document, {...budget, state, sd_fallback: true}, true);
+    assert.equal(nodes['storage-warning'].hidden, false, state);
+  }
+  for (const current of [{...budget, storage: 'sd', sd_fallback: false}, {state: 'offline'}, budget]) {
+    renderStorage(document, current, true);
+    assert.equal(nodes['storage-warning'].hidden, true);
+  }
+  renderStorage(document, {...budget, sd_fallback: true}, false);
+  assert.equal(nodes['storage-warning'].hidden, true);
 });

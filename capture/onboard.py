@@ -271,6 +271,8 @@ def storage_budget(status, connected=True):
     """
     backend = status.get("storage", "flash")
     result = dict(storage=backend, state="unavailable", remaining_s=None,
+                  sd_fallback=connected and backend == "flash" and status.get("sd_ready") is False
+                  and bool(status.get("storage_ready")),
                   free_bytes=None, bytes_per_second=None, rate_source=None, limit=None)
     if not connected:
         return dict(result, state="offline")

@@ -82,6 +82,13 @@ while acquisition continues. It does not start a second file on another medium. 
 hot-swap support. A read-only/full card that mounts can still fail at recording
 start; correct that issue or power down and remove it to use flash.
 
+The recorder displays a prominent **SD card not in use** warning above the
+storage estimate when the board reports internal flash with SD unavailable.
+It appears before recording and stays visible during capture, so check the much
+smaller available recording time before starting a batch. Save any active
+recording before powering off to check the card and its connection. Restart the
+laptop recorder to load this UI update; no firmware upload is needed.
+
 The Feather build enables SD by default. Upload with `./flash-feather.sh` when
 ready. `SKATE_SD=0 ./flash-feather.sh` disables it. `SD_CS_PIN`, `SD_SCK_PIN`,
 `SD_MOSI_PIN`, `SD_MISO_PIN`, and `SD_SPI_HZ` can override the defaults

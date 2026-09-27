@@ -35,6 +35,9 @@
   #camera-state { font-weight: 700; color: #c9f887; }
   #camera-state[data-recording="true"] { color: #ffb398; }
   #saved-clips { padding-left: 20px; }
+  #storage-warning { margin-top: 22px; padding: 18px 22px; border: 2px solid #d5ac60; border-radius: 12px; background: #352b1d; }
+  #storage-warning h2 { margin: 0 0 6px; color: #ffd082; }
+  #storage-warning p { margin: 6px 0 0; color: #f1dec1; }
   #device-status { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; margin-top: 22px; }
   #storage-budget, #battery-status { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 18px 22px; border: 1px solid #526760; border-radius: 12px; background: #172523; }
   #storage-title, #battery-title { display: block; color: #c1d3cd; font-size: 14px; }
@@ -62,6 +65,11 @@
   <p>Frame the board and both feet. Record video + sync starts recording before the LED countdown.</p>
   <div class="meta"><span id="session">Waiting for session</span><span id="samples">0 samples</span><span id="duration">0:00</span></div>
   <p id="demo" hidden>Demo sensor session: no physical LED will flash. Webcam video is real, but this session is not training data.</p>
+  <section id="storage-warning" role="alert" aria-atomic="true" hidden>
+    <h2>SD card not in use</h2>
+    <p>The board is using internal memory (flash). It has much less space than the SD card. Check the recording time available below.</p>
+    <p class="note">To use the SD card, save any active recording, power off the board, check the card and its connection, then restart.</p>
+  </section>
   <div id="device-status" hidden>
     <section id="storage-budget" aria-labelledby="storage-title" hidden>
       <div><span id="storage-title">Recording time left</span><span id="storage-value">—</span></div>

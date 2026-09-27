@@ -49,6 +49,7 @@ export function storageView(budget) {
 }
 
 export function renderStorage(document, budget, visible) {
+  document.getElementById('storage-warning').hidden = !visible || !budget?.sd_fallback;
   const panel = document.getElementById('storage-budget');
   panel.hidden = !visible;
   if (!visible) return;
