@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check real exported parts, a physical lid flip, and assumed wired-LED travel."""
+"""Check exported parts, lid rotation, wired-LED travel and the SD mount/access."""
 import argparse
 import hashlib
 import json
@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--exports", type=Path, default=HERE/"exports")
     parser.add_argument("--openscad")
     parser.add_argument("--lid", type=Path, help="Override lid STL for regression checks")
-    parser.add_argument("--check", choices=["lid_to_base", "electronics_to_base", "electronics_to_lid", "wired_led_insertion", "sample_lid_to_base"])
+    parser.add_argument("--check", choices=["lid_to_base", "electronics_to_base", "electronics_to_lid", "wired_led_insertion", "sample_lid_to_base", "sd_to_other_electronics", "sd_heads_to_components", "sd_card_removal", "sd_pilots", "sd_sample_mount", "imu_heads_to_components", "imu_pilots", "imu_to_led_wiring"])
     args = parser.parse_args()
     executable = args.openscad or shutil.which("openscad") or "/Applications/OpenSCAD-2021.01.app/Contents/MacOS/OpenSCAD"
     source = HERE/"skate-judge.scad"
@@ -32,7 +32,10 @@ def main():
     # rigid rotation of the EXPORTED part. A reflected preview hid the R2 fault.
     lid = ('translate([0,dimensions[1],dimensions[2]]) rotate([180,0,0]) '
            f'import({json.dumps(str(lid_path.resolve()))});')
-    electronics = 'translate([0,0,0.02]) union() { electronics(); led_solder_envelopes(); }'
+    electronics = ('translate([0,0,0.02]) union() { electronics(); led_solder_envelopes(); '
+                   'sd_fastener_envelopes(); sd_solder_envelope(); imu_fastener_envelopes(); }')
+    sd_sample = ('translate(sd_sample_origin()) '
+                 f'import({json.dumps(str((args.exports/"sd-fit-base.stl").resolve()))});')
     sample_depth = manifest["parts"]["led-fit-base.stl"]["size_mm"][1]
     sample_base = f'import({json.dumps(str((args.exports/"led-fit-base.stl").resolve()))});'
     sample_lid = (f'translate([0,{sample_depth},dimensions[2]+0.02]) rotate([180,0,0]) '
@@ -43,9 +46,24 @@ def main():
         "electronics_to_lid": (lid, electronics),
         "wired_led_insertion": (base, 'translate([0,0,0.02]) wired_led_insertion();'),
         "sample_lid_to_base": (sample_base, sample_lid),
+        "sd_to_other_electronics": ('union() { other_electronics(); imu_fastener_envelopes(); }',
+                                    'union() { sd_electronics(); sd_solder_envelope(); sd_fastener_envelopes(); }'),
+        "sd_heads_to_components": ('sd_electronics();', 'sd_fastener_envelopes();'),
+        # The lid is removed for card access; the SD socket intentionally contains
+        # the card, so exclude it while checking the battery, posts and screw heads.
+        "sd_card_removal": ('union() { '+base+' other_electronics(); sd_fastener_envelopes(); }',
+                            'sd_card_access();'),
+        "sd_pilots": ('union() { '+base+sd_sample+' }', 'sd_pilot_clearance();'),
+        "sd_sample_mount": (sd_sample, 'translate([0,0,0.02]) sd_electronics();'),
+        "imu_heads_to_components": ('imu_electronics();', 'imu_fastener_envelopes();'),
+        "imu_pilots": (base, 'imu_pilot_clearance();'),
+        "imu_to_led_wiring": ('union() { imu_electronics(); imu_fastener_envelopes(); }',
+                              'wired_led_insertion();'),
     }
-    report = {"source_sha256": manifest["source_sha256"], "revision": 4,
+    report = {"source_sha256": manifest["source_sha256"], "revision": 6,
               "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
+              "imu_assumptions": "PCB extends from screw row toward SD; components face lid; 4 mm posts; M2 heads <=4 mm diameter and <=2 mm tall; holes shifted 12.7 mm toward LEDs from R5",
+              "sd_assumptions": "Adafruit 254; 1.6 mm PCB; M2 heads <=4 mm diameter and <=2 mm tall; direct-soldered wires; card removed with lid off",
               "contact_face_offset_mm": 0.02, "checks": {}}
     with tempfile.TemporaryDirectory(prefix="skate-enclosure-fit-") as directory:
         directory = Path(directory)

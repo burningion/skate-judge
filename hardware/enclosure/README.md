@@ -2,11 +2,53 @@
 
 Open **[skate-judge.scad](skate-judge.scad)** in **OpenSCAD 2021.01 or newer**.
 This is a printable prototype for the project's Feather ESP32-S3, LSM6DSO32,
-500 mAh LiPo and an eight-pixel sync stick mounted **inside the long side wall**.
+500 mAh LiPo, Adafruit 254 microSD breakout and an eight-pixel sync stick mounted
+**inside the long side wall**.
 It needs a physical fit check
 and progressive riding trials; CAD checks do not establish impact survival.
 
 ![Enclosure with recessed side-facing LEDs](preview-assembly.png)
+
+**Revision 6 — 2026-09-26, preserve the installed IMU orientation.** The user
+confirmed that the IMU extends from its two screws toward the SD board, with
+components facing the lid. In that orientation, the old screw positions put
+the IMU into the SD mounting posts. R6 moves both IMU posts **12.7 mm toward
+the LED window**: centers are now **(76.54, 19.54)** and **(96.86, 19.54)**,
+instead of Y=32.24. Slide the physical IMU toward the LEDs without turning it.
+Its two screws now sit on the LED side of its PCB; the PCB extends toward SD.
+This corrects the previous drawing's orientation assumption.
+
+The IMU posts remain **4 mm high** and the SD posts **7 mm high** above the
+floor. There is **4.22 mm nominal separation between the PCB outlines**.
+Changing heights is unnecessary; lowering SD would reduce the card-removal
+clearance above the battery. **Only the base needs reprinting**; the lid and
+SD mounting sample are unchanged. Use the refreshed [base](exports/base.stl)
+or [Velcro base](exports/base-velcro.stl), superseding the R5 exports.
+
+Existing recordings remain in their original sensor axes. Keeping the same
+physical orientation avoids a new axis mapping, but translating the sensor can
+change the acceleration measured during rotations. Record the R6 mount revision
+and 12.7 mm position shift alongside subsequent sessions; do not overwrite old
+session mounting descriptions or rotate their raw samples to match a CAD image.
+If the sensor is physically rotated in a future revision, retain the originals
+and apply the measured sensor-to-deck rotation to both acceleration and gyro
+during analysis. The existing overlay tools support explicit nose/up axis mapping.
+
+**Revision 5 — 2026-09-26, screw-mounted microSD breakout.** Four 7 mm-high posts
+secure the Adafruit 254 board beside the battery, with a separate wire tie point.
+The enclosure dimensions stay the same. **Reprint only the base if you already
+have an R3/R4 lid**; the R4 lid geometry is unchanged. The SD card slides toward
+the battery for removal with the lid off. Its path is raised above the assumed
+5 mm-thick cell; keep the battery strap and wires out of that path.
+
+Print the [SD mounting sample](exports/sd-fit-base.stl) first to check all four
+holes and your screws. It is **33.75 × 27.4 × 10 mm**, with the same post heights
+and pilots as the full base. Use four **M2 × 5 mm screws suitable for plastic**,
+with heads no larger than **4 mm diameter × 2 mm high**. This is for the
+Adafruit 254 hole pattern (20.32 mm square); check your actual board against it.
+The sample checks mounting fit, not the complete wiring or card-removal path.
+
+![MicroSD mounting posts and compact fit sample](preview-sd-fit.png)
 
 **Revision 4 — 2026-09-15, DIN 7991 M3 flat-head lid screws.** All four lid holes
 now have a **6.4 mm exterior opening, 90° included bevel and 1.5 mm recess depth**,
@@ -80,6 +122,7 @@ likewise needs enough actual contact area on your deck.
 | [fit-coupon.stl](exports/fit-coupon.stl) | 1 first | Flat back on bed |
 | [led-fit-base.stl](exports/led-fit-base.stl) | 1 first | Flat bottom on bed, slot upward |
 | [led-fit-lid.stl](exports/led-fit-lid.stl) | 1 first | Flat exterior on bed, tabs upward |
+| [sd-fit-base.stl](exports/sd-fit-base.stl) | 1 first | Flat bottom on bed, posts upward |
 
 Exported files already have those orientations and use millimeters. The LED mount
 fits inside the existing shell footprint. `layout` is for visual inspection;
@@ -116,8 +159,9 @@ supplied print default.
   base, 11 mm above its back. Seat them at the end of each channel before fitting
   the lid. The screw cannot reach the battery bay. Snug by hand; do not torque
   a metal fastener hard against PLA. Recheck after early rides.
-- Six **M2 × 5 mm screws suitable for plastic pilots**: four for the Feather,
-  two for the IMU. Nominal pilot is 1.7 mm, blind, with 4 mm standoffs.
+- Ten **M2 × 5 mm screws suitable for plastic pilots**: four for the Feather,
+  two for the IMU, four for the SD breakout. Nominal pilot is 1.7 mm, blind,
+  with 4 mm standoffs for the Feather/IMU and 7 mm for SD.
   Test the coupon's 1.6/1.7/1.8 mm pilots with your actual screw; change
   `pcb_pilot_diameter` if needed. These are not pre-tapped M2 machine threads.
   Avoid oversized heads touching components/traces, particularly at the Feather's
@@ -137,17 +181,27 @@ supplied print default.
   keep it free of the removable lid's window header. This is a separately cut
   cover, not a printed PLA part or a supplied STL, and it does not make a seal.
 
-1. Print the screw/nut coupon and the two LED fit samples. Check the complete
+1. Print the screw/nut coupon, SD mounting sample and the two LED fit samples.
+   Check the SD board rests flat on all four posts and each screw engages gently.
+   Check the complete
    wired stick drops into the sample and the sample lid seats without force.
    Then print and inspect the full parts. Turn the full lid over to face its tabs
    into the cavity, lining up the wide LED header with the LED opening and the
    USB tab with the USB cutout. **Do not mirror the STL in the slicer.** Fit the
    empty base and lid, then repeat with the wired electronics before tightening.
-2. With power disconnected, screw both PCBs to their posts. The Feather USB points
-   toward the **x=0 short wall**. Its battery connector faces the battery bay;
-   the IMU header row faces that bay too. Route the STEMMA cable in the free space
+2. With power disconnected, screw the Feather, IMU and SD PCBs to their posts. The Feather USB points
+   toward the **x=0 short wall**. Its battery connector faces the battery bay.
+   The IMU components face the lid, with the PCB extending from its screw row
+   toward the SD breakout. Keep the physical orientation used for recordings;
+   slide it 12.7 mm toward the LEDs to reach the new posts. Route the STEMMA cable in the free space
    between boards. Record the real IMU silkscreen axes in `--mounting`; enclosure
    X/Y coordinates do not establish the sensor's firmware axes.
+   The SD board sits at the opposite end from USB, beside the battery: card socket
+   faces inward toward the battery, solder/header row toward the **x=108 wall**.
+   Use insulated, flexible stranded leads with a little slack at the joints.
+   Tie the wire bundle to the anchor at **(85, 70)**, clear of the lid boss and
+   card slot. The mount prevents the PCB moving; it cannot repair a cracked joint
+   or prevent stiff solid wires from loading their solder joints.
 3. Pad and strap the battery in its separate tray, leaving its wrapped end and
    lead unstressed. Route the lead through the tray notch toward the Feather.
    Keep loose wiring out of the lid and captive-nut channels. Tall plug-in headers
@@ -202,19 +256,35 @@ each PCB's outline, in a top view using the Eagle coordinates.
 | --- | --- |
 | Feather ESP32-S3 8 MB / no PSRAM | 50.8 × 22.86 mm PCB; front holes (2.54, 2.54), (2.54, 20.32); rear holes (48.26, 1.8415), (48.26, 20.955), rear drill 2.2 mm. [Official PCB](https://github.com/adafruit/Adafruit-Feather-ESP32-S3-PCB/blob/main/Adafruit%20ESP32-S3%208MB%20No%20PSRAM.brd), [downloads](https://learn.adafruit.com/adafruit-esp32-s3-feather/downloads). |
 | IMU | 25.4 × 17.78 mm PCB; two holes at (2.54, 15.24), (22.86, 15.24). Uses the [LSM6DSOX family PCB](https://github.com/adafruit/Adafruit-LSM6DSOX-PCB/blob/master/Adafruit_LSM6DSOX.brd) linked from the [combined IMU guide](https://learn.adafruit.com/lsm6dsox-and-ism330dhc-6-dof-imu/downloads), cross-checked against the bundled LSM6DSO32 Fritzing part. Confirm your revision. |
+| microSD breakout | Adafruit 254: **31.75 × 25.4 mm PCB** from the [official Eagle file](https://github.com/adafruit/MicroSD-breakout-board/blob/master/microsd.brd); four 2.2 mm holes at (2.54, 2.54), (2.54, 22.86), (22.86, 2.54), (22.86, 22.86). The holes form a **20.32 × 20.32 mm square**, not equal corner insets. PCB underside is 10 mm above the case back; origin (71, 39). The [product page](https://www.adafruit.com/product/254) rounds the length differently (31.85 mm); verify the actual board. |
 | LiPo | **Assumed 36 × 29 × 5 mm**, with 1.5 mm free space per side: a 39 × 32 mm bay. Reference [Adafruit 1578](https://www.adafruit.com/product/1578) is 36 × 29 × 4.75 mm. Your exact 500 mAh cell is unidentified; measure the complete wrap/protection end and lead bend. Capacity alone does not establish size. |
 | RGB stick | 51.1 × 10.22 × approximately 3.2 mm from [Adafruit 1426](https://www.adafruit.com/product/1426). The channel assumes a 1.6 mm PCB, 0.3 mm clearance per end and per face; solder bumps/wires and variants need a fit check. Nominal pixel faces are recessed 1.9 mm behind the exterior wall. |
 
-Sources checked 2026-09-07. PCB, connector, battery and LED shapes in the colored
+SD source checked 2026-09-26; other sources checked 2026-09-07. PCB, connector, battery and LED shapes in the colored
 views are **simplified placement envelopes**, not detailed STEP models. They do
 not prove connector, solder joint, header, fastener-head or cable-bend clearance.
 
-Change the variables at the top of the SCAD file or in the Customizer. Increase
-`case_width` if a larger battery fails the tray assertion. `body_height` can be
+Change the variables at the top of the SCAD file or in the Customizer. A larger
+battery requires rechecking the SD posts, strap anchor and card path as well as
+the tray; simply increasing the shell size does not relocate those features.
+`sd_standoff` sets the SD post height. `show_sd_clearances=true` shows the assumed
+card-removal and soldered-lead volumes. The lead envelope is 3 × 20.6 mm in plan,
+from 1.5 mm below the PCB to 6 mm above its underside; tall plug-in headers are
+not included. With the default battery there is 3 mm nominal clearance below
+the card, before adding the battery strap. The card-access fixture includes
+15 mm of withdrawal and 6 mm of space above its underside, with the lid removed.
+Check that you can grip and remove the actual card without disturbing the cell.
+`body_height` can be
 increased for headers, but check the real assembly and USB position; the echo
 prints the lid screw length (12 mm for the default). Moving the standoffs changes
 USB height and needs port adjustment too. Changing layout dimensions requires
 fresh geometry and physical checks. The supplied STLs contain **only defaults**.
+`imu_rotation=180` is the R6 default: an in-plane turn relative to the old CAD
+preview, with the screw row shifted to keep the PCB's modeled footprint fixed.
+It is **not** an instruction to rotate the user's already-reversed physical IMU.
+`imu_rotation=0` regenerates the earlier orientation and screw row. Neither
+setting turns the component side toward the floor. Recheck clearance and mounting
+metadata before using a different physical orientation.
 `lid_countersink_diameter` sets the exterior opening and `lid_countersink_angle`
 sets the included head angle. Depth is calculated from those values and the
 3.4 mm shaft hole; an assertion keeps at least 1.2 mm of lid below the bevel.
@@ -243,7 +313,7 @@ is `/Applications/OpenSCAD-2021.01.app/Contents/MacOS/OpenSCAD`; the similarly n
 `OpenSCAD.app` is the older 2015 release. To deliberately regenerate the checked-in
 default outputs, use `--replace`. This only replaces this generator's named files.
 
-In the GUI, select `base`, `lid`, `fit_coupon`, `led_fit_base` or `led_fit_lid` using `part`, then
+In the GUI, select `base`, `lid`, `fit_coupon`, `led_fit_base`, `led_fit_lid` or `sd_fit_base` using `part`, then
 **F6 → File → Export → Export as STL**. `assembly` and `exploded` are viewing modes.
 `interior` shows the PCB and battery layout without the lid. `mount_ears=false`
 selects the Velcro base.
@@ -256,11 +326,19 @@ clearance, RF performance and riding loads still require the physical checks abo
 
 The current [fit-validation.json](exports/fit-validation.json) comes from checks against
 the **exported STLs**, with a real 180-degree lid rotation. It checks lid/base,
-electronics/base, electronics/lid, the sample pair, and the vertical insertion
-path of the wired LED, including the stated end envelopes. A 0.02 mm lift excludes intentional
+electronics/base, electronics/lid, the LED sample pair, and the vertical insertion
+path of the wired LED, including the stated end envelopes. SD checks include
+the assumed screw heads and soldered leads, separation from other electronics,
+card removal over the battery with the lid off, clear pilot holes and the SD
+sample's post placement. A 0.02 mm lift excludes intentional
 contact faces. The previous reflection-based fit check was inadequate and is
 superseded. These checks still do not measure print shrinkage, warping, your solder
-joints or real components; use the sample pair before another full print.
+joints or real components; use the fit samples before another full print.
+R6 adds the actual IMU orientation, assumed M2 screw heads (up to 4 mm diameter
+and 2 mm high), clear IMU pilots, and separation from the wired LED insertion
+path. A before/after check reproduced the reversed IMU's interference with the
+R5 SD mount and cleared it after the 12.7 mm shift. These are simplified component
+envelopes; confirm cable bends, connector plugs and screw access on the hardware.
 
 The R3 PrusaSlicer 2.9.6 check generated toolpaths for the full base, full lid and both LED
 test pieces with the settings above. The R3 lid and sample pair produced no slice
@@ -269,3 +347,13 @@ as described under printing. The R4 countersunk lid also slices without warnings
 in PrusaSlicer 2.9.6 at 0.20 mm layers, a 0.4 mm nozzle, 5 perimeters,
 6 top/bottom layers and 40% gyroid infill. Trial G-code uses generic settings and is not
 supplied as printer-ready output.
+
+R5 also generated toolpaths in PrusaSlicer 2.9.6 with those settings. The SD fit
+sample sliced without warnings. The full base still reports **Floating bridge
+anchors**; inspect the captive-nut pockets and wire/strap anchors, including the
+new SD wire anchor, and provide local support where needed. Its lid STL has the
+same triangles as the R4 export.
+
+R6's revised base also sliced with those settings. The same floating-bridge
+warning remains; moving the IMU posts adds no new bridges. The lid and all fit
+samples have identical oriented triangles to the R5 exports.

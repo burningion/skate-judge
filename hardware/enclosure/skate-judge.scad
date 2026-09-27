@@ -1,10 +1,10 @@
 // Judgy Skateboard: PLA prototype enclosure. Units: mm.
-// Revision 4, 2026-09-15: exterior countersinks for the M3 lid screws.
+// Revision 6, 2026-09-26: shift IMU posts toward LEDs for the reversed PCB.
 // OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
 // PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
 
 /* [Output] */
-part = "assembly"; // [assembly,exploded,interior,base,lid,fit_coupon,led_fit_base,led_fit_lid,layout]
+part = "assembly"; // [assembly,exploded,interior,base,lid,fit_coupon,led_fit_base,led_fit_lid,sd_fit_base,layout]
 show_electronics = true;
 mount_ears = true;
 lid_markings = false; // Optional engraving adds first-layer islands and bridges.
@@ -33,10 +33,15 @@ battery_pad = 0.8;
 
 /* [PCB mounting and ports] */
 pcb_standoff = 4;
+imu_rotation = 180; // [0,180] In-plane turn only; components stay toward lid.
 pcb_pilot_diameter = 1.7; // M2 plastic-compatible screws; print coupon first.
 usb_opening_width = 16;
 usb_opening_bottom = 5;
 usb_opening_top = 15;
+
+/* [Adafruit 254 microSD mount] */
+sd_standoff = 7; // Above floor; lifts the card's removal path above the battery.
+show_sd_clearances = false;
 
 /* [LED stick] */
 stick_length = 51.1;
@@ -63,7 +68,19 @@ feather_size = [50.8,22.86];
 feather_holes = [[2.54,2.54],[2.54,20.32],[48.26,1.8415],[48.26,20.955]];
 imu_xy = [74,17];
 imu_size = [25.4,17.78];
-imu_holes = [[2.54,15.24],[22.86,15.24]];
+imu_native_holes = [[2.54,15.24],[22.86,15.24]];
+// Preserve the PCB footprint while moving its screw line 12.7 mm toward LEDs.
+imu_holes = imu_rotation == 180
+    ? [for(p=imu_native_holes) [imu_size[0]-p[0],imu_size[1]-p[1]]]
+    : imu_native_holes;
+// Adafruit MicroSD-breakout-board/microsd.brd: NOT four corner insets.
+// Both pairs are 20.32 mm apart; the header extends past the right hole pair.
+sd_xy = [71,39];
+sd_size = [31.75,25.4];
+sd_holes = [[2.54,2.54],[2.54,22.86],[22.86,2.54],[22.86,22.86]];
+sd_post_diameter = 5.6;
+sd_pcb_z = floor_thickness+sd_standoff;
+sd_anchor_xy = [85,70];
 battery_xy = [23,43]; // Inside lower-left of tray, before clearance.
 bay_l = battery_length + 2*battery_xy_clearance;
 bay_w = battery_width + 2*battery_xy_clearance;
@@ -108,6 +125,11 @@ assert(battery_xy[0]+bay_l+8 <= case_length-wall, "Battery tray/strap anchor exc
 assert(battery_xy[1]+bay_w+2 <= case_width-wall, "Increase case_width for this battery.");
 assert(floor_thickness+battery_pad+battery_thickness+3 <= body_height, "Increase body_height: allow 3 mm above cell, no clamping.");
 assert(pcb_z+1.6+7+2 <= body_height, "Increase body_height for PCB components.");
+assert(imu_rotation == 0 || imu_rotation == 180, "IMU rotation must be 0 or 180 degrees in the PCB plane.");
+assert(sd_standoff >= 4 && sd_pcb_z+7.6 <= body_height, "Allow at least 4 mm SD posts and 6 mm above its PCB for direct-soldered wiring.");
+assert(sd_xy[0]+sd_size[0]+2 <= case_length-wall && sd_xy[1] >= imu_xy[1]+imu_size[1]+3, "SD PCB must clear the right wall and IMU.");
+assert(sd_xy[0]+2.54-sd_post_diameter/2 >= battery_xy[0]+bay_l+8+0.5, "SD posts must clear the battery strap anchor; revise layout for a longer cell.");
+assert(sd_pcb_z+1.8 >= floor_thickness+battery_pad+battery_thickness+2, "SD card removal needs 2 mm above the battery; increase SD standoff and check lid clearance.");
 assert(usb_opening_top < body_height && usb_opening_bottom >= floor_thickness, "USB opening must fit between floor and lid.");
 assert(stick_length >= 50 && stick_length <= 53 && stick_width >= 10 && stick_width <= 12 && stick_height > led_pcb_thickness && stick_height <= 4, "Side channel supports the bare eight-pixel stick; rework layout for other boards.");
 assert(stick_clearance >= 0.15 && stick_clearance <= 0.4, "Keep 0.15-0.4 mm LED end clearance so the retaining edges still overlap the PCB.");
@@ -117,9 +139,10 @@ assert(led_slot_back+2 < feather_xy[1]-2, "LED channel must clear the Feather an
 assert(led_wire_end_space >= 3 && led_wire_end_space <= 6 && led_wire_pad_space >= 4 && led_wire_pad_space <= 6, "Use 3-6 mm outside / 4-6 mm inside each LED end; revise guides beyond that.");
 assert(led_wire_front >= 0.8 && led_wire_front <= 1.5 && led_wire_back >= 9 && led_wire_back <= 12, "Keep an exterior skin and clearance to the Feather behind the LED passages.");
 assert(led_wire_top > led_wire_floor+4 && led_wire_top < led_top-2, "Lead envelope must fit below the lid's corner locators.");
-assert(part=="assembly" || part=="exploded" || part=="interior" || part=="base" || part=="lid" || part=="fit_coupon" || part=="led_fit_base" || part=="led_fit_lid" || part=="layout", "Unknown part.");
+assert(part=="assembly" || part=="exploded" || part=="interior" || part=="base" || part=="lid" || part=="fit_coupon" || part=="led_fit_base" || part=="led_fit_lid" || part=="sd_fit_base" || part=="layout", "Unknown part.");
 
 function enclosure_size() = [case_length,case_width,body_height+lid_thickness];
+function sd_sample_origin() = [sd_xy[0]-1,sd_xy[1]-1,0];
 
 module rounded_rect(l,w,r) {
     hull() for(x=[r,l-r], y=[r,w-r]) translate([x,y]) circle(r=r);
@@ -157,13 +180,13 @@ module tie_anchor(x,y) {
         translate([x-4,y-4.2,floor_thickness+1.2]) cube([8,8.4,2.2]);
     }
 }
-module pcb_posts(origin,holes,diameter) {
+module pcb_posts(origin,holes,diameter,height=pcb_standoff) {
     for(p=holes) translate([origin[0]+p[0],origin[1]+p[1],floor_thickness-eps])
-        cylinder(d=diameter,h=pcb_standoff+eps);
+        cylinder(d=diameter,h=height+eps);
 }
-module pcb_pilots(origin,holes) {
+module pcb_pilots(origin,holes,height=pcb_standoff) {
     for(p=holes) translate([origin[0]+p[0],origin[1]+p[1],floor_thickness+0.4])
-        cylinder(d=pcb_pilot_diameter,h=pcb_standoff+eps);
+        cylinder(d=pcb_pilot_diameter,h=height+eps);
 }
 module battery_tray() {
     // Rounded edges and a loose, broad fabric strap; no rigid lid pressure.
@@ -215,6 +238,8 @@ module base() {
             tether_lugs();
             pcb_posts(feather_xy,feather_holes,4.2);
             pcb_posts(imu_xy,imu_holes,5.6);
+            pcb_posts(sd_xy,sd_holes,sd_post_diameter,sd_standoff);
+            tie_anchor(sd_anchor_xy[0],sd_anchor_xy[1]);
             battery_tray();
             led_channel();
             // Internal strain relief beside the LED's DIN end, clear of the Feather.
@@ -231,6 +256,7 @@ module base() {
         for(y=[-3,case_width+3]) translate([case_length/2,y,-eps]) slot(10,2.8,5);
         pcb_pilots(feather_xy,feather_holes);
         pcb_pilots(imu_xy,imu_holes);
+        pcb_pilots(sd_xy,sd_holes,sd_standoff);
         led_wire_passages();
         // Open-to-rim ports print without a roof; lid tongues close their upper part.
         translate([-eps,usb_y-usb_opening_width/2,usb_opening_bottom]) cube([wall+2*eps,usb_opening_width,body_height]);
@@ -303,17 +329,80 @@ module pcb_envelope(origin,size,holes) {
         for(p=holes) translate([p[0],p[1],-eps]) cylinder(d=2.2,h=2);
     }
 }
-module electronics() {
+module imu_frame() {
+    translate([imu_xy[0],imu_xy[1],0])
+        if(imu_rotation == 180)
+            translate([imu_size[0],imu_size[1],0]) rotate([0,0,180]) children();
+        else children();
+}
+module imu_electronics() {
+    imu_frame() {
+        pcb_envelope([0,0],imu_size,imu_native_holes);
+        color("ivory") for(x=[-1,imu_size[0]-4])
+            translate([x,5,pcb_z+1.6]) cube([5,6,3]);
+    }
+}
+module imu_fastener_envelopes() {
+    for(p=imu_holes) translate([imu_xy[0]+p[0],imu_xy[1]+p[1],pcb_z+1.6+eps])
+        cylinder(d=4,h=2);
+}
+module imu_pilot_clearance() {
+    for(p=imu_holes) translate([imu_xy[0]+p[0],imu_xy[1]+p[1],floor_thickness+0.5])
+        cylinder(d=1.65,h=pcb_standoff-0.4);
+}
+module other_electronics() {
     led_electronics();
     pcb_envelope(feather_xy,feather_size,feather_holes);
-    pcb_envelope(imu_xy,imu_size,imu_holes);
+    imu_electronics();
     color("silver") translate([feather_xy[0]-1.14,usb_y-4.6,pcb_z+1.6]) cube([7,9.2,3.4]);
     color([0.22,0.23,0.25]) translate([feather_xy[0]+30,feather_xy[1]+4,pcb_z+1.6]) cube([18,15,3.2]);
     color("ivory") translate([feather_xy[0]+7,feather_xy[1]+18,pcb_z+1.6]) cube([8,7,6]);
     color("ivory") translate([feather_xy[0]+20,usb_y-3,pcb_z+1.6]) cube([5,6,3]);
-    color("ivory") for(x=[imu_xy[0]-1,imu_xy[0]+imu_size[0]-4]) translate([x,imu_xy[1]+5,pcb_z+1.6]) cube([5,6,3]);
     color([0.7,0.72,0.75]) translate([battery_xy[0]+battery_xy_clearance,battery_xy[1]+battery_xy_clearance,floor_thickness+battery_pad])
         rounded_box(battery_length,battery_width,battery_thickness,1);
+}
+module sd_electronics() {
+    translate([sd_xy[0],sd_xy[1],sd_pcb_z]) {
+        color([0.05,0.25,0.65]) difference() {
+            rounded_box(sd_size[0],sd_size[1],1.6,1.905);
+            for(p=sd_holes) translate([p[0],p[1],-eps]) cylinder(d=2.2,h=1.6+2*eps);
+        }
+        // Simplified socket, inserted card and logic envelopes. Card exits -X.
+        color("silver") translate([0.6,5.55,1.6]) cube([15.2,14.1,2.2]);
+        color([0.12,0.12,0.12]) translate([-4.8,7.07,1.8]) cube([15,11,1]);
+        color([0.18,0.18,0.18]) translate([19,6.6,1.6]) cube([4.4,10.2,2]);
+    }
+}
+module electronics() { other_electronics(); sd_electronics(); }
+module sd_fastener_envelopes() {
+    // Assumed M2x5 pan heads: <=4 mm diameter, <=2 mm high. Shafts intentionally
+    // enter pilots and are excluded; head-to-component clearance is checked.
+    for(p=sd_holes) translate([sd_xy[0]+p[0],sd_xy[1]+p[1],sd_pcb_z+1.6+eps])
+        cylinder(d=4,h=2);
+}
+module sd_solder_envelope() {
+    // Direct-soldered wires, not a tall plug-in header; actual bends need a fit check.
+    translate([sd_xy[0]+29,sd_xy[1]+2.3,sd_pcb_z-1.5]) cube([3,20.6,7.5]);
+}
+module sd_card_access() {
+    // Full 15 mm withdrawal and room above the card for fingers, with lid off.
+    // Includes the inserted-card volume; exclude the SD socket from this check.
+    translate([sd_xy[0]-19.8,sd_xy[1]+6.6,sd_pcb_z+1.8]) cube([30,12,6]);
+}
+module sd_pilot_clearance() {
+    // Independent nominal 1.7 mm pilot probes, stopping short of blind bottoms.
+    for(p=sd_holes) translate([sd_xy[0]+p[0],sd_xy[1]+p[1],floor_thickness+0.5])
+        cylinder(d=1.65,h=sd_standoff-0.4);
+}
+module sd_fit_base() {
+    // Same four post centers/heights and blind pilots, on a compact test floor.
+    difference() {
+        union() {
+            rounded_box(sd_size[0]+2,sd_size[1]+2,floor_thickness,2);
+            pcb_posts([1,1],sd_holes,sd_post_diameter,sd_standoff);
+        }
+        pcb_pilots([1,1],sd_holes,sd_standoff);
+    }
 }
 module assembled_lid(lift=0) {
     translate([0,case_width,body_height+lid_thickness+lift]) rotate([180,0,0]) lid();
@@ -363,20 +452,26 @@ echo("Battery nominal",[battery_length,battery_width,battery_thickness],"loose b
 echo("Lid screw: M3 x",lid_thickness+9,"mm countersunk (length includes head); check full nut engagement and bottom clearance");
 echo("Lid countersink: exterior diameter / included angle / depth",lid_countersink_diameter,lid_countersink_angle,lid_countersink_depth);
 echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_clearance-(stick_height-led_pcb_thickness));
+echo("SD mount: Adafruit 254, four M2x5 screws, 20.32 mm square centers; PCB underside Z",sd_pcb_z);
+echo("IMU in-plane rotation / hole centers / PCB underside Z",imu_rotation,[for(p=imu_holes) [imu_xy[0]+p[0],imu_xy[1]+p[1]]],pcb_z);
 
 if(part=="base") base();
 if(part=="lid") lid();
 if(part=="fit_coupon") fit_coupon();
 if(part=="led_fit_base") led_fit_base();
 if(part=="led_fit_lid") led_fit_lid();
+if(part=="sd_fit_base") sd_fit_base();
 if(part=="layout") {
     base();
     translate([case_length+12,0,0]) lid();
     translate([0,case_width+22,0]) fit_coupon();
+    translate([50,case_width+22,0]) sd_fit_base();
 }
 if(part=="assembly" || part=="exploded" || part=="interior") {
     color([0.17,0.24,0.3]) base();
     if(part!="interior") color([0.87,0.55,0.19]) translate([0,part=="exploded"?42:0,0]) assembled_lid(part=="exploded"?30:0);
     if(show_electronics) electronics();
+    if(show_electronics) color("silver") { sd_fastener_envelopes(); imu_fastener_envelopes(); }
+    if(show_sd_clearances) color([0.9,0.2,0.15,0.35]) { sd_card_access(); sd_solder_envelope(); }
     if(show_led_wire_envelopes) color([0.9,0.15,0.05,0.65]) led_solder_envelopes();
 }

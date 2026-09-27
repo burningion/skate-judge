@@ -1,10 +1,10 @@
 {
   "openscad": "OpenSCAD version 2021.01",
   "source": "../skate-judge.scad",
-  "source_sha256": "2701c1df346f115ee79d5a28e8b0d53ad6a9cd150738dcb6c041a77cbcf85c38",
+  "source_sha256": "cfcc6d548d6d8ba06cbbdfddaa2c04c236f2807f3896c3e49571b9826bd76ccd",
   "parts": {
     "base.stl": {
-      "triangles": 7718,
+      "triangles": 9482,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -24,11 +24,11 @@
         106.0,
         20.0
       ],
-      "solid_volume_cm3": 52.788,
-      "sha256": "61b959a6a023b46ab035e0672e7d5ee0296983fe92ded341d1836a67e1dcb969"
+      "solid_volume_cm3": 53.658,
+      "sha256": "342b1fe5ac5d5d871a028f42f2866dff802fa21fbcfce2816d1a767d93a35fe2"
     },
     "base-velcro.stl": {
-      "triangles": 6576,
+      "triangles": 8340,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -48,8 +48,8 @@
         94.0,
         20.0
       ],
-      "solid_volume_cm3": 49.666,
-      "sha256": "a62c7f32b38ec9cbf9c00a09fe6585cae39f4a48ee3711ead438262f324efd57"
+      "solid_volume_cm3": 50.536,
+      "sha256": "b98215f3f198d68453c6d4aeaf03da62e0ea936cb3526123ab1d31090850d14e"
     },
     "lid.stl": {
       "triangles": 1916,
@@ -146,6 +146,30 @@
       ],
       "solid_volume_cm3": 3.379,
       "sha256": "7c4c956b99bfd9bce2c2369b7013d009d728f8ad42bfa504fc7db4fb6728201f"
+    },
+    "sd-fit-base.stl": {
+      "triangles": 1740,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          33.75,
+          27.4,
+          10.0
+        ]
+      ],
+      "size_mm": [
+        33.75,
+        27.4,
+        10.0
+      ],
+      "solid_volume_cm3": 3.392,
+      "sha256": "ce0f97f5ae9805eb331172360f982465e57b157c35f255bc1b794b76b846b868"
     }
   }
 }
