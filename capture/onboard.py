@@ -207,6 +207,58 @@ def board_client(address):
     return SerialBoardClient(address) if address.startswith("serial:") else BoardClient(address)
 
 
+def wipe_recordings(client, storage=None):
+    """Explicitly discard recordings on mounted board storage without downloading."""
+    if storage not in (None, "sd", "flash"):
+        raise ValueError("Storage must be sd or flash.")
+    status = client.request("/status")
+    if status.get("phase") not in ("idle", "saved", "fault"):
+        raise ValueError("Stop recording and wait for the board to be idle before wiping recordings.")
+    selection = {"storage": storage} if storage else None
+    files = client.request("/files", selection, timeout=120)
+    if not isinstance(files, list):
+        raise ValueError("Invalid recording list from board.")
+    # Validate the complete selection before deleting anything. Always pin the
+    # backend: the same ID can exist independently on SD and internal flash.
+    seen = set()
+    for item in files:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid recording entry from board.")
+        identity = valid_id(item.get("id"))
+        backend = item.get("storage")
+        if backend not in ("sd", "flash") or (storage and backend != storage):
+            raise ValueError("Missing or unexpected storage in board file list; check logger firmware.")
+        size = item.get("bytes")
+        if type(size) is not int or size < 0 or (backend, identity) in seen:
+            raise ValueError("Invalid size or duplicate recording in board file list.")
+        seen.add((backend, identity))
+
+    deleted = 0
+    reclaimed = 0
+    try:
+        for item in files:
+            params = dict(id=item["id"], storage=item["storage"])
+            info = client.request("/file-info", params, timeout=120)
+            if (not isinstance(info, dict) or info.get("id") != item["id"]
+                    or info.get("storage") != item["storage"] or info.get("bytes") != item["bytes"]
+                    or not isinstance(info.get("crc32"), str)
+                    or not re.fullmatch(r"[a-f0-9]{8}", info["crc32"])):
+                raise ValueError("Recording metadata changed or is invalid; list recordings again.")
+            # /delete rechecks this checksum, so a changed file cannot be
+            # deleted using stale metadata. Wipe deliberately needs no backup.
+            reply = client.request("/delete", dict(params, crc32=info["crc32"]), post=True, timeout=120)
+            if not isinstance(reply, dict) or reply.get("deleted") is not True:
+                raise ValueError("Board did not acknowledge recording deletion.")
+            deleted += 1
+            reclaimed += item["bytes"]
+            print(f"Deleted {item['storage']}: {item['id']} ({item['bytes']} bytes).", flush=True)
+        if client.request("/files", selection, timeout=120) != []:
+            raise ValueError("Recordings remain on the selected storage; list them and retry.")
+    except (ValueError, OSError) as error:
+        raise ValueError(f"Wipe interrupted after {deleted} confirmed deletions. {error}") from error
+    return dict(deleted=deleted, bytes=reclaimed, storage=storage or "all mounted")
+
+
 def test_led(client, timeout=12):
     before = client.request("/status")
     if before.get("phase") not in ("idle", "saved", "fault"):
@@ -590,6 +642,12 @@ def main():
     delete.add_argument("id")
     delete.add_argument("--storage", choices=("sd", "flash"))
     delete.add_argument("--downloaded", type=Path, required=True)
+    wipe = sub.add_parser("wipe", help="Permanently delete all board recordings without downloading",
+                          description="Delete all recordings on mounted SD and internal flash. "
+                                      "Laptop session files, firmware, and settings are kept.")
+    wipe.add_argument("--storage", choices=("sd", "flash"), help="Limit deletion to one storage medium")
+    wipe.add_argument("--yes", action="store_true", required=True,
+                      help="Confirm permanent deletion, including recordings never downloaded")
     stop = sub.add_parser("stop")
     stop.add_argument("id")
     convert = sub.add_parser("import")
@@ -614,6 +672,8 @@ def main():
             print(json.dumps(client.request("/initialize", post=True, timeout=15), indent=2))
         elif args.command == "list":
             print(json.dumps(client.request("/files", {"storage": args.storage} if args.storage else None), indent=2))
+        elif args.command == "wipe":
+            print(json.dumps(wipe_recordings(client, args.storage)))
         elif args.command == "stop":
             print(json.dumps(client.request("/stop", {"id": valid_id(args.id)}, post=True), indent=2))
         elif args.command in ("download", "import"):

@@ -89,9 +89,10 @@ bytes to reach the laptop, starts onboard motion recording, checks its measured
 rate, and only then begins the three-second LED countdown.
 
 Acceleration and rotation use **nominal 208 Hz** acquisition through the sensor FIFO and are
-saved on the Feather's flash. The page shows actual rates, errors, and free
-space. The tested sensor measures about 196.5 Hz, consistent with its factory
-clock calibration. Wi-Fi carries commands and status during capture; losing the connection
+saved on the **SD card when available**, with internal flash as the fallback
+selected at boot. The page shows the storage destination, actual rates, errors,
+and free space. The tested sensor measures about 196.5 Hz, consistent with its
+factory clock calibration. Wi-Fi carries commands and status during capture; losing the connection
 does not stop motion logging. Download happens after acquisition stops.
 
 Repeat the sync countdown near the end, wait for the flash, then choose
@@ -100,14 +101,91 @@ are saved. The raw file is checksum-verified, imported into `samples.csv` and
 `events.jsonl`, and retained on the board. Match the visible flashes in the
 [review tool](docs/trick-review.md) to align video and motion.
 
-Start with **one-minute batches**: the existing flash partition holds minutes,
-not an entire outing. Download and verify each batch, then explicitly delete its
-onboard copy to reclaim space. See the [first recording guide](docs/first-recording.md)
+Start with **one-minute test batches**. If using internal flash, its existing
+partition holds only minutes; SD provides more capacity. Download and verify
+each batch, then explicitly delete its onboard copy to reclaim space. See the
+[first recording guide](docs/first-recording.md)
 and [onboard storage/recovery reference](docs/onboard-recording.md).
 
 For a USB bench check, use `--board serial:auto` before `record`. For a separate
 phone camera, start that camera yourself and check the external-camera option
 before syncing. Sessions are saved under `sessions/` and excluded from Git.
+
+### Find and delete a test recording
+
+Choose **Stop & save video + board data** and wait until saving finishes. The
+terminal prints `Session: ...`, which is the laptop folder for that run. To
+choose an easy-to-find folder before a USB test, use:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto record --output sessions/test-001
+```
+
+Use a new folder for each test. After saving, its `metadata.json` identifies the
+run with `onboard_id`, its board storage with `onboard_storage` (`sd` or `flash`),
+and its downloaded raw file with `onboard_raw_file`. The folder also contains
+`samples.csv`, `events.jsonl`, and any video recorded through the webcam UI.
+
+To inspect the board over USB, quit the saved recorder first to release the
+serial port, then run these commands from the repository directory:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto status
+uv run --offline capture/onboard.py --board serial:auto list
+```
+
+`status` shows the current storage destination in `storage` and remaining space
+in `free_bytes`. `list` shows each saved run's `id`, `storage`, and `bytes` across
+both mounted media. Match the ID to your session's `metadata.json`; the list is
+not sorted by recording time. SD originals live at `/skate-judge/<id>.bin` on
+the card. Downloading leaves the original on the board.
+
+To remove one board copy, replace `<id>` and `<session>` below with your run's
+32-character ID and laptop folder. Use `--storage flash` instead if that run's
+storage is `flash`:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto delete "<id>" --storage sd \
+  --downloaded "sessions/<session>/onboard-<id>.bin"
+uv run --offline capture/onboard.py --board serial:auto list
+```
+
+The single-run `delete` command requires a downloaded raw file with a matching
+ID and checksum. If you have not downloaded the run, retrieve it into a new folder first:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto download "<id>" --storage sd \
+  --output sessions/recovered-test-001
+```
+
+Then use that folder's `onboard-<id>.bin` for `--downloaded`. To discard the
+entire test, delete the board copy first, then move its laptop session folder
+to Trash in Finder. Board deletion leaves the laptop files in place; deleting
+the laptop folder alone does not reclaim board storage.
+
+For Wi-Fi, join **SkateJudge-XXXX** and omit `--board serial:auto` from these
+commands. The standalone `test-led` command creates no recording to clean up.
+
+### Wipe all board recordings in one command
+
+Stop any recording and quit the USB recorder, then run:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto wipe --yes
+```
+
+This permanently deletes **all recordings on both mounted SD and internal
+flash**, including runs you have never downloaded. No download is required.
+Laptop session folders, other SD card files, firmware, Wi-Fi credentials, and
+pin settings are kept. The command works with the current logger firmware;
+no reflash is needed.
+
+Add `--storage sd` or `--storage flash` to clear only that medium. For Wi-Fi,
+join **SkateJudge-XXXX** and omit `--board serial:auto`. `--yes` is required to
+confirm deletion. The board must be idle; the command never stops a recording
+for you. It reports each deletion and checks that the selected storage is empty
+of recordings. If interrupted, rerun it to clear the remaining files. Storage
+that is not mounted cannot be wiped.
 
 ## Review a recorded trick
 

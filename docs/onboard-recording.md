@@ -414,6 +414,21 @@ After checking the local original and video, reclaim one recording's space:
 uv run --offline capture/onboard.py delete <id> --downloaded sessions/pilot-001/onboard-<id>.bin
 ```
 
-Deletion requires a local raw file with the matching ID and CRC32. There is no
-bulk-delete or format-on-error command. A board reset starts a new clock/boot ID;
+The single-run `delete` command requires a local raw file with the matching ID
+and CRC32. To discard all board recordings without downloading them, stop any
+recording, quit other USB clients, and run:
+
+```bash
+uv run --offline capture/onboard.py --board serial:auto wipe --yes
+```
+
+`wipe --yes` permanently deletes recordings on both mounted SD and internal
+flash. Add `--storage sd` or `--storage flash` to limit its scope. It keeps laptop
+sessions, unrelated SD files, firmware, and settings. Over Wi-Fi, omit
+`--board serial:auto`. The command refuses to run during recording, reports
+confirmed deletions, and checks that no recordings remain on the selected
+storage. After an interruption, rerun it to finish. It works with the installed
+logger and does not format storage or require a firmware update.
+
+A board reset starts a new clock/boot ID;
 the laptop refuses to combine that boot with an existing capture.
