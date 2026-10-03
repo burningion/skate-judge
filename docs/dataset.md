@@ -32,6 +32,22 @@ Use `--sessions /path/to/sessions --pattern 'pilot-*'` to select another collect
 The default deliberately omits bench recordings outside `a7s-*`. Python 3.10+
 is sufficient; no scientific packages or cloud service are required.
 
+To refresh all saved labels when the collection also contains unfinished or
+failed unlabeled recordings, use:
+
+```bash
+python3 capture/dataset.py status --labeled-only
+python3 capture/dataset.py build --labeled-only --output datasets/a7s-v2
+```
+
+Choose a new, unused version directory for each build. `--labeled-only` skips
+directories with missing or empty `labels.jsonl`; the report records them in
+`skipped_unlabeled_sessions`. Malformed label files and missing or unreadable
+sensor data in labeled sessions still block the build. All eligibility rules
+below remain in effect, so compare saved, eligible, and excluded counts after
+every refresh. Excluded labels remain in the manifest but have no exported
+sensor samples. Run `status` without the flag to inspect the entire collection.
+
 ## Export format and eligibility
 
 | File | Contents |
@@ -49,7 +65,9 @@ normalize mounting orientation, extract features, or assign train/test splits.
 
 Only video-reviewed labels with current measured alignment and available source
 video qualify. Synthetic/unverified or unclosed recordings and onboard sessions
-whose quality check is not usable are excluded. Other exclusions include stale
+whose quality check is not usable are excluded by default; the explicit
+sample-gap exception below can admit complete recordings with that sole issue.
+Other exclusions include stale
 video identity, out-of-coverage or overlapping labels, windows with fewer than
 two samples, gaps over 30 ms (including boundary gaps), zero acceleration
 samples, and channels within 1% of the configured LSM6DSO32 raw full scale.
@@ -74,6 +92,37 @@ snapshot rather than silently dropping a session.
 Keep and back up original session folders: the export contains labeled IMU
 windows, not copies of videos, raw logs, or complete continuous recordings.
 Both `sessions/` and `datasets/` are excluded from Git and are not uploaded.
+
+### Accepting a session with small sample gaps
+
+The onboard importer flags `sample_gaps_over_10ms` if any interval between
+consecutive sensor samples exceeds 10 ms. By default this marks the entire
+session unusable, even if most labeled windows are unaffected. The exporter
+also checks each window independently, rejecting gaps over 30 ms, including
+gaps crossing a window boundary.
+
+After inspecting the recording, use a session-specific exception to accept
+the importer gap flag while retaining the window checks:
+
+```bash
+python3 capture/dataset.py status --labeled-only --allow-sample-gaps a7s-018
+python3 capture/dataset.py build --labeled-only --allow-sample-gaps a7s-018 \
+  --output datasets/a7s-v3
+```
+
+Use an unused output directory on every refresh and repeat the option to retain
+the exception in future snapshots. It applies only if the named session is
+complete and its only onboard issue is `sample_gaps_over_10ms`. Other acquisition
+or storage faults still exclude the session. All alignment, coverage, clipping,
+and per-window gap checks remain active; no samples are interpolated or changed.
+The source metadata stays intact, `report.json` records `allow_sample_gaps`, and
+session and label warnings identify the exception. Repeat the option for another
+reviewed session; unlisted sessions keep the original policy.
+
+For `a7s-018`, ten intervals were approximately 10.1–10.5 ms, compared with a
+typical 5.1 ms interval. The recording completed with no reported I/O errors or
+FIFO overruns and no gaps over 30 ms. The exception includes its valid windows;
+the landed backside 180 remains excluded for sensor clipping near full scale.
 
 ## Planning the first model
 

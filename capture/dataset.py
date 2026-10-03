@@ -41,7 +41,7 @@ def load_samples(content):
     return rows
 
 
-def inspect_session(path):
+def inspect_session(path, *, allow_sample_gaps=False):
     """Read one snapshot; latest revision per label ID is authoritative."""
     content = {name: (path / name).read_bytes() if (path / name).exists() else b""
                for name in ("metadata.json", "labels.jsonl", "video_sync.jsonl", "samples.csv")}
@@ -53,17 +53,24 @@ def inspect_session(path):
     syncs = {(row["video"], row["sync_id"]): row for row in jsonl(content["video_sync.jsonl"])}
     samples = load_samples(content["samples.csv"])
     times = [row[0] for row in samples]
-    issues = []
+    issues, session_warnings = [], []
     if meta.get("synthetic") is not False:
         issues.append("synthetic or unverified recording")
     if not meta.get("closed_utc"):
         issues.append("recording not closed")
     quality = meta.get("onboard_quality", {})
     if meta.get("transport") in ("onboard_flash", "onboard_sd") and quality.get("usable") is not True:
-        issues.append("onboard quality: " + ", ".join(quality.get("issues") or ["not verified usable"]))
+        if (allow_sample_gaps and quality.get("usable") is False
+                and quality.get("complete") is True
+                and quality.get("issues") == ["sample_gaps_over_10ms"]):
+            session_warnings.append(
+                "onboard sample_gaps_over_10ms accepted by explicit session override; "
+                "windows still checked for gaps over 30 ms")
+        else:
+            issues.append("onboard quality: " + ", ".join(quality.get("issues") or ["not verified usable"]))
     rows, windows = [], {}
     for identity, label in sorted(latest.items()):
-        reasons, warnings = list(issues), []
+        reasons, warnings = list(issues), list(session_warnings)
         start, end = label.get("start_s"), label.get("end_s")
         valid_range = finite(start) and finite(end) and 0 <= start < end
         if not valid_range:
@@ -134,6 +141,7 @@ def inspect_session(path):
         if current != data:
             raise ValueError("Session changed during scan; rerun after saving review")
     info = dict(session_id=path.name, source=str(path.resolve()), issues=issues,
+                warnings=session_warnings,
                 label_revisions=len(history), unique_labels=len(latest),
                 eligible_attempts=sum(r["outcome_training"] and r["label"]["outcome"] != "background" for r in rows),
                 background=sum(r["outcome_training"] and r["label"]["outcome"] == "background" for r in rows),
@@ -143,14 +151,24 @@ def inspect_session(path):
     return info, rows, windows
 
 
-def collect(root, pattern="a7s-*"):
+def collect(root, pattern="a7s-*", *, labeled_only=False, allow_sample_gaps=()):
     paths = sorted(p for p in root.glob(pattern) if p.is_dir())
     if not paths:
         raise ValueError(f"No sessions match {root / pattern}")
+    allowed_gap_sessions = set(allow_sample_gaps)
+    unmatched = allowed_gap_sessions - {p.name for p in paths}
+    if unmatched:
+        raise ValueError("Sample-gap override sessions do not match selection: " + ", ".join(sorted(unmatched)))
     sessions, labels, windows = [], [], {}
+    skipped_sessions = []
     for path in paths:
         try:
-            info, rows, data = inspect_session(path)
+            if labeled_only:
+                label_path = path / "labels.jsonl"
+                if not label_path.exists() or not label_path.read_bytes().strip():
+                    skipped_sessions.append(path.name)
+                    continue
+            info, rows, data = inspect_session(path, allow_sample_gaps=path.name in allowed_gap_sessions)
         except (OSError, ValueError, KeyError, TypeError, AttributeError, OverflowError) as error:
             info = dict(session_id=path.name, issues=[f"cannot read session: {error}"],
                         error=True, unique_labels=None, eligible_attempts=0, background=0, unknown=0, excluded=0)
@@ -162,6 +180,8 @@ def collect(root, pattern="a7s-*"):
                      for r in labels if r["outcome_training"])
     report = dict(schema=1, created_utc=datetime.now(timezone.utc).isoformat(),
                   sessions_root=str(root.resolve()), pattern=pattern, sessions=sessions,
+                  labeled_only=labeled_only, skipped_unlabeled_sessions=skipped_sessions,
+                  allow_sample_gaps=sorted(allowed_gap_sessions),
                   unique_labels=sum(s["unique_labels"] or 0 for s in sessions),
                   eligible_attempts=sum(s["eligible_attempts"] for s in sessions),
                   background=sum(s["background"] for s in sessions),
@@ -173,6 +193,8 @@ def collect(root, pattern="a7s-*"):
 
 
 def print_report(report):
+    if report.get("labeled_only"):
+        print(f"Labeled sessions only; skipped {len(report['skipped_unlabeled_sessions'])} unlabeled sessions.")
     print("Session               Saved  Attempts  Background  Unknown  Excluded")
     for row in report["sessions"]:
         saved = "?" if row["unique_labels"] is None else str(row["unique_labels"])
@@ -180,6 +202,8 @@ def print_report(report):
               f" {row['background']:>11} {row['unknown']:>8} {row['excluded']:>9}")
         for issue in row["issues"]:
             print(f"  {issue}")
+        for warning in row.get("warnings", []):
+            print(f"  Warning: {warning}")
     print(f"\n{report['eligible_attempts']} eligible labeled attempts; {report['background']} background ranges; "
           f"{report['unknown']} unknown outcomes; {report['excluded']} excluded labels.")
     for row in report["counts"]:
@@ -213,6 +237,7 @@ def build(output, report, labels, windows):
             "Channels: t_s in sensor seconds, acceleration in m/s^2, gyro in rad/s.\n"
             "Unknown outcomes are preserved; filter outcome_training=true for outcome supervision.\n"
             "report.json: counts and SHA-256 hashes of the source annotation/sensor files.\n"
+            "allow_sample_gaps records explicit session overrides; warnings retain their quality flags.\n"
             "Split by whole session (or rider), never random samples from an attempt.\n"
             "Eligibility checks data integrity, not whether a label is semantically correct.\n")
         # Reserve the destination exclusively so concurrent builds cannot replace a snapshot.
@@ -225,6 +250,11 @@ def main(argv=None):
     parser.add_argument("command", choices=("status", "build"), nargs="?", default="status")
     parser.add_argument("--sessions", type=Path, default=Path("sessions"))
     parser.add_argument("--pattern", default="a7s-*", help="Session directory glob (default: a7s-*)")
+    parser.add_argument("--labeled-only", action="store_true",
+                        help="Skip sessions with missing or empty labels.jsonl; keep all checks for labeled sessions")
+    parser.add_argument("--allow-sample-gaps", action="append", default=[], metavar="SESSION",
+                        help="Accept a named complete session whose only onboard issue is sample_gaps_over_10ms; "
+                             "per-window checks still apply (repeat for multiple sessions)")
     parser.add_argument("--output", type=Path, help="New snapshot directory, required for build")
     args = parser.parse_args(argv)
     if args.command == "build" and args.output is None:
@@ -232,7 +262,8 @@ def main(argv=None):
     if args.command == "status" and args.output is not None:
         parser.error("--output is only used by build")
     try:
-        report, labels, windows = collect(args.sessions, args.pattern)
+        report, labels, windows = collect(args.sessions, args.pattern, labeled_only=args.labeled_only,
+                                         allow_sample_gaps=args.allow_sample_gaps)
         print_report(report)
         for row in labels:
             for issue in row["exclusion_reasons"] + row["warnings"]:

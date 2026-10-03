@@ -121,6 +121,34 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(labels, [])
         self.assertEqual(windows, {})
 
+    def test_labeled_only_build_skips_incomplete_unlabeled_recordings(self):
+        for name, content in (("a7s-002", None), ("a7s-003", ""), ("a7s-004", " \n")):
+            path = self.sessions / name
+            path.mkdir()
+            if content is not None:
+                (path / "labels.jsonl").write_text(content)
+        self.assertTrue(any(s.get("error") for s in collect(self.sessions)[0]["sessions"]))
+        report, labels, windows = collect(self.sessions, labeled_only=True)
+        self.assertEqual([s["session_id"] for s in report["sessions"]], ["a7s-001"])
+        self.assertEqual(report["skipped_unlabeled_sessions"], ["a7s-002", "a7s-003", "a7s-004"])
+        output = self.root / "labeled-snapshot"
+        build(output, report, labels, windows)
+        self.assertTrue(json.loads((output / "report.json").read_text())["labeled_only"])
+
+    def test_labeled_only_still_blocks_unreadable_labeled_recordings(self):
+        other = self.make_session("a7s-002")
+        for filename in ("labels.jsonl", "samples.csv"):
+            with self.subTest(filename=filename):
+                source = other / filename
+                original = source.read_bytes()
+                source.write_text("invalid")
+                report, labels, windows = collect(self.sessions, labeled_only=True)
+                self.assertTrue(report["sessions"][1]["error"])
+                self.assertEqual(report["skipped_unlabeled_sessions"], [])
+                with self.assertRaisesRegex(ValueError, "unreadable"):
+                    build(self.root / "bad-snapshot", report, labels, windows)
+                source.write_bytes(original)
+
     def test_sd_recordings_receive_the_same_quality_gate_as_flash(self):
         meta = json.loads((self.path / "metadata.json").read_text())
         meta["transport"] = "onboard_sd"
@@ -141,6 +169,59 @@ class DatasetTests(unittest.TestCase):
                 _, labels, windows = collect(self.sessions)
                 self.assertFalse(windows)
                 self.assertIn("sensor gap over 30 ms", labels[0]["exclusion_reasons"])
+
+    def test_sample_gap_override_is_scoped_and_preserves_source_and_export_warnings(self):
+        other = self.make_session("a7s-002")
+        for path in (self.path, other):
+            meta = json.loads((path / "metadata.json").read_text())
+            meta["onboard_quality"] = dict(usable=False, complete=True, issues=["sample_gaps_over_10ms"])
+            (path / "metadata.json").write_text(json.dumps(meta))
+            self.write_samples(path, [i / 200 for i in range(401) if i != 150])
+        # A 15 ms interval is above the importer limit but below the window limit.
+        self.write_samples(self.path, [i / 200 for i in range(401) if i not in (150, 151)])
+        before = {p.name: p.read_bytes() for p in self.path.iterdir()}
+        self.assertFalse(collect(self.sessions)[2])
+        report, labels, windows = collect(self.sessions, allow_sample_gaps=["a7s-001"])
+        self.assertEqual(report["eligible_attempts"], 1)
+        self.assertEqual(report["excluded"], 1)
+        self.assertEqual(set(windows), {"a7s-001/same-id"})
+        output = self.root / "gap-snapshot"
+        build(output, report, labels, windows)
+        exported_report = json.loads((output / "report.json").read_text())
+        exported_labels = [json.loads(line) for line in (output / "manifest.jsonl").read_text().splitlines()]
+        self.assertEqual(exported_report["allow_sample_gaps"], ["a7s-001"])
+        self.assertIn("sample_gaps_over_10ms", exported_report["sessions"][0]["warnings"][0])
+        self.assertIn("sample_gaps_over_10ms", exported_labels[0]["warnings"][0])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.path.iterdir()})
+        with self.assertRaisesRegex(ValueError, "do not match selection"):
+            collect(self.sessions, allow_sample_gaps=["a7s-typo"])
+
+    def test_sample_gap_override_does_not_accept_incomplete_or_other_quality_failures(self):
+        meta = json.loads((self.path / "metadata.json").read_text())
+        for quality in (
+                dict(usable=False, complete=False, issues=["sample_gaps_over_10ms"]),
+                dict(usable=False, issues=["sample_gaps_over_10ms"]),
+                dict(usable=False, complete=True, issues=["sample_gaps_over_10ms", "acquisition_errors"]),
+                dict(usable=False, complete=True, issues=[])):
+            with self.subTest(quality=quality):
+                meta["onboard_quality"] = quality
+                (self.path / "metadata.json").write_text(json.dumps(meta))
+                self.assertFalse(collect(self.sessions, allow_sample_gaps=["a7s-001"])[2])
+
+    def test_sample_gap_override_retains_window_gap_and_clipping_checks(self):
+        meta = json.loads((self.path / "metadata.json").read_text())
+        meta["onboard_quality"] = dict(usable=False, complete=True, issues=["sample_gaps_over_10ms"])
+        (self.path / "metadata.json").write_text(json.dumps(meta))
+        for lo, hi in ((.7, .8), (.48, .52), (.98, 1.02)):
+            with self.subTest(gap=(lo, hi)):
+                self.write_samples(self.path, [i / 100 for i in range(201) if not lo < i / 100 < hi])
+                _, labels, windows = collect(self.sessions, allow_sample_gaps=["a7s-001"])
+                self.assertFalse(windows)
+                self.assertIn("sensor gap over 30 ms", labels[0]["exclusion_reasons"])
+        self.write_samples(self.path, channel_changes={.75: [320, 0, 9.8, 0, 0, 0]})
+        _, labels, windows = collect(self.sessions, allow_sample_gaps=["a7s-001"])
+        self.assertFalse(windows)
+        self.assertIn("sensor clipping near full scale", labels[0]["exclusion_reasons"])
 
     def test_invalid_sensor_channels_zero_accel_and_clipping_are_not_exported(self):
         for values in ([float("nan"), 0, 9.8, 0, 0, 0], [0, 0, 0, 0, 0, 0],

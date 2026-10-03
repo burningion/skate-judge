@@ -205,17 +205,44 @@ labels. Audio suggestions and unreviewed time remain unlabeled until you decide.
 
 ## Accumulate labeled sessions
 
-Each session keeps its raw recordings and saved labels. See collection progress
-across all `sessions/a7s-*` directories, then export a versioned dataset:
+Each session keeps its raw recordings and saved labels. After finishing or
+correcting labels (for example, in `sessions/a7s-018`), run these commands from
+the repository root to refresh the combined dataset from **all labeled
+`sessions/a7s-*` directories**:
 
 ```bash
-python3 capture/dataset.py status
-python3 capture/dataset.py build --output datasets/a7s-v1
+python3 capture/dataset.py status --labeled-only --allow-sample-gaps a7s-018
+python3 capture/dataset.py build --labeled-only --allow-sample-gaps a7s-018 \
+  --output datasets/a7s-v3
 ```
 
-The command uses the latest revision of each label, checks alignment and sensor
-quality, and exports labeled IMU windows with session/rider IDs. After labeling
-more sessions, run status again and build a new version such as `a7s-v2`.
+Choose an unused version directory each time (`a7s-v4`, `a7s-v5`, and so on).
+Existing snapshots are immutable; saving labels does not refresh them. There is
+no need to download or manually merge labels from the review UI.
+
+`--labeled-only` skips sessions with missing or empty `labels.jsonl`, so unfinished
+unlabeled recordings do not block the refresh. Omit it from `status` to inventory
+every session. Labeled sessions still receive all alignment and sensor quality
+checks; unreadable labeled sessions block the build.
+
+`--allow-sample-gaps a7s-018` includes this complete recording despite its
+`sample_gaps_over_10ms` flag: ten sample intervals were 10.1–10.5 ms, while
+the typical interval was about 5.1 ms. Repeat this option on future refreshes
+to keep including it. This exception applies only to the named session, only
+when that is its sole onboard quality issue, and still excludes individual
+windows with gaps over 30 ms, clipping, or other eligibility failures. The
+source quality flag is retained; the report and manifest record the exception.
+Omit the option for the original strict session policy. See the
+[dataset guide](docs/dataset.md#accepting-a-session-with-small-sample-gaps) for details.
+
+Check the printed counts and exclusions, then inspect the new snapshot's
+`report.json` and `manifest.jsonl`. The manifest includes the latest revision of
+every saved label and any exclusion reasons; `samples.csv` contains only eligible
+IMU windows with session/rider IDs in the manifest. A saved label can be excluded
+by a recording quality flag, stale alignment, or a bad sensor window. Investigate
+these issues before using excluded labels for training; the export does not clear
+quality flags.
+
 See [dataset collection and export](docs/dataset.md) for exclusions, file formats,
 and how to plan the first 100 attempts. Sessions and exports are local and
 excluded from Git; back up the original session directories separately.
