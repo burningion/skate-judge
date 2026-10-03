@@ -1,10 +1,10 @@
 {
   "openscad": "OpenSCAD version 2021.01",
   "source": "../skate-judge.scad",
-  "source_sha256": "cfcc6d548d6d8ba06cbbdfddaa2c04c236f2807f3896c3e49571b9826bd76ccd",
+  "source_sha256": "253a151bc89d81525d7b9bead8009a2404790a457c9f8ad803ed2b524ed189a7",
   "parts": {
     "base.stl": {
-      "triangles": 9482,
+      "triangles": 10062,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -24,11 +24,11 @@
         106.0,
         20.0
       ],
-      "solid_volume_cm3": 53.658,
-      "sha256": "342b1fe5ac5d5d871a028f42f2866dff802fa21fbcfce2816d1a767d93a35fe2"
+      "solid_volume_cm3": 53.601,
+      "sha256": "c88df70d049d0e30931032002796b8d2b129d7c776d13ff6ca9a59464692d514"
     },
     "base-velcro.stl": {
-      "triangles": 8340,
+      "triangles": 8920,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -48,8 +48,8 @@
         94.0,
         20.0
       ],
-      "solid_volume_cm3": 50.536,
-      "sha256": "b98215f3f198d68453c6d4aeaf03da62e0ea936cb3526123ab1d31090850d14e"
+      "solid_volume_cm3": 50.479,
+      "sha256": "45d64089a7ff72bb023d9ca4df74c4d6ed0b0c9f3d7ad537f2919d96012ab9bb"
     },
     "lid.stl": {
       "triangles": 1916,
@@ -76,7 +76,7 @@
       "sha256": "32f18849f5a533044c1f70ba92978b4bd99627890146b01b545971c2ca34f98f"
     },
     "fit-coupon.stl": {
-      "triangles": 2808,
+      "triangles": 7464,
       "closed": true,
       "components": 1,
       "bounds_mm": [
@@ -86,18 +86,18 @@
           0.0
         ],
         [
-          45.0,
-          20.0,
-          5.0
+          46.0,
+          36.0,
+          20.0
         ]
       ],
       "size_mm": [
-        45.0,
-        20.0,
-        5.0
+        46.0,
+        36.0,
+        20.0
       ],
-      "solid_volume_cm3": 4.346,
-      "sha256": "b3bec666cc0dc08c53c479edecf5c71d6696e33ace29bdbe5c22d4413552ec5d"
+      "solid_volume_cm3": 10.586,
+      "sha256": "2f4a78b442edf169b5fbc31d14a92e71bc2080ea8f88a32726da012524c18677"
     },
     "led-fit-base.stl": {
       "triangles": 124,

@@ -9,6 +9,46 @@ and progressive riding trials; CAD checks do not establish impact survival.
 
 ![Enclosure with recessed side-facing LEDs](preview-assembly.png)
 
+**Revision 8 — 2026-10-03, heat-set inserts for the lid.** Both bases now use
+four top-loaded **M3 × 4 × 5 mm inserts** in place of the side-loaded hex nuts.
+The user confirmed the Jouth size as **M3 thread, 4 mm length,
+5 mm outside diameter**. A Jouth recommended hole size was not available;
+check the printed fit with the coupon before printing the base.
+The starting bore is **4.6 mm diameter × 5 mm deep**, with a **0.2 mm entry bevel**
+opening to 5.0 mm. Install inserts flush with the boss tops. The existing 12 mm
+boss diameter leaves 3.5 mm of plastic radially around a 5 mm insert; the side
+nut channels are filled in. A **3.4 mm screw-tip clearance bore extends 10 mm
+below the boss top**, so existing M3 × 12 mm countersunk screws retain nominal
+1 mm tip clearance with the 3 mm lid. M3 × 8 mm screws also reach the full insert.
+
+**Reprint only the base**: [standard base](exports/base.stl) or
+[Velcro base](exports/base-velcro.stl). The lid geometry and hole centers are
+unchanged. Print the revised **[fit coupon](exports/fit-coupon.stl)** first:
+its three full-height bosses have labeled **4.4 / 4.6 / 4.8 mm** insert bores,
+the same depth, bevel and screw relief as the base, and separate M2 pilot tests.
+Use the same filament, orientation and wall settings as the base. Choose the
+fit that heat-sets squarely and holds without splitting or spinning after cooling;
+change `lid_insert_bore_diameter` and rebuild if the center bore is not the best
+fit. A CAD clearance check does not establish heat-set retention.
+
+![Insert bore and M2 pilot fit coupon](preview-fit-coupon.png)
+
+**Revision 7 — 2026-10-02, power-switch cutout beside USB.** Both bases now
+have a **13.5 mm wide × 8.4 mm high** rectangular opening in the **x=0 short
+wall**, on the same side as USB. This uses the measured **13.27 × 8.18 mm**
+KCD11-101 style switch body with **0.23 × 0.22 mm total clearance**; no further
+fit allowance is added. The opening is centered at **Y=50, Z=11.5 mm**, spanning
+Y=43.25–56.75 and Z=7.3–15.7 mm. It leaves **7.82 mm of wall between the USB
+and switch openings**, and 4.3 mm of material above and below the opening
+between the floor and rim. **Only the base needs reprinting**; use the refreshed
+[base](exports/base.stl) or [Velcro base](exports/base-velcro.stl). The lid still fits.
+
+The switch inserts through the existing **3 mm wall**. Check the actual snap
+clips, bezel, body depth, terminals and insulated wire bends against the battery
+tray/strap anchor before assembly; only the supplied body cross-section is known.
+The cutout adds a **13.5 mm roof bridge** to the base, so inspect that bridge in
+the slicer and check the printed opening with your switch.
+
 **Revision 6 — 2026-09-26, preserve the installed IMU orientation.** The user
 confirmed that the IMU extends from its two screws toward the SD board, with
 components facing the lid. In that orientation, the old screw positions put
@@ -23,7 +63,7 @@ floor. There is **4.22 mm nominal separation between the PCB outlines**.
 Changing heights is unnecessary; lowering SD would reduce the card-removal
 clearance above the battery. **Only the base needs reprinting**; the lid and
 SD mounting sample are unchanged. Use the refreshed [base](exports/base.stl)
-or [Velcro base](exports/base-velcro.stl), superseding the R5 exports.
+or [Velcro base](exports/base-velcro.stl). The current R8 exports retain this layout.
 
 Existing recordings remain in their original sensor axes. Keeping the same
 physical orientation avoids a new axis mapping, but translating the sensor can
@@ -119,7 +159,7 @@ likewise needs enough actual contact area on your deck.
 | [base.stl](exports/base.stl) | 1 | Flat deck-facing back on bed, cavity up |
 | [base-velcro.stl](exports/base-velcro.stl) | Alternative to base | Same; ears omitted, tether lugs retained |
 | [lid.stl](exports/lid.stl) | 1 | Flat exterior face on bed, guide ribs up |
-| [fit-coupon.stl](exports/fit-coupon.stl) | 1 first | Flat back on bed |
+| [fit-coupon.stl](exports/fit-coupon.stl) | 1 first | Flat back on bed, insert bosses upward; 46 × 36 × 20 mm |
 | [led-fit-base.stl](exports/led-fit-base.stl) | 1 first | Flat bottom on bed, slot upward |
 | [led-fit-lid.stl](exports/led-fit-lid.stl) | 1 first | Flat exterior on bed, tabs upward |
 | [sd-fit-base.stl](exports/sd-fit-base.stl) | 1 first | Flat bottom on bed, posts upward |
@@ -132,13 +172,14 @@ Do not print `assembly` or `exploded`: those views include illustrative electron
 Start with a 0.4 mm nozzle, 0.20 mm layers, **5 perimeters**, 6 top/bottom layers,
 and 35–45% gyroid infill. Use solid local infill around lugs, lid bosses and PCB
 posts if the slicer leaves voids there. Use your filament's calibrated PLA profile.
-Nut entries and strap tunnels require short bridges (about 5.8 and 8.4 mm).
-**PrusaSlicer 2.9.6 flagged "Floating bridge anchors" on the base** during the
-0.20 mm/5-perimeter slice check. Support-free printing is therefore unverified:
-inspect those areas layer by layer, and test a cropped boss/strap-anchor section
-or paint removable local supports with accessible removal paths. Do not assume
-that support inside a captive-nut pocket will be easy to remove. The supplied
-coupon checks screw/nut dimensions; it does **not** reproduce those roof bridges.
+The R8 insert bores open upward and remove the old nut-pocket roof bridges.
+Strap/wire-anchor tunnels still require approximately 8.4 mm bridges, and the
+switch opening has a 13.5 mm roof bridge. **PrusaSlicer 2.9.6 flagged "Floating
+bridge anchors" on earlier bases** during the 0.20 mm/5-perimeter slice check.
+Support-free printing of R8 is unverified: inspect those remaining spans layer
+by layer, and test a cropped anchor section or paint removable local supports
+with accessible removal paths. The insert coupon reproduces the boss depth and
+bores, but does **not** test the strap or switch bridges.
 The LED window is open to the rim in the base; its upper frame prints as part of
 the lid. The rear LED guides rise from the floor, inboard of the solder zones.
 The end wire slots are open to the top, so they introduce no roof bridges.
@@ -150,15 +191,19 @@ supplied print default.
 
 ## Hardware and assembly
 
-- Four **DIN 7991 M3 flat-head machine screws**, starting with **12 mm overall length**,
-  and four ordinary **M3 hex nuts** for the lid. Countersunk screw length includes
-  the head. Confirm your head's diameter/angle fits the recess and the seated
-  screw fully engages the nut without bottoming; smaller heads can sit below
-  flush and move the screw tip deeper. Nut cavities allow 5.8 mm across flats × 2.8 mm height;
-  these are not sized for nyloc nuts. Nuts load horizontally from inside the open
-  base, 11 mm above its back. Seat them at the end of each channel before fitting
-  the lid. The screw cannot reach the battery bay. Snug by hand; do not torque
-  a metal fastener hard against PLA. Recheck after early rides.
+- Four **M3 heat-set inserts, 4 mm long × 5 mm outside diameter**, and four
+  **DIN 7991 M3 flat-head machine screws**. Use **8 mm overall length**, or reuse
+  the existing **12 mm** screws after checking tip clearance. Countersunk screw
+  length includes the head. With a flush head and the 3 mm lid, an 8 mm screw
+  projects 5 mm into the boss and a 12 mm screw projects 9 mm; the blind relief
+  ends at 10 mm. Smaller heads can seat below flush and move the tip deeper.
+  Confirm full insert engagement and that the screw clamps the lid before it
+  bottoms. Heat-set inserts squarely from above, **flush with the boss top**,
+  with electronics and battery removed. Follow your insert/filament installation
+  guidance, test on the coupon, and let the inserts cool before threading screws.
+  Clear any raised plastic so the lid seats flat. No hex nuts are used in R8.
+  Snug by hand; do not torque a metal fastener hard against PLA. Recheck after
+  early rides.
 - Ten **M2 × 5 mm screws suitable for plastic pilots**: four for the Feather,
   two for the IMU, four for the SD breakout. Nominal pilot is 1.7 mm, blind,
   with 4 mm standoffs for the Feather/IMU and 7 mm for SD.
@@ -181,8 +226,11 @@ supplied print default.
   keep it free of the removable lid's window header. This is a separately cut
   cover, not a printed PLA part or a supplied STL, and it does not make a seal.
 
-1. Print the screw/nut coupon, SD mounting sample and the two LED fit samples.
-   Check the SD board rests flat on all four posts and each screw engages gently.
+1. Print the insert/pilot coupon, SD mounting sample and the two LED fit samples.
+   Confirm insert dimensions, test heat-setting and screw engagement after cooling.
+   Select the bore size before printing the full base, then install all four
+   inserts in the empty base. Check the SD board rests flat on all four posts
+   and each screw engages gently.
    Check the complete
    wired stick drops into the sample and the sample lid seats without force.
    Then print and inspect the full parts. Turn the full lid over to face its tabs
@@ -204,7 +252,7 @@ supplied print default.
    or prevent stiff solid wires from loading their solder joints.
 3. Pad and strap the battery in its separate tray, leaving its wrapped end and
    lead unstressed. Route the lead through the tray notch toward the Feather.
-   Keep loose wiring out of the lid and captive-nut channels. Tall plug-in headers
+   Keep loose wiring clear of the lid seam and screw bosses. Tall plug-in headers
    are not assumed by this layout.
 4. Solder and insulate the LED leads before inserting the stick. Slide the bare
    PCB down the channel along the **y=0 long wall**, pixels facing **negative Y**
@@ -226,7 +274,10 @@ supplied print default.
    The other tongue closes the USB slot. The USB
    opening is **16 × 10 mm**; verify your actual USB-C plug housing reaches the
    recessed connector without loading the PCB. Buttons and the battery plug are
-   accessed by removing the lid; no external power switch is assumed.
+   accessed by removing the lid. The adjacent **13.5 × 8.4 mm** opening accepts
+   the measured power-switch body from outside the x=0 wall. Check retention in
+   the 3 mm wall and clearance for the actual terminals and wiring before fitting
+   the lid. This revision adds the mounting cutout; electrical wiring is separate.
 6. Aim this long side of the enclosure toward the camera. Check actual recorded
    sync flashes from the intended camera position, with the deck in place and
    optional clear cover fitted. Recessed pixels have a narrower viewing angle
@@ -276,7 +327,7 @@ the card, before adding the battery strap. The card-access fixture includes
 Check that you can grip and remove the actual card without disturbing the cell.
 `body_height` can be
 increased for headers, but check the real assembly and USB position; the echo
-prints the lid screw length (12 mm for the default). Moving the standoffs changes
+prints the full-engagement length and blind-bottom limit for the lid screws. Moving the standoffs changes
 USB height and needs port adjustment too. Changing layout dimensions requires
 fresh geometry and physical checks. The supplied STLs contain **only defaults**.
 `imu_rotation=180` is the R6 default: an in-plane turn relative to the old CAD
@@ -288,7 +339,18 @@ metadata before using a different physical orientation.
 `lid_countersink_diameter` sets the exterior opening and `lid_countersink_angle`
 sets the included head angle. Depth is calculated from those values and the
 3.4 mm shaft hole; an assertion keeps at least 1.2 mm of lid below the bevel.
-The screw/nut coupon checks the shaft and nut fit, not the new head recess.
+`lid_insert_length` and `lid_insert_outer_diameter` describe the intended insert;
+`lid_insert_bore_diameter` sets its printed fit. Bore depth is insert length plus
+`lid_insert_depth_allowance` (1 mm default). The 0.2 mm lead-in is a 45° bevel;
+`lid_screw_relief_depth` sets the total blind depth from the boss top. Insert OD
+is a wall-thickness check, not the bore diameter. The coupon gives bore variants
+at the selected diameter −0.2 / nominal / +0.2 mm, with matching depths and
+full-height 12 mm bosses. It checks heat-setting and M2 pilots, not the lid's
+countersunk head recess. Recheck the actual screw length if any depths change.
+`power_switch_width` and `power_switch_height` set the exact switch opening;
+`power_switch_y` positions its center along the USB wall. Its height is centered
+between the floor and rim. These dimensions already include the requested fit
+allowance; `fit_clearance` does not enlarge this opening.
 `stick_clearance` controls the LED's end clearance at the lid locators.
 `led_wire_end_space`, `led_wire_pad_space`, `led_wire_front`, and `led_wire_back`
 control the two lead passages. `led_wire_top` specifies the assumed assembled
@@ -340,6 +402,12 @@ path. A before/after check reproduced the reversed IMU's interference with the
 R5 SD mount and cleared it after the 12.7 mm shift. These are simplified component
 envelopes; confirm cable bends, connector plugs and screw access on the hardware.
 
+R7 checks the switch through-opening and its surrounding wall in **both exported
+base variants**, including clearance from the assembled lid. Independent fixtures
+check the default 13.5 × 8.4 mm opening and its position within 0.01 mm. These
+checks cover the aperture only; the switch bezel, clips, depth, terminals and
+wiring still require a physical fit check.
+
 The R3 PrusaSlicer 2.9.6 check generated toolpaths for the full base, full lid and both LED
 test pieces with the settings above. The R3 lid and sample pair produced no slice
 warnings. The base's bridge warning remains
@@ -357,3 +425,15 @@ same triangles as the R4 export.
 R6's revised base also sliced with those settings. The same floating-bridge
 warning remains; moving the IMU posts adds no new bridges. The lid and all fit
 samples have identical oriented triangles to the R5 exports.
+
+R7 retains the lid and fit-sample geometry. Its new 13.5 mm switch-opening bridge
+has not been checked in PrusaSlicer; inspect that span before printing the base.
+
+R8 checks both exported bases for all four stepped insert bores, their entry
+bevels, solid surrounding bosses and blind bottoms, including filled former nut
+channels. A separate 3 mm shaft fixture passes through each rotated lid hole
+and down to the tip of an M3 × 12 mm screw seated 0.2 mm below flush. The coupon's
+three bore sizes and surrounding material are also checked. These are nominal
+CAD checks; they do not model plastic flow, insert threads or pull-out strength.
+The lid and LED/SD samples retain their R7 geometry. R8 has not been slice-checked;
+inspect the remaining strap/wire-anchor and switch bridges before printing.

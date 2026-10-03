@@ -1,5 +1,5 @@
 // Judgy Skateboard: PLA prototype enclosure. Units: mm.
-// Revision 6, 2026-09-26: shift IMU posts toward LEDs for the reversed PCB.
+// Revision 8, 2026-10-03: top-loaded M3 heat-set inserts for the lid.
 // OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
 // PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
 
@@ -24,6 +24,15 @@ mount_hole_diameter = 4.5;
 lid_countersink_diameter = 6.4; // DIN 7991 M3: 6 mm head + 0.4 mm print allowance.
 lid_countersink_angle = 90; // Included bevel angle, in degrees.
 
+/* [Lid heat-set inserts] */
+// Jouth M3x4x5 assumed to mean M3 thread, 4 mm length, 5 mm outside diameter.
+// Confirm against your inserts; print the bore-size coupon before the base.
+lid_insert_length = 4;
+lid_insert_outer_diameter = 5;
+lid_insert_bore_diameter = 4.6; // Starting fit, not a verified vendor hole specification.
+lid_insert_depth_allowance = 1; // Space below a flush insert for displaced plastic.
+lid_screw_relief_depth = 10; // From boss top; accepts existing M3x12 countersunk screws.
+
 /* [Battery: measure the complete wrapped cell] */
 battery_length = 36;
 battery_width = 29;
@@ -38,6 +47,11 @@ pcb_pilot_diameter = 1.7; // M2 plastic-compatible screws; print coupon first.
 usb_opening_width = 16;
 usb_opening_bottom = 5;
 usb_opening_top = 15;
+
+/* [Power switch: measured KCD11-101 style body] */
+power_switch_width = 13.5; // Along Y; measured body 13.27 mm, allowance included.
+power_switch_height = 8.4; // Along Z; measured body 8.18 mm, allowance included.
+power_switch_y = 50; // Center on the x=0 USB wall, beside the battery bay.
 
 /* [Adafruit 254 microSD mount] */
 sd_standoff = 7; // Above floor; lifts the card's removal path above the battery.
@@ -86,10 +100,10 @@ bay_l = battery_length + 2*battery_xy_clearance;
 bay_w = battery_width + 2*battery_xy_clearance;
 pcb_z = floor_thickness + pcb_standoff;
 usb_y = feather_xy[1]+11.43;
-nut_af = 5.8; // M3 standard hex nut, clearance included.
-nut_h = 2.8;
-nut_z = body_height-9; // M3x12 countersunk length includes the head; check engagement.
+power_switch_bottom = (floor_thickness+body_height-power_switch_height)/2;
 lid_screw_clearance = 3.4;
+lid_insert_bore_depth = lid_insert_length+lid_insert_depth_allowance;
+lid_insert_lead_in = 0.2; // 45-degree entry bevel; default opening is 5.0 mm.
 lid_countersink_depth = (lid_countersink_diameter-lid_screw_clearance)/(2*tan(lid_countersink_angle/2));
 boss_r = 6;
 bosses = [[7,7],[case_length-7,7],[7,case_width-7],[case_length-7,case_width-7]];
@@ -119,6 +133,10 @@ assert(body_height >= 20 && body_height <= 40 && lid_thickness >= 2.4, "Insuffic
 assert(lid_countersink_angle > 0 && lid_countersink_angle < 180, "Countersink angle must be between 0 and 180 degrees.");
 assert(lid_countersink_diameter > lid_screw_clearance && lid_countersink_diameter <= 2*boss_r-2, "Countersink must clear the shaft and stay within the supported boss area.");
 assert(lid_countersink_depth <= lid_thickness-1.2, "Countersink must leave at least 1.2 mm of lid beneath the bevel; increase lid_thickness or reduce the recess.");
+assert(lid_insert_length > 0 && lid_insert_depth_allowance >= 0.5, "Allow at least 0.5 mm below the heat-set insert for displaced plastic.");
+assert(lid_insert_bore_diameter-0.2 > lid_screw_clearance && lid_insert_bore_diameter+0.2 < lid_insert_outer_diameter, "All three coupon bores must clear M3 screws and be smaller than the insert OD.");
+assert(lid_insert_outer_diameter <= 2*boss_r-4, "Retain at least 2 mm of boss wall around the installed insert.");
+assert(lid_screw_relief_depth >= lid_insert_bore_depth && lid_screw_relief_depth <= body_height-floor_thickness, "Screw relief must reach below the insert pocket and leave a sealed floor.");
 assert(fit_clearance >= 0.15 && fit_clearance <= 0.6, "Use 0.15-0.6 mm clearance per side.");
 assert(battery_length > 0 && battery_width > 0 && battery_thickness > 0 && battery_xy_clearance >= 1, "Battery dimensions/clearance invalid.");
 assert(battery_xy[0]+bay_l+8 <= case_length-wall, "Battery tray/strap anchor exceeds case length.");
@@ -131,6 +149,13 @@ assert(sd_xy[0]+sd_size[0]+2 <= case_length-wall && sd_xy[1] >= imu_xy[1]+imu_si
 assert(sd_xy[0]+2.54-sd_post_diameter/2 >= battery_xy[0]+bay_l+8+0.5, "SD posts must clear the battery strap anchor; revise layout for a longer cell.");
 assert(sd_pcb_z+1.8 >= floor_thickness+battery_pad+battery_thickness+2, "SD card removal needs 2 mm above the battery; increase SD standoff and check lid clearance.");
 assert(usb_opening_top < body_height && usb_opening_bottom >= floor_thickness, "USB opening must fit between floor and lid.");
+assert(power_switch_width > 0 && power_switch_height > 0, "Power-switch cutout dimensions must be positive.");
+assert(power_switch_y-power_switch_width/2 >= usb_y+usb_opening_width/2+wall &&
+       power_switch_y+power_switch_width/2 <= case_width-7-boss_r-wall,
+       "Power-switch opening must leave a wall-width gap to USB and the rear lid boss.");
+assert(power_switch_bottom >= floor_thickness+2.4 &&
+       power_switch_bottom+power_switch_height <= body_height-2.4-fit_clearance,
+       "Power-switch opening must retain its lower frame and clear the lid locating ribs.");
 assert(stick_length >= 50 && stick_length <= 53 && stick_width >= 10 && stick_width <= 12 && stick_height > led_pcb_thickness && stick_height <= 4, "Side channel supports the bare eight-pixel stick; rework layout for other boards.");
 assert(stick_clearance >= 0.15 && stick_clearance <= 0.4, "Keep 0.15-0.4 mm LED end clearance so the retaining edges still overlap the PCB.");
 assert(led_top+led_lid_clearance+1.2 <= body_height && led_lid_clearance >= 0.5, "Increase body_height for the LED channel and lid stop.");
@@ -153,7 +178,15 @@ module rounded_box(l,w,h,r=3) {
 module slot(l,w,h) {
     linear_extrude(height=h) hull() for(x=[-(l-w)/2,(l-w)/2]) translate([x,0]) circle(d=w);
 }
-module nut_cut(h=nut_h) { cylinder(d=nut_af/cos(30),h=h,$fn=6); }
+module lid_insert_cut(top=body_height,diameter=lid_insert_bore_diameter) {
+    // Blind stepped bore: wider insert pocket, then clearance for the screw tip.
+    translate([0,0,top-lid_screw_relief_depth])
+        cylinder(d=lid_screw_clearance,h=lid_screw_relief_depth+eps);
+    translate([0,0,top-lid_insert_bore_depth])
+        cylinder(d=diameter,h=lid_insert_bore_depth+eps);
+    translate([0,0,top-lid_insert_lead_in])
+        cylinder(d1=diameter,d2=diameter+2*(lid_insert_lead_in+eps),h=lid_insert_lead_in+eps);
+}
 
 module ears() {
     for(x=ear_xs, y=ear_ys) {
@@ -245,12 +278,7 @@ module base() {
             // Internal strain relief beside the LED's DIN end, clear of the Feather.
             tie_anchor(led_anchor_x,8);
         }
-        for(p=bosses) {
-            translate([p[0],p[1],nut_z-1]) cylinder(d=3.4,h=body_height);
-            translate([p[0],p[1],nut_z]) nut_cut();
-            // Load nuts horizontally from the open cavity; roofs bridge 5.8 mm.
-            translate([p[0]<(case_length/2)?p[0]:p[0]-9,p[1]-nut_af/2,nut_z]) cube([9,nut_af,nut_h]);
-        }
+        for(p=bosses) translate([p[0],p[1],0]) lid_insert_cut();
         if(mount_ears) for(x=ear_xs, y=ear_ys)
             translate([x,y,-eps]) cylinder(d=mount_hole_diameter,h=5);
         for(y=[-3,case_width+3]) translate([case_length/2,y,-eps]) slot(10,2.8,5);
@@ -258,6 +286,10 @@ module base() {
         pcb_pilots(imu_xy,imu_holes);
         pcb_pilots(sd_xy,sd_holes,sd_standoff);
         led_wire_passages();
+        // Closed rectangular switch opening, entirely in the base; no lid change.
+        // This creates a 13.5 mm roof bridge at the default dimensions.
+        translate([-eps,power_switch_y-power_switch_width/2,power_switch_bottom])
+            cube([wall+2*eps,power_switch_width,power_switch_height]);
         // Open-to-rim ports print without a roof; lid tongues close their upper part.
         translate([-eps,usb_y-usb_opening_width/2,usb_opening_bottom]) cube([wall+2*eps,usb_opening_width,body_height]);
         translate([led_window_x,-eps,led_window_bottom])
@@ -435,25 +467,37 @@ module led_fit_lid() {
     }
 }
 module fit_coupon() {
-    // One connected print: M3 nut/bolt fit and three labelled M2 pilot sizes.
+    // Full-height, 12 mm bosses reproduce the insert pocket and screw relief.
+    // Labels give bore diameters; center insert bore matches the default base.
     difference() {
-        rounded_box(45,20,5,2);
-        translate([9,10,2]) nut_cut(4);
-        translate([9,10,-eps]) cylinder(d=3.4,h=6);
-        for(i=[0:2]) translate([22+8*i,10,1]) cylinder(d=1.6+0.1*i,h=5);
-        for(i=[0:2]) translate([22+8*i,4,4.6]) linear_extrude(height=0.5)
-            text(str(1.6+0.1*i),size=2.5,halign="center");
+        union() {
+            rounded_box(46,36,floor_thickness,2);
+            for(i=[0:2]) translate([8+15*i,9,0]) cylinder(r=boss_r,h=body_height);
+            for(i=[0:2]) translate([8+15*i,26,floor_thickness-eps])
+                cylinder(d=5.6,h=pcb_standoff+eps);
+        }
+        for(i=[0:2]) {
+            bore = lid_insert_bore_diameter+0.2*(i-1);
+            translate([8+15*i,9,0]) lid_insert_cut(diameter=bore);
+            translate([8+15*i,26,floor_thickness+0.4]) cylinder(d=1.6+0.1*i,h=pcb_standoff+eps);
+            translate([8+15*i,17,floor_thickness-0.4]) linear_extrude(height=0.5)
+                text(str(bore),size=2.5,halign="center");
+            translate([8+15*i,31,floor_thickness-0.4]) linear_extrude(height=0.5)
+                text(str(1.6+0.1*i),size=2.5,halign="center");
+        }
     }
 }
 
 echo("Main shell incl lid, excluding screw heads",[case_length,case_width,body_height+lid_thickness]);
 echo("Base footprint",[case_length,case_width+(mount_ears?26:14)]);
 echo("Battery nominal",[battery_length,battery_width,battery_thickness],"loose bay",[bay_l,bay_w]);
-echo("Lid screw: M3 x",lid_thickness+9,"mm countersunk (length includes head); check full nut engagement and bottom clearance");
+echo("Lid insert: assumed length / OD / bore diameter / bore depth",lid_insert_length,lid_insert_outer_diameter,lid_insert_bore_diameter,lid_insert_bore_depth);
+echo("Lid screw: M3 countersunk, length includes head; nominal full-insert engagement at",lid_thickness+lid_insert_length,"mm; blind bottom at",lid_thickness+lid_screw_relief_depth,"mm; leave tip clearance (default M3x8 or existing M3x12)");
 echo("Lid countersink: exterior diameter / included angle / depth",lid_countersink_diameter,lid_countersink_angle,lid_countersink_depth);
 echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_clearance-(stick_height-led_pcb_thickness));
 echo("SD mount: Adafruit 254, four M2x5 screws, 20.32 mm square centers; PCB underside Z",sd_pcb_z);
 echo("IMU in-plane rotation / hole centers / PCB underside Z",imu_rotation,[for(p=imu_holes) [imu_xy[0]+p[0],imu_xy[1]+p[1]]],pcb_z);
+echo("Power-switch cutout on USB wall (X=0): Y width / Z height / Y center / Z bottom",power_switch_width,power_switch_height,power_switch_y,power_switch_bottom);
 
 if(part=="base") base();
 if(part=="lid") lid();

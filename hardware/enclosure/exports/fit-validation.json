@@ -1,9 +1,11 @@
 {
-  "source_sha256": "cfcc6d548d6d8ba06cbbdfddaa2c04c236f2807f3896c3e49571b9826bd76ccd",
-  "revision": 6,
+  "source_sha256": "253a151bc89d81525d7b9bead8009a2404790a457c9f8ad803ed2b524ed189a7",
+  "revision": 8,
   "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
   "imu_assumptions": "PCB extends from screw row toward SD; components face lid; 4 mm posts; M2 heads <=4 mm diameter and <=2 mm tall; holes shifted 12.7 mm toward LEDs from R5",
   "sd_assumptions": "Adafruit 254; 1.6 mm PCB; M2 heads <=4 mm diameter and <=2 mm tall; direct-soldered wires; card removed with lid off",
+  "switch_assumptions": "13.5 x 8.4 mm cutout on X=0, centered Y=50/Z=11.5, through 3 mm wall; measured body 13.27 x 8.18 mm; bezel, clips, insertion depth, terminals and wiring are not modeled",
+  "insert_assumptions": "Jouth M3x4x5 confirmed by user as M3 thread, 4 mm long, 5 mm OD; vendor bore specification unavailable; flush in 4.6 mm bore, 5 mm deep; 0.2 mm entry bevel; 3.4 mm screw relief to 10 mm depth; coupon bores 4.4/4.6/4.8 mm; physical heat-set fit and retention unverified",
   "contact_face_offset_mm": 0.02,
   "checks": {
     "lid_to_base": "no interference with stated fixtures",
@@ -18,6 +20,18 @@
     "sd_sample_mount": "no interference with stated fixtures",
     "imu_heads_to_components": "no interference with stated fixtures",
     "imu_pilots": "no interference with stated fixtures",
-    "imu_to_led_wiring": "no interference with stated fixtures"
+    "imu_to_led_wiring": "no interference with stated fixtures",
+    "switch_opening_base": "no interference with stated fixtures",
+    "switch_frame_base": "no interference with stated fixtures",
+    "switch_opening_velcro": "no interference with stated fixtures",
+    "switch_frame_velcro": "no interference with stated fixtures",
+    "insert_bores_base": "no interference with stated fixtures",
+    "insert_bosses_base": "no interference with stated fixtures",
+    "lid_screw_path_base": "no interference with stated fixtures",
+    "insert_bores_velcro": "no interference with stated fixtures",
+    "insert_bosses_velcro": "no interference with stated fixtures",
+    "lid_screw_path_velcro": "no interference with stated fixtures",
+    "insert_coupon_bores": "no interference with stated fixtures",
+    "insert_coupon_bosses": "no interference with stated fixtures"
   }
 }
