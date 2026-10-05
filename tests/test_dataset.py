@@ -91,6 +91,22 @@ class DatasetTests(unittest.TestCase):
         all_times = [sample[0] for window in windows.values() for sample in window]
         self.assertEqual(len(all_times), len(set(all_times)))
 
+    def test_background_subtypes_survive_export_without_becoming_trick_outcomes(self):
+        self.write_jsonl(self.path / "labels.jsonl", [
+            self.label(outcome="background", trick="", activity="rolling"),
+            self.label(id="legacy", outcome="background", trick="", start_s=1, end_s=1.5,
+                       video_start_s=11, video_end_s=11.5)])
+        report, labels, windows = collect(self.sessions)
+        self.assertEqual(report["background_activities"], {"rolling": 1, "unspecified": 1})
+        self.assertEqual(report["eligible_attempts"], 0)
+        output = self.root / "typed-background"
+        build(output, report, labels, windows)
+        exported = {row["label"]["id"]: row["label"] for row in
+                    (json.loads(line) for line in (output / "manifest.jsonl").read_text().splitlines())}
+        self.assertTrue(all(row["outcome"] == "background" for row in exported.values()))
+        self.assertEqual(exported["same-id"]["activity"], "rolling")
+        self.assertNotIn("activity", exported["legacy"])
+
     def test_stale_alignment_is_excluded_until_label_is_resaved(self):
         with (self.path / "video_sync.jsonl").open("a") as stream:
             for sync_id, t in ((1, 0), (2, 2)):

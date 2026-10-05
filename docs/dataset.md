@@ -135,6 +135,11 @@ If every ollie is a make and every kickflip a bail, an outcome classifier may
 learn the trick instead of whether it was landed.
 
 Collect observed background such as pushing, rolling, carrying, and waiting.
+The review UI's **Background activity** selector saves these as optional
+`activity` subtypes of `background`, including handling, mixed, and other.
+Old labels remain unspecified until reviewed; nothing is inferred from unlabeled
+time. `report.json` includes eligible `background_activities` counts, and the
+manifest preserves the subtype. Subtypes do not increase the attempt count.
 Keep makes, bails, and falls separate in source labels even if an initial model
 combines bail/fall as a miss. Do not stage falls to balance a class.
 

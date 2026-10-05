@@ -100,6 +100,16 @@ class SessionTests(unittest.TestCase):
         values.update(changes)
         return argparse.Namespace(**values)
 
+    def test_offline_activity_revision_preserves_or_clears_background_subtype(self):
+        self.recorded()
+        label(self.label_args(outcome="background", trick="", activity="carrying"))
+        path = self.path / "labels.jsonl"
+        original = json.loads(path.read_text().splitlines()[-1])
+        label(self.label_args(outcome="background", trick="", replace=original["id"], note="rechecked"))
+        self.assertEqual(json.loads(path.read_text().splitlines()[-1])["activity"], "carrying")
+        label(self.label_args(outcome="make", replace=original["id"]))
+        self.assertNotIn("activity", json.loads(path.read_text().splitlines()[-1]))
+
     def test_raw_data_and_quality_counters_survive_invalid_input(self):
         session = Session(self.path, {})
         session.ingest(sample(1_000_000, 10))

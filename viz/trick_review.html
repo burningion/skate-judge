@@ -32,6 +32,7 @@
   .candidate { text-align: left; display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
   .candidate[aria-pressed=true] { background: #38523d; border-color: #c9f887; } .candidate.rejected { opacity: .55; }
   .editor { border-top: 1px solid #354946; padding-top: 14px; } .editor .row { margin: 10px 0; }
+  #activity-field { margin-top: 10px; } #activity-field select { display: block; width: 100%; margin: 4px 0; }
   #status { min-height: 24px; overflow-wrap: anywhere; } #status[data-error=true],.warning { color: #ffbf92; }
   .conflict { border: 1px solid #886b51; border-radius: 7px; padding: 10px; margin: 12px 0; background: #352d23; }
   details { margin-top: 16px; } summary { cursor: pointer; font-weight: 650; } .help { font-size: 12px; }
@@ -45,7 +46,7 @@
 <main>
   <div class="brand">SKATE JUDGE / REVIEW</div>
   <h1>Review trick attempts</h1>
-  <p class="muted">Label attempts and stretches of background. Audio onsets are hints, not a checklist.</p>
+  <p class="muted">Label attempts and everyday board activity. Audio and motion peaks help you find places to review.</p>
   <div class="row between"><span id="filename" class="file muted">Loading recording…</span><span class="badge">LOCAL AUDIO + VIDEO</span></div>
   <div class="workspace">
     <div>
@@ -92,12 +93,20 @@
     <aside class="panel" aria-label="Candidate pairs and boundary editor">
       <div class="row between"><h2>Review queue</h2><span id="count" class="badge">Analyzing</span></div>
       <p class="help muted">Review real attempts first. Skip duplicate suggestions. For rolling, pushing, or waiting, label one watched background range across as many sounds as needed.</p>
-      <details><summary>Onset detection settings</summary><div class="settings">
+      <details><summary>Candidate detection settings</summary><div class="settings">
+        <label>Candidate sources<select id="candidate-mode"><option value="audio">Audio only</option><option value="audio_filtered">Audio filtered by motion (experimental)</option><option value="audio_motion">Audio + extra motion candidates (experimental)</option></select></label>
         <label>Onset threshold <output id="threshold-value">0.65</output><input id="threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
+        <label id="motion-threshold-field" hidden>Motion threshold <output id="motion-threshold-value">0.65</output><input id="motion-threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
+        <div id="filter-controls" hidden>
+          <label>Required motion near pop <output id="filter-threshold-value">0.40</output><input id="filter-threshold" type="range" min="0.1" max="2" step="0.05" value="0.4"></label>
+          <label class="help"><input id="show-filtered" type="checkbox"> Show filtered suggestions</label>
+          <small>Higher values hide more audio candidates and may hide real attempts. Missing or unreliable IMU coverage keeps a candidate visible. Hidden suggestions remain unlabeled.</small>
+        </div>
         <div class="gap"><label>Min pop → contact (s)<input id="min-gap" type="number" min="0.1" max="4.9" step="0.05" value="0.18"></label><label>Max pop → contact (s)<input id="max-gap" type="number" min="0.15" max="5" step="0.05" value="0.9"></label></div>
-        <small>Lower threshold finds more onsets. Pairing favors two strong impacts with quieter audio between them; strength is relative to this clip.</small>
+        <small>Lower thresholds find more peaks. Motion can support audio or suggest a pair when the microphone misses an impact. Strength is relative, not confidence in a trick.</small>
       </div>
       </details>
+      <p id="motion-status" class="help muted"></p>
       <p id="progress" class="help"></p>
       <label class="help"><input id="pending-only" type="checkbox"> Show only remaining</label>
       <div class="row"><button id="previous" type="button">← Previous</button><button id="next" type="button">Next →</button><button id="new" type="button">+ Missed attempt</button></div>
@@ -108,6 +117,8 @@
         <div class="row"><button id="audition" type="button" disabled>Play attempt [Space]</button><label><input id="loop" type="checkbox"> Loop</label></div>
         <div class="gap"><label>Trick<input id="trick" type="text" maxlength="200" placeholder="e.g. ollie" list="trick-names" disabled></label><label>Outcome<select id="outcome" disabled><option value="">Choose outcome…</option><option value="make">Make [1]</option><option value="bail">Bail / stepped off [2]</option><option value="fall">Fall [3]</option><option value="unknown">Unknown [4]</option><option value="background">Not a trick [0]</option></select></label></div>
         <datalist id="trick-names"><option value="ollie"><option value="kickflip"><option value="heelflip"><option value="shuvit"><option value="pop shuvit"><option value="180"></datalist>
+        <label id="activity-field" hidden>Background activity<select id="activity" disabled><option value="">Unspecified</option><option value="rolling">Rolling</option><option value="pushing">Pushing</option><option value="carrying">Carrying</option><option value="waiting">Waiting / stationary</option><option value="handling">Board handling / pickup / drop</option><option value="mixed">Mixed activities</option><option value="other">Other</option></select><small>Choose what you watched. Use separate ranges for distinct activities, or Mixed for a stretch containing several.</small></label>
+        <p id="candidate-evidence" class="help muted"></p>
         <div id="window-conflict" class="conflict" hidden><p id="window-conflict-text" class="help warning"></p><button id="open-overlap" type="button">Open overlapping saved label</button></div>
         <div class="row"><button id="save" class="primary" type="button" disabled>Save label [S]</button><button id="background" type="button" disabled>Not a trick [0]</button></div>
         <div class="row"><label><input id="auto-next" type="checkbox" checked> Advance after saving</label><button id="reject" type="button" disabled>Skip suggestion [X]</button></div>

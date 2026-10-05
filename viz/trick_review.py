@@ -28,7 +28,7 @@ import sys
 import threading
 
 VERSION = 1
-API_VERSION = 2
+API_VERSION = 4
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,6 +152,59 @@ def audio_features(audio, sample_rate=SAMPLE_RATE, hop=HOP):
     )
 
 
+def motion_features(samples):
+    """Inspection hints in sensor seconds, never activity or outcome labels.
+
+    Find acceleration/rotation peaks above a one-second local median. Physical
+    floors prevent quiet sensor noise from becoming strong normalized events.
+    Process continuous runs separately so gaps cannot become invented impacts.
+    """
+    import numpy as np
+    from scipy.ndimage import median_filter
+    from scipy.signal import find_peaks
+
+    result = dict(algorithm="imu-local-peaks-v1", events=[], unavailable_reason="", coverage=None)
+    values = np.asarray(samples, dtype=float)
+    if len(values) < 3:
+        result["unavailable_reason"] = "Not enough IMU samples for motion suggestions."
+        return result
+    gaps = np.diff(values[:, 0])
+    if not np.all(np.isfinite(values)) or np.any(gaps <= 0):
+        result["unavailable_reason"] = "IMU timestamps or samples are invalid."
+        return result
+    spacing = float(np.median(gaps))
+    if spacing > .02 or np.mean(values[:, 1] == 0) > .05:
+        result["unavailable_reason"] = "IMU data is too sparse or contains too many zero readings for motion suggestions."
+        return result
+    result["coverage"] = [float(values[0, 0]), float(values[-1, 0])]
+    size = max(3, round(1 / spacing) | 1)
+    segments = np.split(np.arange(len(values)), np.flatnonzero(gaps > .03) + 1)
+    for axis, kind, floor in ((1, "accel", 15.), (2, "gyro", 2.)):
+        runs = []
+        for indices in segments:
+            if len(indices) < 3:
+                continue
+            signal = values[indices, axis]
+            excess = np.maximum(signal - median_filter(signal, size=size, mode="nearest"), 0)
+            runs.append((indices, excess))
+        scale = max(floor, float(np.percentile(np.concatenate([v for _, v in runs]), 99.5))) if runs else floor
+        for indices, excess in runs:
+            peaks, _ = find_peaks(excess, height=floor, prominence=floor / 2,
+                                 distance=max(1, round(.1 / spacing)))
+            for peak in peaks:
+                at = indices[peak]
+                result["events"].append(dict(time_s=float(values[at, 0]), kind=kind,
+                    strength=round(float(excess[peak] / scale), 4), magnitude=round(float(values[at, axis]), 4)))
+    result["events"].sort(key=lambda row: row["time_s"])
+    # Pair generation may not span a known acquisition gap.
+    result["gaps"] = [[float(values[i, 0]), float(values[i + 1, 0])] for i in np.flatnonzero(gaps > .03)]
+    # Missing acceleration is not evidence of a quiet board. Keep audio
+    # candidates around zero readings even below the session-wide cutoff.
+    result["gaps"].extend([[float(values[max(0, i - 1), 0]), float(values[min(len(values) - 1, i + 1), 0])]
+                           for i in np.flatnonzero(values[:, 1] == 0)])
+    return result
+
+
 def sensor_context(source):
     import numpy as np
 
@@ -163,6 +216,7 @@ def sensor_context(source):
         result["offset_hint_s"] = round((datetime.fromisoformat(sidecar["created_utc"])
             - datetime.fromisoformat(meta["created_utc"])).total_seconds(), 3)
     csv_path = session / "samples.csv"
+    invalid_samples = False
     if csv_path.exists():
         with csv_path.open() as stream:
             for row in csv.DictReader(stream):
@@ -170,10 +224,13 @@ def sensor_context(source):
                 if all(math.isfinite(v) for v in values):
                     t, *axes = values
                     result["samples"].append([t, math.hypot(*axes[:3]), math.hypot(*axes[3:])])
+                else:
+                    invalid_samples = True
         samples = result["samples"]
         if len(samples) > 1:
             gaps = np.diff([row[0] for row in samples])
-            rate = (len(samples) - 1) / (samples[-1][0] - samples[0][0])
+            elapsed = samples[-1][0] - samples[0][0]
+            rate = (len(samples) - 1) / elapsed if elapsed > 0 else 0
             zero = sum(row[1] == 0 for row in samples) / len(samples)
             result.update(average_hz=round(rate, 2), zero_accel_fraction=round(zero, 3),
                           gaps_over_30ms=int(sum(gaps > .03)))
@@ -215,6 +272,9 @@ def sensor_context(source):
             result["mapping"] = dict(scale=scale, offset_s=offset, points=count)
         except ValueError as error:
             result["warnings"].append(str(error))
+    result["motion"] = motion_features(result["samples"])
+    if invalid_samples:
+        result["motion"]["unavailable_reason"] = "IMU contains nonfinite samples; using audio only."
     return result
 
 
@@ -300,6 +360,14 @@ def validate_review(value, duration):
             raise ValueError(f"Invalid {key}.")
     if settings["min_gap"] >= settings["max_gap"]:
         raise ValueError("Minimum gap must be less than maximum gap.")
+    if settings.get("candidate_mode", "audio") not in ("audio", "audio_motion", "audio_filtered"):
+        raise ValueError("Invalid candidate mode.")
+    if not finite_number(settings.get("motion_threshold", .65)) or not .1 <= settings.get("motion_threshold", .65) <= 2:
+        raise ValueError("Invalid motion threshold.")
+    if not finite_number(settings.get("filter_threshold", .4)) or not .1 <= settings.get("filter_threshold", .4) <= 2:
+        raise ValueError("Invalid filter threshold.")
+    if not isinstance(settings.get("show_filtered", False), bool):
+        raise ValueError("Invalid filtered-suggestion visibility.")
     return dict(intervals=value["intervals"], settings=settings)
 
 
@@ -375,6 +443,7 @@ def make_server(directory, media, data, port):
             stale = stale or row.get("review_source", data["source"]) != data["source"]
             pair.update(label_id=row["id"], label_start_s=start - origin, label_end_s=end - origin,
                         outcome=row["outcome"], trick=row.get("trick", ""), note=row.get("note", ""),
+                        activity=row.get("activity", ""),
                         status="labeled", label_stale=stale)
             intervals[pair["id"]] = pair
         saved.update(intervals=sorted(intervals.values(), key=lambda row: row["start_s"]),
@@ -397,6 +466,11 @@ def make_server(directory, media, data, port):
         row = None
         clean = {key: pair[key] for key in ("id", "start_s", "end_s", "status")}
         clean["note"] = pair.get("note", "")
+        sources = pair.get("sources", [])
+        if not isinstance(sources, list) or any(not isinstance(s, str) or s not in ("audio", "accel", "gyro") for s in sources):
+            raise ValueError("Invalid suggestion sources.")
+        if sources:
+            clean.update(sources=list(dict.fromkeys(sources)), candidate_algorithm="audio-imu-pairs-v1")
         if decision == "skip":
             if existing and existing.get("label_id"):
                 raise ValueError("This interval already has a label. Correct its outcome or boundaries and save it again.")
@@ -415,6 +489,7 @@ def make_server(directory, media, data, port):
             row = build_label(argparse.Namespace(session=session, video=data["video"],
                 start=start + origin, end=end + origin, outcome=outcome,
                 trick="" if outcome == "background" else pair.get("trick", ""), note=clean["note"],
+                activity=pair.get("activity"),
                 replace=existing.get("label_id") if existing else None))
             row.update(review_interval=clean, review_source=data["source"],
                        review_algorithm=data["algorithm"], source_pts_origin_s=origin)

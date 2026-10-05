@@ -32,6 +32,7 @@ else:
     from video import CHUNK_LIMIT, VideoConflict, VideoStore
 
 OUTCOMES = ("make", "bail", "fall", "background", "unknown")
+BACKGROUND_ACTIVITIES = ("rolling", "pushing", "carrying", "waiting", "handling", "mixed", "other")
 FIELDS = (
     "t_s",
     "device_us",
@@ -936,6 +937,11 @@ def build_label(args):
     """Validate and map a human label without writing it."""
     if args.outcome not in OUTCOMES:
         raise ValueError("Choose make, bail, fall, background, or unknown.")
+    activity = getattr(args, "activity", None)
+    if activity is not None and (not isinstance(activity, str) or activity not in ("", *BACKGROUND_ACTIVITIES)):
+        raise ValueError("Choose a supported background activity.")
+    if activity and args.outcome != "background":
+        raise ValueError("Activity applies only to background labels.")
     for name, limit in (("trick", 200), ("note", 2000)):
         value = getattr(args, name)
         if not isinstance(value, str) or len(value) > limit:
@@ -957,6 +963,8 @@ def build_label(args):
     existing = {row["id"]: row for row in read_jsonl(args.session / "labels.jsonl")}
     if args.replace and args.replace not in existing:
         raise ValueError("--replace must name an existing label ID")
+    if activity is None and args.replace and args.outcome == "background":
+        activity = existing[args.replace].get("activity", "")
     for row in existing.values():
         if row["id"] != args.replace and start < row["end_s"] and end > row["start_s"]:
             raise ValueError(
@@ -977,6 +985,8 @@ def build_label(args):
     )
     if args.video:
         row["video_mapping"] = dict(scale=scale, offset_s=offset, points=count)
+    if args.outcome == "background" and activity:
+        row["activity"] = activity
     if args.replace and existing[args.replace].get("video") == args.video:
         for key in ("review_interval", "review_source", "review_algorithm", "source_pts_origin_s"):
             if key in existing[args.replace]:
@@ -1042,6 +1052,8 @@ def main(argv=None):
     lab.add_argument("--end", type=float, required=True)
     lab.add_argument("--outcome", choices=OUTCOMES, required=True)
     lab.add_argument("--trick", default="")
+    lab.add_argument("--activity", choices=("", *BACKGROUND_ACTIVITIES),
+                     help="Observed background activity; omit to preserve an existing subtype")
     lab.add_argument("--note", default="")
     lab.add_argument(
         "--video", help="Interpret start/end in this video's seconds using align points"

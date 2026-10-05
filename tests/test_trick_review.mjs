@@ -1,9 +1,101 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {readFile} from "node:fs/promises";
-import {attemptWindow, backgroundWindow, init, mergeReviews, needsReview, nextPending, overlappingLabels, proposePairs, requireCurrentServer, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {attemptWindow, backgroundWindow, init, mergeReviews, motionTimeline, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {evaluateClips} from "../viz/evaluate_candidates.mjs";
 
 const opts = {threshold: .65, min_gap: .18, max_gap: .9};
+const combined = {...opts, candidate_mode: "audio_motion", motion_threshold: .65};
+const audioFixture = times => ({onsets: times.map(time_s => ({time_s, strength: 1})), strength: [], step_s: .01});
+const motionFixture = () => ({events: [
+  {time_s: 2.03, kind: "accel", strength: 1}, {time_s: 2.1, kind: "gyro", strength: 1},
+  {time_s: 2.51, kind: "accel", strength: 1},
+  {time_s: 5, kind: "accel", strength: 1}, {time_s: 5.1, kind: "gyro", strength: 1},
+  {time_s: 5.4, kind: "accel", strength: 1}], gaps: [], coverage: [0, 20]});
+
+test("audio screening keeps acceleration OR rotation near pop, not motion only at landing", () => {
+  const audio = audioFixture([2, 2.5, 5, 5.4, 8, 8.5, 11, 11.5]);
+  const motion = {coverage: [0, 20], gaps: [], events: [
+    {time_s: 2.02, kind: "accel", strength: .5},
+    {time_s: 5.1, kind: "gyro", strength: .5},
+    {time_s: 8.5, kind: "accel", strength: 2}]};
+  const settings = {...opts, candidate_mode: "audio_filtered", filter_threshold: .4};
+  const baseline = proposePairs(audio.onsets, [], .01, opts);
+  const kept = proposeCandidates(audio, motion, settings);
+  assert.deepEqual(kept.map(row => row.id), baseline.slice(0, 2).map(row => row.id));
+  const all = proposeCandidates(audio, motion, {...settings, show_filtered: true});
+  assert.deepEqual(all.map(row => row.motion_filter), ["supported", "supported", "suppressed", "suppressed"]);
+  assert.deepEqual(all.map(row => [row.start_s, row.end_s]), baseline.map(row => [row.start_s, row.end_s]));
+  assert.ok(all.every(row => !row.outcome && row.status === "suggested"));
+});
+
+test("filter fails open for missing, interrupted, or out-of-range IMU coverage", () => {
+  const pairs = proposePairs(audioFixture([2, 2.5]).onsets, [], .01, opts);
+  for (const motion of [{events: [], gaps: [], coverage: null},
+    {events: [], gaps: [], coverage: [1.9, 20]},
+    {events: [], gaps: [], coverage: [0, 2.1]},
+    {events: [], gaps: [[1.9, 2]], coverage: [0, 20]}]) {
+    const screened = screenAudioCandidates(pairs, motion);
+    assert.equal(screened.length, 1);
+    assert.equal(screened[0].motion_filter, "unchecked");
+  }
+  assert.equal(screenAudioCandidates(pairs, {events: [], gaps: [], coverage: [0, 20]})[0].motion_filter, "suppressed",
+    "a quiet, fully covered window differs from missing data");
+});
+
+test("evaluation distinguishes reviewed background from unclassified suggestions and records lost attempts", () => {
+  const clip = {session: "fixture", video: "clip.mp4", origin: .5, duration: 20,
+    audio: audioFixture([2, 2.5, 5, 5.4, 8, 8.5]), mapping: {scale: 1, offset_s: 10},
+    motion: {coverage: [10, 31], gaps: [], events: [{time_s: 12.6, kind: "accel", strength: .5}]},
+    labels: [{id: "trick", outcome: "make", review_interval: {start_s: 2}},
+      {id: "background", outcome: "background", video_start_s: 5.5, video_end_s: 6}]};
+  const audit = evaluateClips([clip], [{...opts, candidate_mode: "audio"},
+    {...opts, candidate_mode: "audio_filtered", filter_threshold: .4},
+    {...opts, candidate_mode: "audio_filtered", filter_threshold: .65}]);
+  assert.equal(audit.results[0].totals.background_candidates, 1);
+  assert.equal(audit.results[0].totals.unclassified_candidates, 1);
+  assert.equal(audit.results[1].totals.matched_attempts, 1);
+  assert.equal(audit.results[1].totals.background_candidates, 0);
+  assert.deepEqual(audit.results[2].sessions[0].lost_attempt_ids, ["trick"]);
+});
+
+test("motion corroborates audio without moving it and recovers an inaudible pair", () => {
+  const audio = audioFixture([2, 2.5]), motion = motionFixture();
+  const pairs = proposeCandidates(audio, motion, combined);
+  assert.deepEqual(pairs.map(p => [p.start_s, p.end_s]), [[2, 2.5], [5, 5.4]]);
+  assert.deepEqual(new Set(pairs[0].sources), new Set(["audio", "accel", "gyro"]));
+  assert.deepEqual(new Set(pairs[1].sources), new Set(["accel", "gyro"]));
+  assert.equal(pairs[0].id, proposePairs(audio.onsets, [], .01, opts)[0].id);
+  assert.deepEqual(proposeCandidates(audio, motion, {...combined, candidate_mode: "audio"}), proposePairs(audio.onsets, [], .01, opts));
+  assert.deepEqual(motion, motionFixture(), "detection must not mutate cached signals");
+});
+
+test("rotation alone cannot invent a trick; no motion pairs cross acquisition gaps", () => {
+  const motion = motionFixture();
+  assert.deepEqual(proposeCandidates(audioFixture([]), {events: motion.events.filter(e => e.kind === "gyro"), gaps: []}, combined), []);
+  const pairs = proposeCandidates(audioFixture([]), {...motion, gaps: [[2.2, 2.4], [5.1, 5.3]]}, combined);
+  assert.deepEqual(pairs, []);
+});
+
+test("a louder IMU rebound cannot replace the existing audio pop", () => {
+  const audio = audioFixture([2, 2.5, 2.8]);
+  const motion = motionFixture();
+  motion.events.push({time_s: 2.78, kind: "accel", strength: 10}, {time_s: 2.7, kind: "gyro", strength: 4});
+  const baseline = proposePairs(audio.onsets, [], .01, opts);
+  const candidates = proposeCandidates(audio, motion, combined);
+  for (const pair of baseline) assert.ok(candidates.some(p => p.id === pair.id && p.start_s === pair.start_s && p.end_s === pair.end_s));
+});
+
+test("motion mapping respects drift, original PTS, coverage, and unavailable alignment", () => {
+  const motion = {events: [{time_s: 12.02, kind: "accel", strength: 1}, {time_s: 30, kind: "gyro", strength: 1}], gaps: [[12.02, 13.03]]};
+  const mapping = {offset_s: 10, scale: 1.01};
+  const aligned = motionTimeline(motion, mapping, .5, 4);
+  assert.equal(aligned.events.length, 1);
+  assert.ok(Math.abs(aligned.events[0].time_s - 1.5) < 1e-8);
+  assert.ok(Math.abs(aligned.gaps[0][1] - 2.5) < 1e-8);
+  assert.deepEqual(motionTimeline(motion, null, 0, 4).events, []);
+  assert.deepEqual(motionTimeline({...motion, unavailable_reason: "bad sensor"}, mapping, 0, 4).events, []);
+});
 test("pairs impacts across a plausible gap and leaves isolated sounds unpaired", () => {
   const onsets = [1, 1.4, 5, 9, 9.5].map(time_s => ({time_s, strength: 1}));
   const pairs = proposePairs(onsets, Array(1000).fill(0), .01, opts);
@@ -118,7 +210,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
   const state = {revision: 0, labels_revision: "0", intervals,
     settings: {...opts, offset: 999, scale: .99},
     label_context: {available: true, mapping, coverage: [0, 20]}};
-  const data = {api_version: 2, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
+  const data = {api_version: 4, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
     video_timing: {fps: 120000 / 1001, frame_times_s: [0, 1001 / 120000, 2002 / 120000]},
     audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
@@ -226,6 +318,62 @@ test("UI saves background in one click, advances, and never labels untouched sug
   assert.match(get("status").textContent, /Queue complete/);
 });
 
+test("UI saves and restores a chosen activity without carrying it into the next attempt", async t => {
+  const {get, calls, state} = await controller(t);
+  await get("candidates").children[0].click();
+  get("outcome").value = "background"; get("outcome").oninput();
+  assert.equal(get("activity-field").hidden, false);
+  get("activity").value = "pushing"; get("activity").oninput();
+  await get("save").click();
+  assert.equal(calls[0].interval.activity, "pushing");
+  assert.equal(calls[0].interval.outcome, "background");
+  assert.equal(state.intervals[0].activity, "pushing");
+  assert.equal(get("activity").value, "");
+  assert.equal(get("activity-field").hidden, true);
+  await get("candidates").children[0].click();
+  assert.equal(get("activity").value, "pushing");
+});
+
+test("UI enables motion only at saved alignment and keeps activity drafts across threshold changes", async t => {
+  const {get, calls} = await controller(t, {sensor: {motion: motionFixture()}});
+  assert.equal(get("candidate-mode").value, "audio");
+  assert.match(get("motion-status").textContent, /audio suggestions only/);
+  get("candidate-mode").value = "audio_motion"; get("candidate-mode").oninput();
+  assert.match(get("motion-status").textContent, /motion peaks/);
+  assert.ok(get("candidates").children.some(button => button.children[1].textContent.includes("gyro")));
+  await get("candidates").children[0].click();
+  get("outcome").value = "background"; get("outcome").oninput();
+  get("activity").value = "carrying"; get("activity").oninput();
+  get("motion-threshold").value = "1"; get("motion-threshold").oninput();
+  assert.equal(get("activity").value, "carrying");
+  get("offset").value = "1"; get("offset").oninput();
+  assert.match(get("motion-status").textContent, /Match LED flashes/);
+  assert.equal(calls.length, 0);
+});
+
+test("UI filter is reversible, keeps saved labels and drafts, and never saves rejected outcomes automatically", async t => {
+  const {get, calls} = await controller(t, {sensor: {motion: motionFixture()}});
+  assert.equal(get("candidates").children.length, 2);
+  get("candidate-mode").value = "audio_filtered"; get("candidate-mode").oninput();
+  assert.equal(get("candidates").children.length, 1);
+  assert.match(get("motion-status").textContent, /1 of 2 audio candidates hidden/);
+  get("show-filtered").checked = true; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.match(get("candidates").children[1].children[1].textContent, /filtered/);
+  await get("candidates").children[1].click();
+  get("note").value = "check this quiet attempt"; get("note").oninput();
+  get("show-filtered").checked = false; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 2, "a human draft stays visible despite the filter");
+  assert.equal(get("note").value, "check this quiet attempt");
+  assert.equal(calls.length, 0, "hiding a suggestion is not a label decision");
+  get("trick").value = "ollie"; get("trick").oninput();
+  get("outcome").value = "make"; get("outcome").oninput();
+  await get("save").click();
+  assert.equal(calls[0].interval.outcome, "make");
+  get("filter-threshold").value = "2"; get("filter-threshold").oninput();
+  assert.equal(get("candidates").children.length, 1, "a saved label survives even when every suggestion is filtered");
+});
+
 test("UI saves one watched background range covering multiple suggestions and restores it", async t => {
   const {get, calls, state} = await controller(t, {onsets: [2, 2.5, 4, 4.5, 8, 8.5]});
   get("video").currentTime = 1;
@@ -323,7 +471,7 @@ test("UI preserves drafts on failed saves and outcome shortcuts submit the selec
 test("an old running server gets restart instructions before accessing missing label context", async t => {
   const {calls} = await controller(t, {legacyServer: true});
   assert.equal(calls.length, 0);
-  assert.throws(() => requireCurrentServer({api_version: 2}, {intervals: []}), /Restart the review server/);
+  assert.throws(() => requireCurrentServer({api_version: 4}, {intervals: []}), /Restart the review server/);
 });
 
 test("frame stepping follows 119.88 fps timestamps and irregular presentation intervals", () => {

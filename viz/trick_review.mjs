@@ -1,5 +1,5 @@
 // Pure pairing functions are also used by the Node checks.
-export function proposePairs(onsets, strength, step, {threshold, min_gap, max_gap}) {
+export function proposePairs(onsets, strength, step, {threshold, min_gap, max_gap}, gaps = []) {
   const eligible = onsets.filter(p => p.strength >= threshold);
   const options = [];
   for (let i = 0; i < eligible.length; i++) {
@@ -8,11 +8,14 @@ export function proposePairs(onsets, strength, step, {threshold, min_gap, max_ga
       const b = eligible[j], gap = b.time_s - a.time_s;
       if (gap > max_gap) break;
       if (gap < min_gap) continue;
+      const sources = [...new Set([...(a.sources || ["audio"]), ...(b.sources || ["audio"])])];
+      if (sources.includes("accel") && gaps.some(([lo, hi]) => a.time_s < hi && b.time_s > lo)) continue;
       const middle = strength.slice(Math.ceil((a.time_s + .06) / step), Math.floor((b.time_s - .06) / step));
       const activity = middle.reduce((sum, x) => sum + x, 0) / Math.max(1, middle.length);
-      const score = Math.sqrt(a.strength * b.strength) / (1 + 3 * activity);
-      options.push({id: `auto-${a.time_s.toFixed(4)}-${b.time_s.toFixed(4)}`,
-        start_s: a.time_s, end_s: b.time_s, score, status: "suggested", note: ""});
+      const score = Math.sqrt(a.strength * b.strength) * (1 + .35 * (sources.length - 1)) / (1 + 3 * activity);
+      const prefix = (a.sources && !a.sources.includes("audio")) || (b.sources && !b.sources.includes("audio")) ? "imu" : "auto";
+      options.push({id: `${prefix}-${a.time_s.toFixed(4)}-${b.time_s.toFixed(4)}`,
+        start_s: a.time_s, end_s: b.time_s, score, sources, status: "suggested", note: ""});
     }
   }
   // Strongest non-overlapping explanation first, then chronological display.
@@ -21,6 +24,71 @@ export function proposePairs(onsets, strength, step, {threshold, min_gap, max_ga
     if (!selected.some(p => pair.start_s <= p.end_s + .1 && pair.end_s >= p.start_s - .1)) selected.push(pair);
   }
   return selected.sort((a, b) => a.start_s - b.start_s);
+}
+
+export function motionTimeline(motion, mapping, origin, duration) {
+  if (!mapping || !motion || motion.unavailable_reason) return {events: [], gaps: [], coverage: null};
+  const time = t => (t - mapping.offset_s) / mapping.scale - origin;
+  return {events: motion.events.map(row => ({...row, time_s: time(row.time_s)}))
+    .filter(row => row.time_s >= 0 && row.time_s < duration),
+    gaps: (motion.gaps || []).map(([lo, hi]) => [time(lo), time(hi)]),
+    coverage: motion.coverage ? motion.coverage.map(time) : null};
+}
+
+export function screenAudioCandidates(pairs, motion, threshold = .4) {
+  // This screens already selected audio pairs, preserving their identities and
+  // boundaries. No evidence is treated as negative unless coverage is valid.
+  return pairs.map(pair => {
+    const lo = pair.start_s - .15, hi = pair.start_s + .2;
+    if (!motion.coverage || lo < motion.coverage[0] || hi > motion.coverage[1] ||
+        motion.gaps.some(([start, end]) => lo <= end && hi >= start)) {
+      return {...pair, motion_filter: "unchecked", filter_reason: "IMU coverage is incomplete near pop; kept for review."};
+    }
+    const nearby = motion.events.filter(event => event.time_s >= lo && event.time_s <= hi);
+    const support = {accel: 0, gyro: 0};
+    for (const event of nearby) if (event.kind in support) support[event.kind] = Math.max(support[event.kind], event.strength);
+    const sources = ["audio", ...Object.keys(support).filter(kind => support[kind] >= threshold)];
+    const suppressed = sources.length === 1;
+    return {...pair, sources, motion_support: support, motion_filter: suppressed ? "suppressed" : "supported",
+      filter_reason: suppressed ? "No acceleration or gyro peak above the filter threshold near pop."
+        : "Motion supports the proposed pop; check the video."};
+  });
+}
+
+export function proposeCandidates(audio, motion, opts) {
+  const audioPairs = proposePairs(audio.onsets, audio.strength, audio.step_s, opts);
+  if (opts.candidate_mode === "audio_filtered") {
+    return screenAudioCandidates(audioPairs, motion, opts.filter_threshold ?? .4)
+      .filter(pair => opts.show_filtered || pair.motion_filter !== "suppressed");
+  }
+  if (opts.candidate_mode === "audio" || !motion.events.length) {
+    return audioPairs;
+  }
+  const events = audio.onsets.filter(row => row.strength >= opts.threshold)
+    .map(row => ({...row, sources: ["audio"]}));
+  const eligible = motion.events.filter(row => row.strength >= opts.motion_threshold);
+  for (const peak of eligible.filter(row => row.kind === "accel")) {
+    const nearby = events.filter(row => row.sources.includes("audio") && Math.abs(row.time_s - peak.time_s) <= .1)
+      .sort((a, b) => Math.abs(a.time_s - peak.time_s) - Math.abs(b.time_s - peak.time_s))[0];
+    if (nearby) {
+      if (!nearby.sources.includes("accel")) nearby.sources.push("accel");
+    } else events.push({...peak, strength: peak.strength * opts.threshold / opts.motion_threshold, sources: ["accel"]});
+  }
+  // Angular-speed peaks can follow the pop. They corroborate an impact;
+  // rotating a carried board alone does not create a pop/contact pair.
+  const gyro = eligible.filter(row => row.kind === "gyro");
+  for (const event of events) if (gyro.some(peak => Math.abs(peak.time_s - event.time_s) <= .2)) event.sources.push("gyro");
+  const candidates = proposePairs(events.sort((a, b) => a.time_s - b.time_s), audio.strength, audio.step_s, opts, motion.gaps);
+  // Keep the existing audio search intact: a louder landing or rebound must
+  // not displace its proposed pop. Motion adds evidence and extra places to
+  // inspect. Nearby alternatives disappear once a human labels their range.
+  const supported = audioPairs.map(pair => ({...pair, sources: [...new Set(events
+    .filter(event => event.time_s === pair.start_s || event.time_s === pair.end_s)
+    .flatMap(event => event.sources))]}));
+  const extra = candidates.filter(pair => pair.sources.includes("accel") && pair.sources.includes("gyro") &&
+    !audioPairs.some(other => Math.abs(pair.start_s - other.start_s) < .15 ||
+      (pair.start_s >= other.start_s && pair.start_s <= other.end_s + .1)));
+  return [...supported, ...extra].sort((a, b) => a.start_s - b.start_s);
 }
 
 export function mergeReviews(proposals, reviewed) {
@@ -75,7 +143,7 @@ export function validInterval(start, end, duration) {
 }
 
 export function requireCurrentServer(data, saved) {
-  if (data.api_version !== 2 || !saved.label_context || typeof saved.labels_revision !== "string") {
+  if (data.api_version !== 4 || !saved.label_context || typeof saved.labels_revision !== "string") {
     throw new Error("Restart the review server to load the updated tools: press Ctrl+C in its terminal, rerun the review command, then reload this page. Refreshing the browser alone keeps the older Python server running.");
   }
 }
@@ -117,13 +185,16 @@ export async function init() {
   let labelsRevision = saved.labels_revision, labelContext = saved.label_context;
   let lastTrick = [...reviewed].reverse().find(row => row.trick)?.trick || "";
   let windowStart = 0, audition = null, drag = null, dirty = false, saving = false;
+  let motion = {events: [], gaps: []};
   const colors = {start: "#c9f887", end: "#ffb08a", onset: "#bdacff", ink: "#9ebbb0", faint: "#344942"};
   const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
   const format = value => `${Math.floor(value / 60)}:${(value % 60).toFixed(3).padStart(6, "0")}`;
   const span = () => Math.min(duration, Number($("zoom").value));
   function settings() {
     return {threshold: Number($("threshold").value), min_gap: Number($("min-gap").value),
-      max_gap: Number($("max-gap").value), offset: Number($("offset").value), scale: Number($("scale").value)};
+      max_gap: Number($("max-gap").value), offset: Number($("offset").value), scale: Number($("scale").value),
+      candidate_mode: $("candidate-mode").value, motion_threshold: Number($("motion-threshold").value),
+      filter_threshold: Number($("filter-threshold").value), show_filtered: $("show-filtered").checked};
   }
   function status(message, error = false) { $("status").textContent = message; $("status").dataset.error = String(error); }
   function changed() { dirty = true; status("Unsaved changes. Save label to keep them."); }
@@ -133,11 +204,13 @@ export async function init() {
   function selection() { return rows.find(row => row.id === selected); }
   const windowFor = pair => pair && attemptWindow(pair, duration, labelContext.coverage, reviewed);
   const isBackground = pair => pair?.outcome === "background";
-  const savedDescription = row => `${isBackground(row) ? "background" : `${row.trick || "trick"} · ${row.outcome}`} (${format(row.label_start_s)}–${format(row.label_end_s)})`;
+  const backgroundName = row => row.activity ? `background · ${row.activity}` : "background · unspecified";
+  const evidence = row => (row.sources || []).join(" + ");
+  const savedDescription = row => `${isBackground(row) ? backgroundName(row) : `${row.trick || "trick"} · ${row.outcome}`} (${format(row.label_start_s)}–${format(row.label_end_s)})`;
   function setEditor() {
     const pair = selection();
-    for (const id of ["start", "end", "mark-start", "mark-end", "audition", "save", "background", "reject", "note", "trick", "outcome", "label-start", "label-end", "label-mark-start", "label-mark-end"]) $(id).disabled = !pair || saving;
-    for (const id of ["previous", "next", "new", "new-background", "open-overlap", "threshold", "min-gap", "max-gap", "offset", "scale", "pending-only", "save-sync"]) $(id).disabled = saving;
+    for (const id of ["start", "end", "mark-start", "mark-end", "audition", "save", "background", "reject", "note", "trick", "outcome", "activity", "label-start", "label-end", "label-mark-start", "label-mark-end"]) $(id).disabled = !pair || saving;
+    for (const id of ["previous", "next", "new", "new-background", "open-overlap", "threshold", "min-gap", "max-gap", "candidate-mode", "motion-threshold", "filter-threshold", "show-filtered", "offset", "scale", "pending-only", "save-sync"]) $(id).disabled = saving;
     $("sync-id").disabled = $("save-sync").disabled = saving || Boolean(syncUnavailable);
     $("save").disabled ||= !labelContext.available;
     $("background").disabled ||= !labelContext.available;
@@ -152,6 +225,10 @@ export async function init() {
     $("note").value = pair?.note || "";
     $("trick").value = pair?.trick ?? lastTrick;
     $("outcome").value = pair?.outcome || "";
+    $("activity-field").hidden = !isBackground(pair);
+    $("activity").value = pair?.activity || "";
+    $("candidate-evidence").textContent = !isBackground(pair) && pair?.sources?.length
+      ? `Suggestion evidence: ${evidence(pair)}. ${pair.filter_reason || "Check the pop and contact in the video."}` : "";
     $("trick").disabled ||= pair?.outcome === "background";
     $("label-start").value = pair?.label_start_s ?? (window ? window[0].toFixed(3) : "");
     $("label-end").value = pair?.label_end_s ?? (window ? window[1].toFixed(3) : "");
@@ -185,7 +262,8 @@ export async function init() {
       const label = document.createElement("span"), detail = document.createElement("small");
       const range = row.label_id || isBackground(row) ? windowFor(row) : null;
       label.textContent = `${String(index + 1).padStart(2, "0")} · ${format(range?.[0] ?? row.start_s)} → ${format(range?.[1] ?? row.end_s)}`;
-      detail.textContent = row.edited ? "unsaved" : row.label_stale ? "review alignment" : row.outcome === "background" ? "not a trick" : row.outcome ? `${row.trick || "trick"} · ${row.outcome}` : row.status === "rejected" ? "skipped" : "unlabeled";
+      detail.textContent = row.edited ? "unsaved" : row.label_stale ? "review alignment" : row.outcome === "background" ? backgroundName(row) : row.outcome ? `${row.trick || "trick"} · ${row.outcome}` : row.status === "rejected" ? "skipped" : evidence(row) || "unlabeled";
+      if (!row.label_id && row.status !== "rejected" && row.motion_filter === "suppressed") detail.textContent += " · filtered";
       if (needsReview(row) && overlappingLabels(row, windowFor(row), reviewed).length) detail.textContent += " · overlaps saved";
       button.disabled = saving;
       button.append(label, detail); button.onclick = () => choose(row.id); $("candidates").append(button);
@@ -212,7 +290,20 @@ export async function init() {
     if (!(opts.min_gap >= .1 && opts.max_gap <= 5 && opts.min_gap < opts.max_gap)) {
       status("Use 0.1 ≤ minimum gap < maximum gap ≤ 5 seconds.", true); return;
     }
-    const proposals = proposePairs(audio.onsets, audio.strength, audio.step_s, opts);
+    motion = motionTimeline(data.sensor.motion, alignmentMatches() ? mapping : null, data.source_pts_origin_s, duration);
+    const allProposals = proposeCandidates(audio, motion, {...opts, show_filtered: true});
+    const suppressed = allProposals.filter(pair => pair.motion_filter === "suppressed").length;
+    const unchecked = allProposals.filter(pair => pair.motion_filter === "unchecked").length;
+    const proposals = allProposals.filter(pair => opts.show_filtered || pair.motion_filter !== "suppressed");
+    $("filter-controls").hidden = opts.candidate_mode !== "audio_filtered";
+    $("motion-threshold-field").hidden = opts.candidate_mode !== "audio_motion";
+    $("filter-threshold-value").textContent = opts.filter_threshold.toFixed(2);
+    $("motion-threshold-value").textContent = opts.motion_threshold.toFixed(2);
+    $("motion-status").textContent = opts.candidate_mode === "audio" ? "Using audio suggestions only."
+      : !alignmentMatches() ? "Match LED flashes to enable motion suggestions. Using audio only."
+      : data.sensor.motion?.unavailable_reason || (!data.sensor.motion ? "No motion features available. Using audio only."
+      : opts.candidate_mode === "audio_filtered" ? `${suppressed} of ${allProposals.length} audio candidates ${opts.show_filtered ? "marked as filtered" : "hidden by motion filter"}; ${unchecked} kept without enough IMU coverage. Show filtered suggestions to review them. No labels are assigned by the filter.`
+      : `${motion.events.length} motion peaks in this clip. Acceleration adds impact candidates; gyro supports nearby events. Suggestions still need review.`);
     rows = mergeReviews(proposals, reviewed);
     rows = mergeReviews(rows, [...drafts.values()]);
     if (!selection() || ($("pending-only").checked && !needsReview(selection()))) selected = visibleRows()[0]?.id || null;
@@ -349,6 +440,13 @@ export async function init() {
       const t = (sync.session_s - opts.offset) / opts.scale - data.source_pts_origin_s;
       if (t >= windowStart && t <= windowStart + length) marker(ctx, xAt(t), plotHeight, "#ffffff", `LED ${sync.id}`);
     }
+    if (opts.candidate_mode !== "audio") for (const event of motion.events) {
+      const threshold = opts.candidate_mode === "audio_filtered" ? opts.filter_threshold : opts.motion_threshold;
+      if (event.strength < threshold || event.time_s < windowStart || event.time_s > windowStart + length) continue;
+      const top = event.kind === "gyro" ? half : 0;
+      ctx.fillStyle = event.kind === "gyro" ? "#f4cc83" : "#90d8de";
+      ctx.fillRect(xAt(event.time_s) - 1, top + 33, 2, half - 42);
+    }
     if (pair && !isBackground(pair)) {
       marker(ctx, xAt(pair.start_s), plotHeight, colors.start, "POP");
       marker(ctx, xAt(pair.end_s), plotHeight, colors.end, "CONTACT");
@@ -366,6 +464,8 @@ export async function init() {
     const clean = {id: pair.id, start_s: pair.start_s, end_s: pair.end_s, note: $("note").value,
       status: decision === "skip" ? "rejected" : "reviewed", outcome: chosenOutcome,
       trick: chosenOutcome === "background" ? "" : $("trick").value.trim(),
+      activity: chosenOutcome === "background" ? $("activity").value : "",
+      sources: pair.sources || [],
       label_start_s: $("label-start").value === "" ? null : Number($("label-start").value),
       label_end_s: $("label-end").value === "" ? null : Number($("label-end").value)};
     if (chosenOutcome === "background" && decision === "label") {
@@ -412,10 +512,11 @@ export async function init() {
   data.sensor.mapping = mapping;
   $("offset").value = mapping?.offset_s ?? data.sensor.offset_hint_s;
   $("scale").value = mapping?.scale ?? 1;
-  if (saved.settings) for (const [key, id] of [["threshold", "threshold"], ["min_gap", "min-gap"], ["max_gap", "max-gap"], ["offset", "offset"], ["scale", "scale"]]) {
+  if (saved.settings) for (const [key, id] of [["threshold", "threshold"], ["min_gap", "min-gap"], ["max_gap", "max-gap"], ["offset", "offset"], ["scale", "scale"], ["candidate_mode", "candidate-mode"], ["motion_threshold", "motion-threshold"], ["filter_threshold", "filter-threshold"]]) {
     // A fresh measured mapping takes precedence over an older exploratory overlay.
-    if (!mapping || !["offset", "scale"].includes(key)) $(id).value = saved.settings[key];
+    if (saved.settings[key] != null && (!mapping || !["offset", "scale"].includes(key))) $(id).value = saved.settings[key];
   }
+  $("show-filtered").checked = saved.settings?.show_filtered === true;
   function alignmentMatches() {
     const opts = settings();
     return mapping && Math.abs(opts.offset - mapping.offset_s) < 1e-7 && Math.abs(opts.scale - mapping.scale) < 1e-7;
@@ -462,8 +563,8 @@ export async function init() {
   $("speed").onchange = () => { video.playbackRate = Number($("speed").value); };
   $("seek").oninput = () => { audition = null; seek(Number($("seek").value)); };
   $("zoom").onchange = () => { center(video.currentTime); draw(); };
-  for (const id of ["threshold", "min-gap", "max-gap"]) $(id).oninput = () => { regenerate(); changed(); };
-  for (const id of ["offset", "scale"]) $(id).oninput = () => { alignmentStatus(); changed(); draw(); };
+  for (const id of ["threshold", "min-gap", "max-gap", "candidate-mode", "motion-threshold", "filter-threshold", "show-filtered"]) $(id).oninput = () => { regenerate(); changed(); };
+  for (const id of ["offset", "scale"]) $(id).oninput = () => { alignmentStatus(); changed(); regenerate(); };
   $("imu").onpointerdown = event => {
     const box = $("imu").getBoundingClientRect(); audition = null;
     video.currentTime = clamp(windowStart + (event.clientX - box.left) / box.width * span(), 0, duration);
@@ -510,7 +611,7 @@ export async function init() {
   $("save").onclick = () => savePair("label");
   $("background").onclick = () => savePair("label", "background");
   $("reject").onclick = () => savePair("skip");
-  for (const id of ["trick", "outcome"]) $(id).oninput = () => {
+  for (const id of ["trick", "outcome", "activity"]) $(id).oninput = () => {
     const pair = selection(); if (!pair) return;
     pair[id] = $(id).value; pair.edited = true; changed();
     if (id === "outcome") setEditor();

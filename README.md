@@ -7,9 +7,9 @@ The original live 3D orientation viewer is also included.
 
 ![hardware layout](./hardware/fritzing/skate-judge-direct-lipo.png)
 
-This is the **data collection stage**: the review tool can suggest audio-based
-pop/contact pairs for human review; it does not yet classify tricks, train
-a model, or play automatic judgments. A board-mounted IMU measures the board's
+This is the **data collection stage**: the review tool suggests audio- and IMU-based
+pop/contact pairs for human review and records background activity types. It does
+not yet classify tricks, train a model, or play automatic judgments. A board-mounted IMU measures the board's
 motion, which does not always reveal whether the rider stayed on or fell.
 Start with [your first dataset recording](docs/first-recording.md). The
 [hardware and recording reference](docs/recording.md) covers wiring, file formats,
@@ -27,7 +27,7 @@ capture/dataset.py    collection progress and versioned datasets across reviewed
 capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
 viz/render_overlay.py transparent 3D skateboard + synchronized sensor/audio graphics for video editing
-viz/trick_review.py    local video/audio review, onset pairs, editable boundaries, LED alignment
+viz/trick_review.py    video review, audio/IMU candidates, activity labels, LED alignment
 flash.sh               compile + upload with arduino-cli
 flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
 tests/                 sensor/video integrity, local HTTP, and webcam controller checks
@@ -189,8 +189,9 @@ that is not mounted cannot be wiped.
 
 ## Review a recorded trick
 
-The [audio/video review guide](docs/trick-review.md) explains onset detection,
-editable pop/contact boundaries, and matching LED flashes to the sensor clock.
+The [review guide](docs/trick-review.md) explains audio candidates, an experimental
+IMU filter for background sounds, editable pop/contact boundaries, and matching
+LED flashes to the sensor clock.
 With FFmpeg installed, run:
 
 ```bash

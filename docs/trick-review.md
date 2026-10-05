@@ -1,4 +1,4 @@
-# Audio and video trick review
+# Audio, motion, and video trick review
 
 Open a closed recording with audio:
 
@@ -35,6 +35,8 @@ uv run viz/trick_review.py sessions/a7s-001/C0642.MP4
    attempts. Each new suggestion requires an explicit outcome.
 4. For a false positive, choose **Not a trick** after watching the whole range.
    This immediately saves its window as `background` with an empty trick name.
+   To describe the activity first, select **Not a trick** in the Outcome dropdown,
+   choose a **Background activity**, then save.
    You do not need a separate background label for every onset. **Skip suggestion**
    leaves a proposal unlabeled; use it for duplicates or proposals you cannot
    judge. Existing rejections are not automatically converted to background.
@@ -62,7 +64,11 @@ places to look, not a checklist to complete.
 2. Use **Play / pause** to watch the stretch. Pause at its end and press **O**
    (or **Finish at playhead**). **I** adjusts its start. The range can cover many
    onsets; pop/contact markers do not apply to background and are hidden.
-3. Choose **Save label**. One background label covers the entire range.
+3. Choose **Background activity**: rolling, pushing, carrying, waiting / stationary,
+   board handling / pickup / drop, mixed activities, or other. Leave it
+   **Unspecified** if you cannot tell. Prefer separate ranges when the activity
+   changes; use mixed for a watched stretch containing several activities.
+4. Choose **Save label**. One background label covers the entire range.
    Untouched suggestions fully contained in it leave the queue, including after
    changing detection settings or reopening the page. Unsaved drafts remain for
    you to resolve. Partially overlapping suggestions remain visible with overlap
@@ -71,6 +77,14 @@ places to look, not a checklist to complete.
 Do not include a trick attempt in a background range, even if it was a bail.
 Leave anything you have not watched unlabeled. Skipping suggestions does not
 create background labels.
+
+Activities are human annotations, not automatically detected classes. They save
+as an optional `activity` field alongside `outcome: "background"`; they never
+become missed tricks. Existing background labels without the field remain
+unspecified. Reopen a saved background label to add or correct its activity.
+The dataset exporter preserves subtypes and reports their eligible counts.
+This supplies examples for a future activity classifier and helps measure which
+activities cause false sound triggers.
 
 ## Shortcuts and saved labels
 
@@ -123,7 +137,8 @@ for saving labels. A stale tab cannot overwrite another tab's or CLI's labels.
 
 ## Find and refine pop/contact boundaries
 
-Expand **Onset detection settings** to tune the threshold and permitted gap
+Expand **Candidate detection settings** to choose **Audio only** (default) or
+one of the experimental modes below, tune their thresholds, and set the permitted gap
 (default 0.18–0.90 seconds). Expand **Refine pop/contact markers** to edit those
 boundaries, or drag their green/orange markers on the plot. They locate the
 action separately from the full attempt window used for training labels.
@@ -131,12 +146,99 @@ Threshold changes preserve saved decisions and unsaved drafts in the open tab.
 Proposals fully inside a saved, current label window are omitted as duplicate
 work. A lower threshold can reveal missed attempts elsewhere.
 
-Audio proposals require human review: speech, footsteps, truck rattle, and
+Both audio and motion proposals require human review: speech, footsteps, truck rattle, and
 handling the board can all trigger onsets. Some tricks have multiple contacts
 or no clear audio pair. Gap settings are search parameters, not universal airtime
 limits. **Export review JSON** includes the current suggestions, skips, labels,
 and explicit draft status for diagnostics; use **Download saved labels** for
 confirmed labels. Save each edited interval before closing the tab.
+
+### Filter audio suggestions using motion
+
+Choose **Audio filtered by motion (experimental)** to keep an audio candidate
+when either an acceleration peak or a gyro peak supports its proposed pop.
+The filter looks from 150 ms before to 200 ms after that pop, using a default
+relative peak threshold of **0.40**. It does not require both channels or a
+second impact at the proposed contact. The original audio candidates, their
+IDs, and their boundaries are preserved; the filter only controls visibility.
+
+Use **Show filtered suggestions** to inspect hidden candidates, or switch back
+to **Audio only** to restore the full search. Raising **Required motion near pop**
+hides more candidates and can hide real attempts. Saved labels and unsaved
+human edits stay visible even if their motion would fail the filter. Hidden
+candidates are never labeled as background or rejected automatically.
+
+Missing alignment, insufficient sample quality, missing coverage around pop,
+zero acceleration readings, and acquisition gaps keep audio candidates visible.
+A fully sampled quiet interval is different from missing IMU evidence.
+
+On `a7s-v3`, using the original audio settings (threshold 0.65, gap 0.18–0.90 s):
+
+| Mode | Candidates across all four clips | Saved pops matched, of 67 | Candidates inside reviewed background |
+| --- | ---: | ---: | ---: |
+| Audio only | 385 | 58 | 92 |
+| Motion filter, 0.25 | 283 | 58 | 45 |
+| Motion filter, **0.40** | **237** | **58** | **37** |
+| Motion filter, 0.65 | 187 | 55 | 28 |
+
+The 0.40 filter removes **55/92 (60%)** of the confirmed background candidates
+and **148/385 (38%)** of all suggestions while retaining the 58 previously
+matched pops. The nine audio misses remain missed. Nineteen candidates without
+enough IMU coverage are retained rather than judged as quiet. The stricter 0.65
+setting loses three known attempts, including one make.
+
+This is a retrospective development comparison, not held-out validation. A pop
+match is within 150 ms of a saved human pop marker; it does not validate the
+contact boundary or landing outcome. All labeled background in this snapshot
+comes from `a7s-018`, so background rejection still needs evaluation on other
+sessions. Other unmatched candidates remain unclassified, not assumed false
+positives. Audio-only remains the default until this has been checked on new
+recordings.
+
+The [full audit](candidate-filter-a7s-v3.json) includes per-session results,
+make/bail/fall counts, lost label IDs, and the snapshot manifest hash. Reproduce it:
+
+```bash
+uv run viz/evaluate_candidates.py datasets/a7s-v3 --output /tmp/candidate-audit.json
+```
+
+This requires Node.js and the existing cached review audio. It reads labels from
+the immutable snapshot, verifies the original sensor/alignment file hashes and
+video identities, and runs the same candidate/filter code as the UI. It does
+not alter sessions, labels, or review state. Use `--sessions-root` if the source
+sessions have moved.
+
+### Add motion suggestions to audio
+
+With saved LED alignment and usable sensor data, **Audio + extra motion candidates (experimental)**:
+
+- Retains the audio candidates and their timestamps. Nearby acceleration peaks
+  (within 100 ms) and angular-speed peaks (within 200 ms) add evidence to them.
+- Adds extra candidate pairs supported by both acceleration and gyro activity,
+  including impacts without a strong audio onset. Rotation by itself never
+  creates a pair. Gyro support is not required for the retained audio candidates.
+- Shows each suggestion's evidence as **audio**, **accel**, and/or **gyro**, plus
+  peak ticks in the motion plot. These indicate nearby signals, not proof of a pop,
+  airborne phase, successful landing, or a calibrated confidence score.
+
+Motion suggestions are disabled for exploratory offsets, missing alignment,
+invalid timestamps, or sparse/zero-filled sensor data. They do not span known
+sensor gaps over 30 ms. Adjusting the offset away from a saved match falls back
+to audio; saved labels and drafts remain intact. Matching flashes regenerates
+the suggestions at the measured alignment.
+
+Expect extra false positives from board handling and landing rebounds. Review
+the video before accepting a proposed pop/contact pair; overlapping alternatives
+can be skipped or disappear inside a subsequently saved label range.
+
+In an exploratory comparison on the 67 eligible attempts in `a7s-v3`, combined
+mode matched 59 saved pops versus 58 for audio alone (within 150 ms of the saved
+pop marker), while increasing total suggestions from 385 to 436 across the four
+clips. Six additional pairs fell wholly inside reviewed background ranges.
+Unreviewed stretches prevent treating all extra suggestions as false positives.
+This was development data, not a held-out evaluation, and does not demonstrate
+better review efficiency. Audio-only remains the default; saved mode choices are
+restored when reopening a review.
 
 ## Match the LED to the sensor clock
 
@@ -195,10 +297,17 @@ percentile. This is a spectral-flux baseline, following the general approach
 described in [librosa's onset-strength documentation](https://librosa.org/doc-playground/latest/_modules/librosa/onset.html).
 Timestamp padding uses [FFmpeg's audio resampler](https://www.ffmpeg.org/ffmpeg-resampler.html).
 
+The motion heuristic uses raw acceleration and angular-speed magnitudes in
+sensor seconds. It finds peaks above a one-second local median, with minimum
+excesses of 15 m/s² for acceleration and 2 rad/s for gyro, separated by at least
+approximately 100 ms per channel. Strength is normalized by the larger of that
+floor and the channel's 99.5th percentile excess. Continuous runs are processed
+separately across acquisition gaps. These are initial inspection settings;
+sensor mounting, riding style, and surface can change their usefulness.
+
 Pairing ranks two sufficiently strong onsets within the gap bounds, favoring
 lower activity between them, then selects non-overlapping pairs. The score is
-relative strength, **not a confidence probability**. The initial settings produce
-21 suggestions on the specified clip; they have not been validated as 21 tricks.
+relative strength, **not a confidence probability**.
 Sound travel, microphone processing, and windowing limit boundary precision.
 
 ## Files and checks

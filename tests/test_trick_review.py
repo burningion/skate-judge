@@ -11,10 +11,56 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from viz.trick_review import (
-    audio_features, byte_range, cached_video_timing, extract_audio, make_server, probe, sensor_context, validate_review, video_timing,
+    audio_features, byte_range, cached_video_timing, extract_audio, make_server, motion_features, probe, sensor_context, validate_review, video_timing,
 )
 
 HAS_SCIENCE = all(importlib.util.find_spec(name) for name in ("numpy", "scipy"))
+
+
+@unittest.skipUnless(HAS_SCIENCE, "motion detection requires numpy/scipy")
+class MotionFeatureTests(unittest.TestCase):
+    def samples(self):
+        return [[i / 200, 9.81, 0.] for i in range(600)]
+
+    def test_impacts_and_rotation_are_separate_timestamped_hints(self):
+        samples = self.samples()
+        samples[200][1] = 80
+        samples[220][2] = 12
+        samples[280][1] = 140
+        result = motion_features(samples)
+        self.assertEqual([(e["time_s"], e["kind"]) for e in result["events"]],
+                         [(1., "accel"), (1.1, "gyro"), (1.4, "accel")])
+        self.assertFalse(result["unavailable_reason"])
+        self.assertNotIn("outcome", result)
+
+    def test_stationary_noise_and_gap_edges_do_not_become_impacts(self):
+        samples = self.samples()
+        for i, row in enumerate(samples):
+            row[1] += .1 * (i % 3)
+            row[2] = .01 * (i % 4)
+        self.assertEqual(motion_features(samples)["events"], [])
+        # A changed level on the far side of missing acquisition is not a pop.
+        for row in samples[300:]:
+            row[0] += 1
+            row[1] += 60
+        result = motion_features(samples)
+        self.assertEqual(result["events"], [])
+        self.assertEqual(result["gaps"], [[1.495, 2.5]])
+
+    def test_invalid_and_sparse_samples_disable_motion_suggestions(self):
+        for rows in ([], [[0, 9.8, 0]] * 3, [[i, 9.8, 0] for i in range(10)],
+                     [[i / 200, 0, 0] for i in range(100)], [[0, 9.8, 0], [.01, float("nan"), 0], [.02, 9.8, 0]]):
+            result = motion_features(rows)
+            self.assertEqual(result["events"], [])
+            self.assertTrue(result["unavailable_reason"])
+
+    def test_motion_coverage_marks_local_zero_readings_as_unreliable(self):
+        samples = self.samples()
+        samples[200][1] = 0
+        result = motion_features(samples)
+        self.assertEqual(result["coverage"], [0, 2.995])
+        self.assertIn([.995, 1.005], result["gaps"])
+        self.assertFalse(result["unavailable_reason"])
 
 
 @unittest.skipUnless(HAS_SCIENCE, "sensor inspection requires numpy")
@@ -231,7 +277,7 @@ class ReviewHttpTests(unittest.TestCase):
 
     def test_range_and_head(self):
         with self.request("/api/data") as response:
-            self.assertEqual(json.load(response)["api_version"], 2)
+            self.assertEqual(json.load(response)["api_version"], 4)
         with self.request("/media.webm", headers={"Range": "bytes=10-19"}) as response:
             self.assertEqual(response.status, 206)
             self.assertEqual(response.read(), bytes(range(10, 20)))
@@ -333,6 +379,53 @@ class ReviewHttpTests(unittest.TestCase):
             self.assertEqual(len(json.load(response)["labels"]), 1)
         with self.assertRaises(HTTPError):
             self.request("/api/label", self.decision(decision="skip"))
+
+    def test_background_activity_round_trips_and_revision_can_clear_it(self):
+        self.aligned()
+        value = self.decision(outcome="background")
+        value["interval"].update(activity="rolling", sources=["audio", "accel", "gyro"])
+        with self.request("/api/label", value) as response:
+            pair = json.load(response)["intervals"][0]
+        self.assertEqual(pair["activity"], "rolling")
+        self.assertEqual(pair["sources"], ["audio", "accel", "gyro"])
+        with self.request("/api/labels") as response:
+            self.assertEqual(json.load(response)["labels"][0]["activity"], "rolling")
+        value = self.decision(outcome="background")
+        value["interval"]["activity"] = ""
+        with self.request("/api/label", value) as response:
+            self.assertEqual(json.load(response)["intervals"][0]["activity"], "")
+        history = [json.loads(line) for line in (self.session / "labels.jsonl").read_text().splitlines()]
+        self.assertEqual(history[0]["activity"], "rolling")
+        self.assertNotIn("activity", history[1])
+        self.assertEqual(history[0]["id"], history[1]["id"])
+
+    def test_invalid_activity_and_suggestion_settings_do_not_write_labels(self):
+        self.aligned()
+        for updates in (dict(activity="flying"), dict(activity=["rolling"]), dict(activity="rolling"), dict(sources=["imagined"])):
+            value = self.decision()
+            value["interval"].update(updates)
+            with self.assertRaises(HTTPError) as caught:
+                self.request("/api/label", value)
+            self.assertEqual(caught.exception.code, 400)
+        for updates in (dict(candidate_mode="unknown"), dict(motion_threshold=True), dict(motion_threshold=0),
+                        dict(filter_threshold=True), dict(filter_threshold=0), dict(show_filtered="yes")):
+            value = self.decision()
+            value["settings"].update(updates)
+            with self.assertRaises(HTTPError):
+                self.request("/api/label", value)
+        self.assertFalse((self.session / "labels.jsonl").exists())
+
+    def test_filter_settings_round_trip_without_turning_hidden_suggestions_into_labels(self):
+        self.aligned()
+        value = self.decision()
+        value["settings"].update(candidate_mode="audio_filtered", filter_threshold=.4, show_filtered=True)
+        with self.request("/api/label", value) as response:
+            saved = json.load(response)
+        self.assertEqual(saved["settings"]["candidate_mode"], "audio_filtered")
+        self.assertEqual(saved["settings"]["filter_threshold"], .4)
+        self.assertTrue(saved["settings"]["show_filtered"])
+        with self.request("/api/labels") as response:
+            self.assertEqual(len(json.load(response)["labels"]), 1)
 
     def test_background_range_touches_saved_attempt_and_round_trips_as_one_label(self):
         self.aligned()

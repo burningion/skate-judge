@@ -178,6 +178,8 @@ def collect(root, pattern="a7s-*", *, labeled_only=False, allow_sample_gaps=()):
         windows.update(data)
     counts = Counter((r["label"].get("trick", ""), r["label"]["outcome"])
                      for r in labels if r["outcome_training"])
+    activities = Counter(r["label"].get("activity") or "unspecified" for r in labels
+                         if r["outcome_training"] and r["label"]["outcome"] == "background")
     report = dict(schema=1, created_utc=datetime.now(timezone.utc).isoformat(),
                   sessions_root=str(root.resolve()), pattern=pattern, sessions=sessions,
                   labeled_only=labeled_only, skipped_unlabeled_sessions=skipped_sessions,
@@ -187,6 +189,7 @@ def collect(root, pattern="a7s-*", *, labeled_only=False, allow_sample_gaps=()):
                   background=sum(s["background"] for s in sessions),
                   unknown=sum(s["unknown"] for s in sessions),
                   excluded=sum(s["excluded"] for s in sessions),
+                  background_activities=dict(sorted(activities.items())),
                   counts=[dict(trick=trick, outcome=outcome, count=count)
                           for (trick, outcome), count in sorted(counts.items())])
     return report, labels, windows
@@ -208,6 +211,8 @@ def print_report(report):
           f"{report['unknown']} unknown outcomes; {report['excluded']} excluded labels.")
     for row in report["counts"]:
         print(f"  {row['trick'] or '(background / unnamed)'} / {row['outcome']}: {row['count']}")
+    for activity, count in report.get("background_activities", {}).items():
+        print(f"  Background activity / {activity}: {count}")
 
 
 def build(output, report, labels, windows):
