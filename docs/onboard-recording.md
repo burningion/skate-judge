@@ -29,8 +29,14 @@ require the explicit “already recording” checkbox.
 
 Both LED edges are timestamped on the ESP32 and written into that same log.
 Periodic bracketed clock reads map sensor FIFO timestamps onto the ESP32 clock.
-Import fits those anchors, compares them with the chip's signed factory
-`INTERNAL_FREQ_FINE` calibration, and rejects inconsistent clocks. The actual
+Import interpolates between the one-second anchors so changing oscillator rates
+do not accumulate timing error during long recordings. Each interval is checked
+against the chip's signed factory `INTERNAL_FREQ_FINE` calibration (within 1%,
+plus the measured read uncertainty). Each interior anchor is independently
+predicted from its neighbors; jumps beyond 1 ms plus read uncertainty (capped
+at 5 ms), backward clocks, and implausible rates still reject the import.
+Anchor gaps over five seconds or sample extrapolation over one second mark
+the result as unsuitable for dataset use. The actual
 rate can differ from nominal: the tested IMU has a factory trim of −38 and
 measures about 196.5 Hz, with approximately 5.09 ms sample spacing. This agrees
 with the calibration formula in [ST AN5473, section 6.4](https://www.st.com/resource/en/application_note/an5473-lsm6dso32-alwayson-3axis-accelerometer-and-3axis-gyroscope-stmicroelectronics.pdf).
@@ -358,7 +364,14 @@ After the final flash, **Stop & save video + board data** saves video, closes
 the board log, downloads and verifies its byte count/CRC32 and packet CRCs, then
 imports `samples.csv`, `events.jsonl`, and `metadata.json`. Retain the downloaded
 `onboard-<id>.bin` as the original. `onboard_quality` records measured rate,
-clock-fit error, gaps, zeros, incomplete FIFO slots, and firmware faults.
+clock diagnostics, gaps, zeros, incomplete FIFO slots, and firmware faults.
+`clock_model` identifies the mapping. `clock_fit_max_error_us` retains the old
+whole-recording affine-fit residual for diagnosis; it is no longer a rejection
+threshold because that model assumes a constant clock rate.
+`clock_local_max_error_us` reports the independent neighbor-prediction error,
+and interval rates, anchor spacing/read durations, and extrapolation are also
+retained. These are consistency checks, not a measurement of absolute LED or
+video synchronization accuracy.
 Host-arrival timestamps are blank because samples were recorded onboard.
 
 If the sensor fails its ID/configuration check, recording is blocked. Check the
@@ -370,6 +383,34 @@ check is still required after it reports ready.
 Wait for both saved messages before `quit`. Start a new recorder command for
 each batch. The stop/download button becomes available again if recovery needs
 a retry. Downloading never automatically deletes the board's copy.
+
+### a7s-021 clock import failure (2026-10-09)
+
+The 704 clock anchors in this 704.93-second recording were intact, with read
+durations of 234–479 µs and neighbor-prediction errors below 95 µs. The old
+single-rate fit had a 6,803 µs maximum residual, exceeding its 5,000 µs limit.
+The ten-second average tick duration increased from 26.572049 to 26.574764 µs
+(about 102 ppm), while the recorded temperature rose from 32.42°C to 35.87°C.
+This smooth change is consistent with thermal drift; the log does not isolate
+which oscillator contributed how much. Factory trim was −40, giving a nominal
+calibrated tick duration of 26.595745 µs by ST's formula.
+
+The board retained the same boot ID and reported zero I²C errors, zero FIFO
+overruns, and 138,164 accel/gyro pairs. One SD flush interruption was recovered;
+packet checksums, ordering, and footer counts remained intact. The clock error
+was an importer assumption, not evidence that the samples or LED markers were
+lost. The local clock mapping recovers this run using the existing firmware's
+anchors; no firmware update is needed. Restart the laptop recorder before the
+next run to load the updated importer. Retain the raw binary as the original.
+
+Validation: all 191 Python tests passed, including a 12.5-minute synthetic
+warming-clock regression and rejection tests for spikes, steps, clock resets,
+and implausible rates. All 14 previously usable local raw recordings still
+passed. A fresh USB bench capture produced 13,051 complete pairs at 195.978 Hz,
+both requested LED pulses, and no quality flags, acquisition errors, or storage
+recoveries. Its maximum local clock error was 49.94 µs. Original board files
+were retained; the bench artifacts are in
+`.build/clock-sync-bench-20261009-150709/`.
 
 ## Recovery and explicit deletion
 

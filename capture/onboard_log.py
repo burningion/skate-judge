@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from bisect import bisect_right
 import csv
 from datetime import datetime, timezone
 import json
@@ -61,6 +62,79 @@ def read_packets(path, allow_incomplete=False):
     return packets, complete, issues
 
 
+def _clock_model(anchors, fine):
+    """Map sensor ticks using measured local rates, with independent checks.
+
+    A single affine fit accumulates error as the oscillator warms up. Keep it
+    as a diagnostic, but interpolate between validated one-second anchors.
+    Test each interior anchor against its *neighbors*, not against a mapping
+    through itself, so interpolation cannot conceal a bad timestamp.
+    """
+    if fine is not None and (type(fine) is not int or not -128 <= fine <= 127):
+        raise ValueError("Invalid factory timestamp calibration.")
+    # ST AN5473 §6.4: signed factory trim describes the actual sensor clock.
+    calibrated = 25 / (1 + .0015 * fine) if fine is not None else 25.
+    low, high = (calibrated * .99, calibrated * 1.01) if fine is not None else (24., 26.)
+    ticks = [x for x, _, _ in anchors]
+    intervals = list(zip(anchors, anchors[1:]))
+    if any(b[0] <= a[0] for a, b in intervals):
+        raise ValueError("Sensor clock did not advance between anchors.")
+    if any(b[1] <= a[1] for a, b in intervals):
+        raise ValueError("ESP32 clock did not advance between anchors.")
+    rates = []
+    for index, (a, b) in enumerate(intervals):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        # Bracketed reads and timestamp quantization bound rate uncertainty,
+        # including a final anchor only milliseconds after the periodic one.
+        uncertainty = (a[2] + b[2]) / 2 + 2 * high
+        if not low * dx - uncertainty <= dy <= high * dx + uncertainty:
+            raise ValueError(f"Sensor/ESP32 clock anchors disagree at interval {index}: "
+                             f"{dy / dx:.6f} us/tick, expected {low:.6f}–{high:.6f}; raw log preserved.")
+        rates.append(dy / dx)
+    local_error = 0.
+    for index, (a, b, c) in enumerate(zip(anchors, anchors[1:], anchors[2:]), 1):
+        weight = (b[0] - a[0]) / (c[0] - a[0])
+        error = abs(b[1] - (a[1] + weight * (c[1] - a[1])))
+        local_error = max(local_error, error)
+        uncertainty = (b[2] + (1 - weight) * a[2] + weight * c[2]) / 2 + 2 * high
+        # Allow 1 ms of local curvature beyond read uncertainty, while keeping
+        # the original 5 ms ceiling. Abrupt jumps/spikes still fail import.
+        if error > min(5000, 1000 + uncertainty):
+            raise ValueError(f"Sensor/ESP32 clock anchors disagree at anchor {index}: "
+                             f"local error {error:.0f} us; raw log preserved.")
+    if intervals:
+        mean_x = sum(ticks) / len(anchors)
+        mean_y = sum(y for _, y, _ in anchors) / len(anchors)
+        scale = (sum((x - mean_x) * (y - mean_y) for x, y, _ in anchors)
+                 / sum((x - mean_x) ** 2 for x in ticks))
+        offset = mean_y - scale * mean_x
+    else:
+        scale, offset = calibrated, anchors[0][1] - calibrated * ticks[0]
+    residual = max(abs(scale * x + offset - y) for x, y, _ in anchors)
+
+    def device_time(tick):
+        if not intervals:
+            return scale * tick + offset
+        index = max(0, min(bisect_right(ticks, tick) - 1, len(rates) - 1))
+        x, y, _ = anchors[index]
+        return y + (tick - x) * rates[index]
+
+    gap_s = max(((b[1] - a[1]) / 1e6 for a, b in intervals), default=0)
+    issues = []
+    if not intervals:
+        issues.append("single_clock_anchor_nominal_tick_assumed")
+    if gap_s > 5:
+        issues.append("clock_anchor_gaps_over_5s")
+    quality = dict(clock_model="piecewise_linear" if intervals else "single_anchor",
+                   clock_anchors=len(anchors), clock_tick_us=scale, calibrated_tick_us=calibrated,
+                   clock_fit_max_error_us=residual, clock_local_max_error_us=local_error,
+                   clock_interval_tick_us_min=min(rates, default=scale),
+                   clock_interval_tick_us_max=max(rates, default=scale),
+                   clock_anchor_max_gap_s=gap_s,
+                   clock_anchor_max_read_us=max(duration for _, _, duration in anchors))
+    return device_time, quality, issues
+
+
 def decode_log(path, allow_incomplete=False):
     packets, complete, issues = read_packets(path, allow_incomplete)
     meta = json.loads(packets[0][2])
@@ -80,7 +154,7 @@ def decode_log(path, allow_incomplete=False):
             if not stamp <= end_us:
                 raise ValueError("Clock read ended before it began.")
             if end_us - stamp <= 2000:
-                anchors.append((tick, (stamp + end_us) / 2))
+                anchors.append((tick, (stamp + end_us) / 2, end_us - stamp))
             else:
                 issues.append("slow_clock_anchor")
         elif kind == SYNC:
@@ -106,28 +180,9 @@ def decode_log(path, allow_incomplete=False):
         # handle a sensor's 32-bit timestamp rollover during the recording.
         return ((tick - first_tick + 2**31) % 2**32) - 2**31
 
-    anchors = [(relative_tick(tick), stamp) for tick, stamp in anchors]
-    fine = meta.get("frequency_fine")
-    if fine is not None and (type(fine) is not int or not -128 <= fine <= 127):
-        raise ValueError("Invalid factory timestamp calibration.")
-    # ST AN5473 §6.4: this signed factory trim describes the actual sensor
-    # clock. Validate the independently fitted clock against that calibration.
-    calibrated_tick = 25 / (1 + .0015 * fine) if fine is not None else 25.
-    if any(b[0] <= a[0] for a, b in zip(anchors, anchors[1:])):
-        raise ValueError("Sensor clock did not advance between anchors.")
-    if len(anchors) >= 2:
-        mean_x = sum(x for x, _ in anchors) / len(anchors)
-        mean_y = sum(y for _, y in anchors) / len(anchors)
-        denominator = sum((x - mean_x) ** 2 for x, _ in anchors)
-        scale = sum((x - mean_x) * (y - mean_y) for x, y in anchors) / denominator
-        offset = mean_y - scale * mean_x
-    else:
-        scale, offset = calibrated_tick, anchors[0][1]
-        issues.append("single_clock_anchor_nominal_tick_assumed")
-    residual = max(abs(scale * x + offset - y) for x, y in anchors)
-    clock_agrees = abs(scale / calibrated_tick - 1) <= .01 if fine is not None else 24 <= scale <= 26
-    if not clock_agrees or residual > 5000:
-        raise ValueError("Sensor/ESP32 clock anchors disagree; retain raw data for investigation.")
+    anchors = [(relative_tick(tick), stamp, duration) for tick, stamp, duration in anchors]
+    device_time, clock_quality, clock_issues = _clock_model(anchors, meta.get("frequency_fine"))
+    issues.extend(clock_issues)
 
     samples, slot = [], {}
     counter = None
@@ -149,7 +204,7 @@ def decode_log(path, allow_incomplete=False):
         # FIFO timestamp records include the active accel/gyro batching rates.
         if slot[4][5] != 0x55:
             raise ValueError("FIFO batching rate changed during recording.")
-        stamp = round(scale * relative_tick(tick) + offset)
+        stamp = round(device_time(relative_tick(tick)))
         if samples and stamp <= samples[-1]["device_us"]:
             raise ValueError("Non-monotonic FIFO timestamps; raw log preserved.")
         accel = [raw * .000976 * 9.80665 for raw in struct.unpack("<hhh", slot[2])]
@@ -197,12 +252,15 @@ def decode_log(path, allow_incomplete=False):
         issues.append(footer["error"])
     if footer.get("io_errors") or footer.get("fifo_overruns"):
         issues.append("acquisition_errors")
+    extrapolation = max(0, anchors[0][1] - samples[0]["device_us"],
+                        samples[-1]["device_us"] - anchors[-1][1]) / 1e6
+    if extrapolation > 1:
+        issues.append("clock_extrapolation_over_1s")
     quality = dict(complete=complete, usable=complete and not issues, issues=issues,
                    measured_hz=rate, raw_accel_samples=raw_accel, raw_gyro_samples=raw_gyro,
                    zero_accel=zero_accel, incomplete_slots=incomplete_slots,
-                   clock_anchors=len(anchors), clock_tick_us=scale,
-                   calibrated_tick_us=calibrated_tick,
-                   clock_fit_max_error_us=residual, max_gap_s=max(gaps, default=0), footer=footer)
+                   **clock_quality, clock_extrapolation_s=extrapolation,
+                   max_gap_s=max(gaps, default=0), footer=footer)
     return dict(metadata=meta, samples=samples, events=syncs, quality=quality)
 
 

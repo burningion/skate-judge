@@ -62,7 +62,8 @@ class LEDTestTests(unittest.TestCase):
             test_led(client, timeout=0)
 
 
-def fixture(count=416, *, error="", start_tick=1000, fine=None, storage=None):
+def fixture(count=416, *, error="", start_tick=1000, fine=None, storage=None,
+            periodic_clocks=False, time_warp=None):
     meta = dict(schema=1, id=IDENTITY, boot_id="1234abcd", sensor="LSM6DSO32", odr_hz=208,
                 accel_g_per_lsb=.000976, gyro_dps_per_lsb=.070, timestamp_tick_us=25, initial_temp_C=25.)
     packets = []
@@ -77,6 +78,11 @@ def fixture(count=416, *, error="", start_tick=1000, fine=None, storage=None):
             if kind == CLOCK:
                 end, tick = struct.unpack("<QI", payload)
                 payload = struct.pack("<QI", round(1000000 + (end - 1000000) / (1 + .0015 * fine)), tick)
+        if time_warp is not None:
+            time = time_warp(time)
+            if kind == CLOCK:
+                end, tick = struct.unpack("<QI", payload)
+                payload = struct.pack("<QI", time_warp(end), tick)
         packets.append(encode_packet(kind, len(packets), time, payload))
 
     def tag(kind, counter):
@@ -94,6 +100,9 @@ def fixture(count=416, *, error="", start_tick=1000, fine=None, storage=None):
                       tag(2, counter) + struct.pack("<hhh", 0, 0, 1025)])
         if len(words) >= 60:
             add(FIFO, 1000000 + round((i + 1) * 1e6 / 208), b"".join(words)); words = []
+        if periodic_clocks and (i + 1) % 208 == 0:
+            stamp = 1000000 + round((i + 1) * 40000 / 208) * 25
+            add(CLOCK, stamp - 50, struct.pack("<QI", stamp + 50, tick))
     if words:
         add(FIFO, 1000000 + round(count * 1e6 / 208), b"".join(words))
     add(SYNC, 1500000, struct.pack("<IBB", 1, 1, 1))
@@ -157,6 +166,88 @@ class LogTests(unittest.TestCase):
         packets[0] = encode_packet(META, 0, 1000000, json.dumps(metadata).encode())
         with self.assertRaisesRegex(ValueError, "clock anchors disagree"):
             decode_log(self.write(packets))
+
+    def test_warming_clock_recovers_long_recording_and_led_timing_across_rollover(self):
+        # About 113 ppm of smooth rate change over 12.5 minutes, comparable to
+        # a7s-021. A global affine fit misses by >5 ms despite healthy clocks.
+        def warming(stamp):
+            return round(stamp + .075 * ((stamp - 1000000) / 1e6) ** 2)
+
+        count = 208 * 705
+        data = decode_log(self.write(fixture(count, fine=-40, periodic_clocks=True,
+                                            start_tick=2**32 - 4000, time_warp=warming)))
+        quality = data["quality"]
+        self.assertTrue(quality["usable"], quality)
+        self.assertGreater(quality["clock_fit_max_error_us"], 5000)
+        self.assertLess(quality["clock_local_max_error_us"], 2)
+        self.assertEqual(quality["clock_model"], "piecewise_linear")
+        self.assertEqual(len(data["samples"]), count)
+        for index in (0, 99, count // 2, count - 1):
+            tick = round((index + 1) * 40000 / 208)
+            expected = warming(round(1000000 + tick * 25 / .94))
+            self.assertAlmostEqual(data["samples"][index]["device_us"], expected, delta=2)
+        self.assertEqual(data["events"][0]["device_us"], warming(round(1000000 + 500000 / .94)))
+
+    def test_bad_clock_anchors_are_rejected_before_interpolation(self):
+        original = read_packets(self.write(fixture(208 * 12, periodic_clocks=True)))[0]
+        for fault in ("spike", "step", "first", "last", "bad_rate", "sensor_reset", "host_reset"):
+            with self.subTest(fault=fault):
+                packets = []
+                anchor = 0
+                for number, (kind, stamp, payload) in enumerate(original):
+                    if kind == CLOCK:
+                        end, tick = struct.unpack("<QI", payload)
+                        shift = 0
+                        if ((fault == "spike" and anchor == 6) or (fault == "step" and anchor >= 6)
+                                or (fault == "first" and anchor == 0) or (fault == "last" and anchor == 13)):
+                            shift = 4000
+                        if fault == "bad_rate" and anchor == 6:
+                            shift = 30000
+                        if fault == "sensor_reset" and anchor == 6:
+                            tick = 0
+                        if fault == "host_reset" and anchor == 6:
+                            shift = -2000000
+                        stamp += shift
+                        payload = struct.pack("<QI", end + shift, tick)
+                        anchor += 1
+                    packets.append(encode_packet(kind, number, stamp, payload))
+                with self.assertRaisesRegex(ValueError, "clock anchors disagree|clock did not advance"):
+                    decode_log(self.write(packets))
+
+    def test_sparse_anchors_and_extrapolated_samples_are_not_silently_usable(self):
+        for count, keep_first_only, issue in ((208 * 10, False, "clock_anchor_gaps_over_5s"),
+                                              (416, True, "clock_extrapolation_over_1s")):
+            with self.subTest(issue=issue):
+                source = read_packets(self.write(fixture(count)))[0]
+                packets = []
+                seen_clock = False
+                for kind, stamp, payload in source:
+                    if kind == CLOCK:
+                        if keep_first_only and seen_clock:
+                            continue
+                        seen_clock = True
+                    packets.append(encode_packet(kind, len(packets), stamp, payload))
+                data = decode_log(self.write(packets))
+                self.assertEqual(len(data["samples"]), count)
+                self.assertFalse(data["quality"]["usable"])
+                self.assertIn(issue, data["quality"]["issues"])
+
+    def test_clock_read_jitter_and_a_close_final_anchor_are_supported(self):
+        source = read_packets(self.write(fixture(208 * 5, periodic_clocks=True)))[0]
+        packets = []
+        anchor = 0
+        for kind, stamp, payload in source:
+            if kind == CLOCK:
+                end, tick = struct.unpack("<QI", payload)
+                midpoint = (stamp + end) // 2
+                # Reading can latch anywhere within its 1.8 ms bracket.
+                jitter = 400 if anchor % 2 else -400
+                stamp = midpoint + jitter - 900
+                payload = struct.pack("<QI", midpoint + jitter + 900, tick)
+                anchor += 1
+            packets.append(encode_packet(kind, len(packets), stamp, payload))
+        data = decode_log(self.write(packets))
+        self.assertTrue(data["quality"]["usable"], data["quality"])
 
     def test_bus_corruption_is_rejected_even_with_a_valid_flash_packet_checksum(self):
         packets = fixture()
