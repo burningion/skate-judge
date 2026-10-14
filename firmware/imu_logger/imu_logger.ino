@@ -29,7 +29,7 @@
 #define SYNC_LED_PIN 5
 #endif
 #ifndef SYNC_LED_COUNT
-#define SYNC_LED_COUNT 8
+#define SYNC_LED_COUNT 5  // Cut WS2812B/E RGB strip on GPIO5.
 #endif
 #ifndef SYNC_LED_BRIGHTNESS
 #define SYNC_LED_BRIGHTNESS 255

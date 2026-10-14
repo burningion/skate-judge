@@ -265,7 +265,7 @@ def test_led(client, timeout=12):
         raise ValueError("Stop recording and wait for the board to be idle before testing LEDs.")
     if "led_tests" not in before:
         raise ValueError("Install the updated logger with ./flash-feather.sh to use test-led.")
-    print(f"Watch the stick on GPIO{before['led_pin']}: three one-second white pulses "
+    print(f"Watch the strip on GPIO{before['led_pin']}: three one-second white pulses "
           f"({before['led_count']} pixels, {before['led_format']}, brightness {before['led_brightness']}/255).",
           flush=True)
     client.request("/test-led", post=True)

@@ -1,7 +1,8 @@
 {
-  "source_sha256": "253a151bc89d81525d7b9bead8009a2404790a457c9f8ad803ed2b524ed189a7",
-  "revision": 8,
+  "source_sha256": "e5fea05fcaa29da88294c2d46137a819a41a991154281cb9cd49d70d0f2b4d24",
+  "revision": 9,
   "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
+  "feather_assumptions": "5.6 mm posts with 8 mm feet tapering over the lower 2 mm; original hole centers, 4 mm height and 1.7 mm blind pilots; nearest header solder envelopes assumed <=2 mm diameter and <=1.5 mm below PCB; nominal minimum solder gap 0.05 mm; actual joints and impact strength unverified",
   "imu_assumptions": "PCB extends from screw row toward SD; components face lid; 4 mm posts; M2 heads <=4 mm diameter and <=2 mm tall; holes shifted 12.7 mm toward LEDs from R5",
   "sd_assumptions": "Adafruit 254; 1.6 mm PCB; M2 heads <=4 mm diameter and <=2 mm tall; direct-soldered wires; card removed with lid off",
   "switch_assumptions": "13.5 x 8.4 mm cutout on X=0, centered Y=50/Z=11.5, through 3 mm wall; measured body 13.27 x 8.18 mm; bezel, clips, insertion depth, terminals and wiring are not modeled",
@@ -32,6 +33,12 @@
     "insert_bosses_velcro": "no interference with stated fixtures",
     "lid_screw_path_velcro": "no interference with stated fixtures",
     "insert_coupon_bores": "no interference with stated fixtures",
-    "insert_coupon_bosses": "no interference with stated fixtures"
+    "insert_coupon_bosses": "no interference with stated fixtures",
+    "feather_posts_base": "no interference with stated fixtures",
+    "feather_pilots_base": "no interference with stated fixtures",
+    "feather_solder_base": "no interference with stated fixtures",
+    "feather_posts_velcro": "no interference with stated fixtures",
+    "feather_pilots_velcro": "no interference with stated fixtures",
+    "feather_solder_velcro": "no interference with stated fixtures"
   }
 }

@@ -12,7 +12,7 @@
 // Send "i" (or "?") to get the info lines again.
 // Send "s" for a timestamped 150 ms LED sync pulse. New D lines append a
 // sequence number and boot ID; the orientation viewer ignores these fields.
-// For an eight-pixel SKC6812 RGB stick, set SYNC_LED_RGB=1, SYNC_LED_COUNT=8,
+// For a five-pixel WS2812B/E RGB strip, set SYNC_LED_RGB=1, SYNC_LED_COUNT=5,
 // and SYNC_LED_PIN to its data GPIO. SYNC_LED_RGBW=1 selects a GRBW stick.
 // Optional SKATE_WIFI=1 starts a local AP and streams UDP to a subscribing
 // recorder on port 5050. USB remains available.
@@ -104,7 +104,7 @@ static void setSyncLED(bool on) {
   if (!ledReady) return;
 #if SYNC_LED_PIN >= 0
 #if SYNC_LED_RGB || SYNC_LED_RGBW
-  // Fill the whole chain, then latch one frame so all eight pixels flash
+  // Fill the whole chain, then latch one frame so all configured pixels flash
   // together. RGBW sticks use their dedicated white channel.
   uint8_t level = on ? SYNC_LED_BRIGHTNESS : 0;
   uint32_t color = SYNC_LED_RGBW ? syncPixels.Color(0, 0, 0, level)

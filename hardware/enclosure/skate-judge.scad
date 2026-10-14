@@ -1,5 +1,5 @@
 // Judgy Skateboard: PLA prototype enclosure. Units: mm.
-// Revision 8, 2026-10-03: top-loaded M3 heat-set inserts for the lid.
+// Revision 9, 2026-10-14: thicker Feather posts with flared floor connections.
 // OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
 // PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
 
@@ -44,6 +44,9 @@ battery_pad = 0.8;
 pcb_standoff = 4;
 imu_rotation = 180; // [0,180] In-plane turn only; components stay toward lid.
 pcb_pilot_diameter = 1.7; // M2 plastic-compatible screws; print coupon first.
+feather_post_diameter = 5.6; // R8 was 4.2; retain space beside the header pads.
+feather_post_foot_diameter = 8;
+feather_post_foot_height = 2; // Taper to the post below the PCB/solder joints.
 usb_opening_width = 16;
 usb_opening_bottom = 5;
 usb_opening_top = 15;
@@ -143,6 +146,12 @@ assert(battery_xy[0]+bay_l+8 <= case_length-wall, "Battery tray/strap anchor exc
 assert(battery_xy[1]+bay_w+2 <= case_width-wall, "Increase case_width for this battery.");
 assert(floor_thickness+battery_pad+battery_thickness+3 <= body_height, "Increase body_height: allow 3 mm above cell, no clamping.");
 assert(pcb_z+1.6+7+2 <= body_height, "Increase body_height for PCB components.");
+assert(feather_post_diameter >= pcb_pilot_diameter+3 && feather_post_diameter <= 5.6,
+       "Keep at least 1.5 mm around Feather pilots and clearance to nearby header solder.");
+assert(feather_post_foot_diameter >= feather_post_diameter && feather_post_foot_diameter <= 8,
+       "Feather feet must support the posts and stay within the checked 8 mm footprint.");
+assert(feather_post_foot_height > 0 && feather_post_foot_height <= pcb_standoff-2,
+       "End Feather foot tapers at least 2 mm below the PCB for solder clearance.");
 assert(imu_rotation == 0 || imu_rotation == 180, "IMU rotation must be 0 or 180 degrees in the PCB plane.");
 assert(sd_standoff >= 4 && sd_pcb_z+7.6 <= body_height, "Allow at least 4 mm SD posts and 6 mm above its PCB for direct-soldered wiring.");
 assert(sd_xy[0]+sd_size[0]+2 <= case_length-wall && sd_xy[1] >= imu_xy[1]+imu_size[1]+3, "SD PCB must clear the right wall and IMU.");
@@ -221,6 +230,15 @@ module pcb_pilots(origin,holes,height=pcb_standoff) {
     for(p=holes) translate([origin[0]+p[0],origin[1]+p[1],floor_thickness+0.4])
         cylinder(d=pcb_pilot_diameter,h=height+eps);
 }
+module feather_posts() {
+    pcb_posts(feather_xy,feather_holes,feather_post_diameter);
+    // Broad roots spread the connection into the floor; taper upward without
+    // changing the PCB seating plane or the existing blind screw pilots.
+    for(p=feather_holes)
+        translate([feather_xy[0]+p[0],feather_xy[1]+p[1],floor_thickness-eps])
+            cylinder(d1=feather_post_foot_diameter,d2=feather_post_diameter,
+                     h=feather_post_foot_height+eps);
+}
 module battery_tray() {
     // Rounded edges and a loose, broad fabric strap; no rigid lid pressure.
     difference() {
@@ -269,7 +287,7 @@ module base() {
             for(p=bosses) translate([p[0],p[1],0]) cylinder(r=boss_r,h=body_height);
             if(mount_ears) ears();
             tether_lugs();
-            pcb_posts(feather_xy,feather_holes,4.2);
+            feather_posts();
             pcb_posts(imu_xy,imu_holes,5.6);
             pcb_posts(sd_xy,sd_holes,sd_post_diameter,sd_standoff);
             tie_anchor(sd_anchor_xy[0],sd_anchor_xy[1]);
@@ -496,6 +514,7 @@ echo("Lid screw: M3 countersunk, length includes head; nominal full-insert engag
 echo("Lid countersink: exterior diameter / included angle / depth",lid_countersink_diameter,lid_countersink_angle,lid_countersink_depth);
 echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_clearance-(stick_height-led_pcb_thickness));
 echo("SD mount: Adafruit 254, four M2x5 screws, 20.32 mm square centers; PCB underside Z",sd_pcb_z);
+echo("Feather posts: body diameter / foot diameter / foot height / standoff",feather_post_diameter,feather_post_foot_diameter,feather_post_foot_height,pcb_standoff);
 echo("IMU in-plane rotation / hole centers / PCB underside Z",imu_rotation,[for(p=imu_holes) [imu_xy[0]+p[0],imu_xy[1]+p[1]]],pcb_z);
 echo("Power-switch cutout on USB wall (X=0): Y width / Z height / Y center / Z bottom",power_switch_width,power_switch_height,power_switch_y,power_switch_bottom);
 

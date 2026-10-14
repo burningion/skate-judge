@@ -29,7 +29,7 @@ viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration
 viz/render_overlay.py transparent 3D skateboard + synchronized sensor/audio graphics for video editing
 viz/trick_review.py    video review, audio/IMU candidates, activity labels, LED alignment
 flash.sh               compile + upload with arduino-cli
-flash-feather.sh        preset: Feather S3 8MB / no PSRAM, eight-pixel RGB stick on GPIO5
+flash-feather.sh        preset: Feather S3 8MB / no PSRAM, five-pixel WS2812B/E strip on GPIO5
 tests/                 sensor/video integrity, local HTTP, and webcam controller checks
 ```
 
@@ -44,24 +44,26 @@ integrated into the enclosure's side.
 Check the battery dimensions and mounting clearance before printing.
 
 This setup uses the Adafruit Feather ESP32-S3 **8 MB flash / no PSRAM**, an
-LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and an **eight-pixel SKC6812 RGB stick**.
+LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and a **cut five-pixel WS2812B/E RGB strip**.
+The Fritzing artwork and enclosure LED channel still depict the previous rigid
+eight-pixel stick; the flexible strip's physical mounting needs a separate fit check.
 For the first direct-LiPo bench test, wire with power disconnected:
 
 | Connection | Destination |
 | --- | --- |
 | LiPo plug | Feather battery JST socket, with matching polarity |
-| Feather `BAT` | Stick `5V` / `+` input |
-| Feather `GND` | Stick `GND` |
-| Feather header printed **5** (GPIO5) | Stick `DIN`, preferably through a 330 Ω resistor near `DIN` |
-| Stick `DOUT` | Leave unconnected |
+| Feather `BAT` | Strip `5V` / `+` input (direct-LiPo prototype) |
+| Feather `GND` | Strip `GND` |
+| Feather header printed **5** (GPIO5) | Strip `DIN`, preferably through a 330 Ω resistor near `DIN` |
+| Strip `DOUT` | Leave unconnected |
 | Feather STEMMA QT socket | LSM6DSO32 STEMMA QT socket |
 
 **The label “5” means GPIO5, not 5 volts or the fifth header position.**
 The resistor is recommended protection on the data wire, not a strict requirement
 or an LED brightness resistor. A short-wire bench test can omit it.
 
-Adafruit documents direct LiPo power for short NeoPixel chains, but this stick's
-listing specifies 4–7 V. Test visibility and correct colors as the battery runs
+Adafruit documents direct LiPo power for short NeoPixel chains; the replacement
+strip's exact voltage range depends on its revision. Test visibility and correct colors as the battery runs
 down before relying on it for sync; a regulated 5 V supply with a level shifter
 is the fallback. See [power details and manufacturer sources](docs/recording.md#direct-lipo-wiring-for-the-first-test).
 
@@ -278,18 +280,18 @@ I,LSM6DSO32 at 0x6A on SDA=3 SCL=4 (Adafruit Feather ESP32-S3 / Reverse TFT, I2C
 To try specific pins first: `IMU_SDA=3 IMU_SCL=4 IMU_POWER=7 ./flash.sh`.
 
 For your **Adafruit Feather ESP32-S3, 8 MB flash / no PSRAM**, connect the
-eight-pixel SKC6812 RGB stick's data circuit to the header marked **5** (GPIO5).
-The preset selects the board, IMU wiring, Wi-Fi, and all eight pixels:
+five-pixel WS2812B/E RGB strip's data circuit to the header marked **5** (GPIO5).
+The preset selects the board, IMU wiring, Wi-Fi, and all five pixels:
 
 ```bash
 ./flash-feather.sh --compile-only  # build first
 ./flash-feather.sh                 # upload once connected
 ```
 
-All eight pixels flash white for 150 ms on `sync`, then turn off. Brightness
+All five pixels flash white for 150 ms on `sync`, then turn off. Brightness
 defaults to the maximum 255/255; override with `SYNC_LED_BRIGHTNESS`. For an RGBW stick,
 use `SYNC_LED_RGBW=1 ./flash-feather.sh`.
-See [stick wiring and power](docs/recording.md#eight-pixel-neopixel-stick)
+See [strip wiring and power](docs/recording.md#five-pixel-ws2812be-strip)
 before connecting it. Direct-LiPo wiring uses `BAT`; the Feather's `USB` pin
 only supplies 5 V while USB is connected.
 

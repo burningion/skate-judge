@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--exports", type=Path, default=HERE/"exports")
     parser.add_argument("--openscad")
     parser.add_argument("--lid", type=Path, help="Override lid STL for regression checks")
-    parser.add_argument("--check", choices=["lid_to_base", "electronics_to_base", "electronics_to_lid", "wired_led_insertion", "sample_lid_to_base", "sd_to_other_electronics", "sd_heads_to_components", "sd_card_removal", "sd_pilots", "sd_sample_mount", "imu_heads_to_components", "imu_pilots", "imu_to_led_wiring", "switch_opening_base", "switch_frame_base", "switch_opening_velcro", "switch_frame_velcro", "insert_bores_base", "insert_bosses_base", "lid_screw_path_base", "insert_bores_velcro", "insert_bosses_velcro", "lid_screw_path_velcro", "insert_coupon_bores", "insert_coupon_bosses"])
+    parser.add_argument("--check", choices=["lid_to_base", "electronics_to_base", "electronics_to_lid", "wired_led_insertion", "sample_lid_to_base", "sd_to_other_electronics", "sd_heads_to_components", "sd_card_removal", "sd_pilots", "sd_sample_mount", "imu_heads_to_components", "imu_pilots", "imu_to_led_wiring", "switch_opening_base", "switch_frame_base", "switch_opening_velcro", "switch_frame_velcro", "insert_bores_base", "insert_bosses_base", "lid_screw_path_base", "insert_bores_velcro", "insert_bosses_velcro", "lid_screw_path_velcro", "insert_coupon_bores", "insert_coupon_bosses", "feather_posts_base", "feather_pilots_base", "feather_solder_base", "feather_posts_velcro", "feather_pilots_velcro", "feather_solder_velcro"])
     args = parser.parse_args()
     executable = args.openscad or shutil.which("openscad") or "/Applications/OpenSCAD-2021.01.app/Contents/MacOS/OpenSCAD"
     source = HERE/"skate-judge.scad"
@@ -109,8 +109,33 @@ def main():
     checks["insert_coupon_bores"] = (coupon, coupon_bores)
     checks["insert_coupon_bosses"] = (f'difference() {{ {coupon_bosses} {coupon} }}', coupon_bosses)
 
-    report = {"source_sha256": manifest["source_sha256"], "revision": 8,
+    # Independent R9 material fixtures: all four 5.6 mm bodies, 8 mm tapered
+    # roots, original 4 mm seating height and 0.4 mm blind pilot bottoms.
+    # A collision-only check would also pass with missing or old thin posts.
+    feather_centers = '[[10.54,18.54],[10.54,36.32],[56.26,17.8415],[56.26,36.955]]'
+    feather_posts = f'''for(p={feather_centers}) translate([p[0],p[1],0]) difference() {{
+        union() {{
+            translate([0,0,3.02]) cylinder(d=5.5,h=3.96);
+            translate([0,0,3.02]) cylinder(d1=7.9,d2=5.5,h=1.96);
+        }}
+        translate([0,0,3.38]) cylinder(d=1.76,h=3.7);
+    }}'''
+    feather_pilots = (f'for(p={feather_centers}) translate([p[0],p[1],3.42]) '
+                      'cylinder(d=1.66,h=3.6);')
+    # Nearest header pads from the Adafruit 8MB/no-PSRAM Eagle file. The
+    # solder envelope (2 mm diameter, 1.5 mm below PCB) is an assumption,
+    # not a measurement of the installed wires; the narrowest gap is 0.05 mm.
+    feather_solder = ('for(p=[[14.35,17.27],[52.45,17.27],[52.45,37.59]]) '
+                      'translate([p[0],p[1],5.5]) cylinder(d=2,h=1.5);')
+    for variant, filename in [("base", "base.stl"), ("velcro", "base-velcro.stl")]:
+        shell = f'import({json.dumps(str((args.exports/filename).resolve()))});'
+        checks[f"feather_posts_{variant}"] = (f'difference() {{ {feather_posts} {shell} }}', feather_posts)
+        checks[f"feather_pilots_{variant}"] = (shell, feather_pilots)
+        checks[f"feather_solder_{variant}"] = (shell, feather_solder)
+
+    report = {"source_sha256": manifest["source_sha256"], "revision": 9,
               "lid_transform": "rotate X 180 degrees, then translate [0, case_width, body_height + lid_thickness]",
+              "feather_assumptions": "5.6 mm posts with 8 mm feet tapering over the lower 2 mm; original hole centers, 4 mm height and 1.7 mm blind pilots; nearest header solder envelopes assumed <=2 mm diameter and <=1.5 mm below PCB; nominal minimum solder gap 0.05 mm; actual joints and impact strength unverified",
               "imu_assumptions": "PCB extends from screw row toward SD; components face lid; 4 mm posts; M2 heads <=4 mm diameter and <=2 mm tall; holes shifted 12.7 mm toward LEDs from R5",
               "sd_assumptions": "Adafruit 254; 1.6 mm PCB; M2 heads <=4 mm diameter and <=2 mm tall; direct-soldered wires; card removed with lid off",
               "switch_assumptions": "13.5 x 8.4 mm cutout on X=0, centered Y=50/Z=11.5, through 3 mm wall; measured body 13.27 x 8.18 mm; bezel, clips, insertion depth, terminals and wiring are not modeled",

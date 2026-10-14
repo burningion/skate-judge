@@ -17,7 +17,7 @@ IDENTITY = "a" * 32
 
 class LEDTestTests(unittest.TestCase):
     def status(self, **changes):
-        return dict(dict(phase="idle", boot_id="1234abcd", led_pin=5, led_count=8,
+        return dict(dict(phase="idle", boot_id="1234abcd", led_pin=5, led_count=5,
                          led_format="GRB", led_brightness=48, led_tests=2), **changes)
 
     def test_busy_board_is_not_sent_a_test_command(self):

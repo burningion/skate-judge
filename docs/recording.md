@@ -19,8 +19,8 @@ retained for the legacy live viewer and demos.
 ## Hardware and mounting
 
 The current setup is an Adafruit Feather ESP32-S3 with 8 MB flash and no PSRAM,
-an LSM6DSO32 over STEMMA QT, a 3.7 V 500 mAh LiPo, and an eight-pixel SKC6812 RGB
-stick mounted along the side of the deck. The IMU's accelerometer supports
+an LSM6DSO32 over STEMMA QT, a 3.7 V 500 mAh LiPo, and a five-pixel WS2812B/E RGB
+strip mounted along the side of the deck. The IMU's accelerometer supports
 ±32 g and gyroscope ±2000 dps nominal; those are the firmware's configured ranges
 ([ST sensor specifications](https://www.st.com/en/mems-and-sensors/lsm6dso32.html)).
 The onboard logger saves both streams at 208 Hz using the sensor FIFO. It checks
@@ -52,15 +52,19 @@ phone camera can record without joining it. The onboard logger uses Wi-Fi for co
 Motion is preserved in flash independently of the connection. USB provides
 the same controls and download protocol; see [recovery](onboard-recording.md).
 
-## Eight-pixel NeoPixel stick
+<a id="eight-pixel-neopixel-stick"></a>
 
-The sync output supports an eight-pixel SKC6812 / SK6812 stick. All eight pixels
+## Five-pixel WS2812B/E strip
+
+The current sync output uses a cut, flexible **five-pixel WS2812B/E RGB strip**,
+replacing the rigid eight-pixel SKC6812 / SK6812 stick. All five pixels
 flash white for 150 ms, then turn off together. Sending `sync` in the recorder
 triggers the flash and records its timestamp; optional automatic session flashes
-also use the whole stick. Pixels stay off between flashes, including after startup.
+also use the whole strip. Pixels stay off between flashes, including after startup.
 
-The [Adafruit eight-pixel RGB stick](https://www.adafruit.com/product/1426)
-currently lists SKC6812 LEDs and uses RGB data.
+The existing Adafruit NeoPixel driver sends the WS2812B's **24-bit GRB data at
+800 kHz** ([Worldsemi datasheet](https://cdn-shop.adafruit.com/datasheets/WS2812B.pdf)).
+The replacement uses RGB mode, not RGBW; it needs five pixels per frame.
 
 For your **Adafruit Feather ESP32-S3 with 8 MB flash and no PSRAM**
 ([board 5323](https://www.adafruit.com/product/5323)), the verified data pin is
@@ -78,8 +82,8 @@ SYNC_LED_RGBW=1 ./flash-feather.sh
 ```
 
 This selects the Arduino `adafruit_feather_esp32s3_nopsram` target, its 8 MB
-partition layout, native hardware USB CDC, the STEMMA QT pins, and an eight-pixel
-RGB stick on GPIO5. It also enables Wi-Fi; use `SKATE_WIFI=0` for USB only.
+partition layout, native hardware USB CDC, the STEMMA QT pins, and a five-pixel
+RGB strip on GPIO5. It also enables Wi-Fi; use `SKATE_WIFI=0` for USB only.
 The board's onboard NeoPixel is separate and is not used as the sync stick.
 
 The RGB configuration sends GRB bytes at 800 kHz; RGBW sends GRBW and flashes
@@ -92,15 +96,22 @@ pixel mode is selected.
 Brightness defaults to the maximum `255` out of `255`. Add `SYNC_LED_BRIGHTNESS=48` for a
 dimmer flash. Check the camera image for
 visibility without washing out the board. This changes the PWM channel value,
-not a calibrated current limit. Pixel count defaults to one for compatibility
-with a single onboard pixel; `SYNC_LED_COUNT=8` is required for the entire stick.
-The supported count is 1–64 and brightness is 1–255. The preset supplies the
-eight-pixel count automatically.
+not a calibrated current limit. The Feather preset and onboard logger default to
+five pixels. The generic legacy stream sketch retains its single-pixel default;
+the Feather preset supplies five for either sketch. The supported count is 1–64
+and brightness is 1–255. Use `SYNC_LED_COUNT=8 ./flash-feather.sh` only if
+reinstalling the old eight-pixel stick.
+
+Run `uv run --offline capture/onboard.py --board serial:auto test-led` while
+idle and watch for three one-second white pulses on all five LEDs, followed by
+off. `/status` should report `led_count=5`, `led_format="GRB"` and `led_pin=5`.
 
 ### Direct-LiPo wiring for the first test
 
 See the [editable Fritzing project](../hardware/fritzing/README.md) for a
-connector-level drawing of this setup, with a bundled-parts `.fzz` file.
+connector-level drawing, with a bundled-parts `.fzz` file. Its artwork and the
+enclosure channel still show the old rigid stick; use the replacement strip's
+DIN/power labels and check its physical mounting separately.
 
 Disconnect USB and the battery while making the connections. With the battery
 plugged into the Feather, its `BAT` pad exposes battery voltage directly. The
@@ -131,10 +142,10 @@ Adafruit documents running short NeoPixel chains directly from a 3.7 V LiPo
 with 3.3 V data, so this arrangement can be bench-tested without a boost converter
 or level shifter
 ([connections guide](https://learn.adafruit.com/adafruit-neopixel-uberguide/basic-connections)).
-However, the [specific RGB stick listing](https://www.adafruit.com/product/1426)
-specifies 4–7 V. Direct-LiPo operation below that range is an experiment, not
-a guarantee: flashes can dim, show wrong colors, or stop as the battery runs
-down. Keep the default reduced brightness and check operation both when full
+The replacement strip's exact voltage range has not been established from its
+WS2812B/E label. Direct-LiPo operation across the entire discharge range is not
+guaranteed: flashes can dim, show wrong colors, or stop as the battery runs
+down. Check operation both when full
 and after some discharge before relying on the flashes for video sync. Use the
 regulated option below if the flashes are unreliable or insufficiently visible.
 
@@ -166,9 +177,9 @@ with 3.3 V controllers and 5 V pixels
 
 Adafruit recommends a 500–1000 µF capacitor rated at least 6.3 V across the
 stick's 5 V and ground near its power input, observing polarity, to buffer power
-transients. Size the LED supply for about 0.5 A for eight RGB pixels at full white,
+transients. Allow up to about 0.3 A for five RGB pixels at full white,
 plus separate allowance for the ESP32
-if sharing a supply; the default reduced brightness normally draws less.
+if sharing a supply; reducing brightness normally draws less.
 Power the stick from the supply, not an ESP32 GPIO or its 3.3 V regulator.
 See [Adafruit's power guidance](https://learn.adafruit.com/adafruit-neopixel-uberguide/powering-neopixels).
 

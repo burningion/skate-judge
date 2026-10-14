@@ -278,12 +278,13 @@ logger with `./flash-feather.sh`, then run while the board is idle:
 uv run --offline capture/onboard.py --board serial:auto test-led
 ```
 
-This sends three one-second white pulses and leaves the stick off. Omit
+This sends three one-second white pulses and leaves the strip off. Omit
 `--board serial:auto` to use Wi-Fi. Status reports the installed `led_pin`,
 `led_count`, `led_format`, and `led_brightness`; the Feather preset uses GPIO5,
-eight pixels, GRB, and 255/255. Completion confirms LED commands, not visible
-light. With the stick powered from `BAT`, leave the LiPo connected. GPIO5 must
-connect to the stick's `DIN` input. The test does not write recording files or
+five WS2812B/E pixels, GRB at 800 kHz, and 255/255. Confirm that **all five LEDs**
+flash white three times and then turn off; completion confirms LED commands,
+not visible light. With the strip powered from `BAT`, leave the LiPo connected. GPIO5 must
+connect to the strip's `DIN` input. The test does not write recording files or
 sync markers, and it is blocked during recording.
 It also samples battery voltage before and during a pulse using the Feather's
 MAX17048 (unavailable on older gauge revisions), and checks that the GPIO's RMT
@@ -291,6 +292,13 @@ transmitter is attached and idle after sending. These diagnostics cannot verify
 voltage at the stick's solder pads or detect visible light; `-1` means unavailable
 or not yet tested. These before/during-pulse readings are separate from the live
 battery display below.
+
+The five-pixel WS2812B/E replacement passed a USB-connected bench check on
+2026-10-14. The flashed Feather reported GPIO5, five GRB pixels and brightness
+255/255. The user confirmed all five LEDs flashed white three times and turned
+off. The test completed with the RMT transmitter ready and no board restart;
+status returned to idle with the IMU and SD card ready. Battery readings were
+4.090 V before the test and 4.051 V with the LEDs on. No recording was created.
 
 ### Live battery level
 

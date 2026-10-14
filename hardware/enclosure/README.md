@@ -9,6 +9,26 @@ and progressive riding trials; CAD checks do not establish impact survival.
 
 ![Enclosure with recessed side-facing LEDs](preview-assembly.png)
 
+**Revision 9 — 2026-10-14, reinforced ESP32-S3 mounting posts.** After a mount
+broke during data collection, all four Feather posts increase from **4.2 to
+5.6 mm diameter**, with **8 mm-diameter feet tapering over the lower 2 mm**.
+The straight post wall around each 1.7 mm pilot increases from 1.25 to 1.95 mm.
+The feet broaden the connection to the floor. Hole centers, **4 mm post height**,
+blind pilots and M2 × 5 mm screws remain the same, preserving board and USB
+position. **Reprint only the base**: [standard](exports/base.stl) or
+[Velcro](exports/base-velcro.stl). The existing lid fits.
+
+![Reinforced Feather posts in the empty base](preview-feather-posts.png)
+
+The upper diameter is limited by the adjacent header pads in the
+[Adafruit board drawing](https://github.com/adafruit/Adafruit-Feather-ESP32-S3-PCB/blob/main/Adafruit%20ESP32-S3%208MB%20No%20PSRAM.brd)
+(rechecked 2026-10-14). The fit check assumes nearby solder joints extend no
+more than **1.5 mm below the PCB** and fit a **2 mm diameter**; the tightest
+nominal gap is only **0.05 mm**. Check your actual joints and confirm the board
+seats flat before tightening. Use the five-perimeter print settings below and
+inspect the post roots after initial riding; the thicker geometry has not yet
+been tested under skating impacts.
+
 **Revision 8 — 2026-10-03, heat-set inserts for the lid.** Both bases now use
 four top-loaded **M3 × 4 × 5 mm inserts** in place of the side-loaded hex nuts.
 The user confirmed the Jouth size as **M3 thread, 4 mm length,
@@ -63,7 +83,7 @@ floor. There is **4.22 mm nominal separation between the PCB outlines**.
 Changing heights is unnecessary; lowering SD would reduce the card-removal
 clearance above the battery. **Only the base needs reprinting**; the lid and
 SD mounting sample are unchanged. Use the refreshed [base](exports/base.stl)
-or [Velcro base](exports/base-velcro.stl). The current R8 exports retain this layout.
+or [Velcro base](exports/base-velcro.stl). The current R9 exports retain this layout.
 
 Existing recordings remain in their original sensor axes. Keeping the same
 physical orientation avoids a new axis mapping, but translating the sensor can
@@ -176,7 +196,7 @@ The R8 insert bores open upward and remove the old nut-pocket roof bridges.
 Strap/wire-anchor tunnels still require approximately 8.4 mm bridges, and the
 switch opening has a 13.5 mm roof bridge. **PrusaSlicer 2.9.6 flagged "Floating
 bridge anchors" on earlier bases** during the 0.20 mm/5-perimeter slice check.
-Support-free printing of R8 is unverified: inspect those remaining spans layer
+Support-free printing of R9 is unverified: inspect those remaining spans layer
 by layer, and test a cropped anchor section or paint removable local supports
 with accessible removal paths. The insert coupon reproduces the boss depth and
 bores, but does **not** test the strap or switch bridges.
@@ -325,6 +345,11 @@ not included. With the default battery there is 3 mm nominal clearance below
 the card, before adding the battery strap. The card-access fixture includes
 15 mm of withdrawal and 6 mm of space above its underside, with the lid removed.
 Check that you can grip and remove the actual card without disturbing the cell.
+`feather_post_diameter`, `feather_post_foot_diameter`, and
+`feather_post_foot_height` set the reinforced Feather mount. Defaults are
+5.6 / 8 / 2 mm; assertions limit the body and foot to the checked footprints
+and leave at least 2 mm between the end of the foot taper and the PCB underside.
+Increasing the upper diameter requires checking nearby header solder clearance.
 `body_height` can be
 increased for headers, but check the real assembly and USB position; the echo
 prints the full-engagement length and blind-bottom limit for the lid screws. Moving the standoffs changes
@@ -437,3 +462,14 @@ three bore sizes and surrounding material are also checked. These are nominal
 CAD checks; they do not model plastic flow, insert threads or pull-out strength.
 The lid and LED/SD samples retain their R7 geometry. R8 has not been slice-checked;
 inspect the remaining strap/wire-anchor and switch bridges before printing.
+
+R9 adds independent checks for the thicker Feather posts and tapered feet in
+both exported bases, including the original screw centers, clear pilots and
+blind bottoms. Material checks reject the old thin posts. Additional fixtures
+check the nearest header solder envelopes described above. The lid and all fit
+samples retain their R8 geometry. CAD checks establish nominal geometry and
+clearance, not impact strength or the fit of the actual solder joints.
+The R9 standard base was sliced in PrusaSlicer 2.9.6 with 0.20 mm layers, a
+0.4 mm nozzle, five perimeters, six top/bottom layers and 40% gyroid infill.
+Toolpath generation succeeds with the same **Floating bridge anchors** warning;
+inspect the remaining anchor and switch bridges in your printer profile.
