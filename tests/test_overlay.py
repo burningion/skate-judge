@@ -217,6 +217,56 @@ class OverlayMotionTests(unittest.TestCase):
 
 
 class OverlayRenderTests(unittest.TestCase):
+    def test_face_visibility_uses_pixel_depth_and_not_drawing_order(self):
+        from viz.render_overlay import rasterize_faces
+
+        grip = (np.array([[0, 0, 2], [8, 0, 2], [8, 8, 2], [0, 8, 2]]), (0, 0, 0, 255))
+        crossing = (np.array([[0, 0, 1], [8, 0, 4], [0, 8, 4]]), (180, 200, 210, 255))
+        first = np.asarray(rasterize_faces([grip, crossing], 8, 8))
+        second = np.asarray(rasterize_faces([crossing, grip], 8, 8))
+        np.testing.assert_array_equal(first, second)
+        np.testing.assert_array_equal(first[0, 0], crossing[1])
+        np.testing.assert_array_equal(first[3, 3], grip[1])
+
+    def test_sensor_housing_is_under_deck_touching_nose_side_truck_inboard(self):
+        from viz.render_overlay import skateboard_mesh
+
+        # Inspect the rendered housing rather than only its placement metadata.
+        housing = np.concatenate([
+            points for points, color in skateboard_mesh()
+            if np.array_equal(color, [35, 74, 77])
+        ])
+        low, high = housing.min(axis=0), housing.max(axis=0)
+        self.assertAlmostEqual(high[2], -0.011)  # Flush with the deck underside.
+        self.assertLess(low[2], high[2])
+        self.assertAlmostEqual(high[0], 0.245 - 0.055 / 2)  # Nose-side baseplate contact.
+        self.assertGreater(low[0], 0)  # Housing is between nose-side truck and center.
+        self.assertAlmostEqual(low[1], -high[1])  # Centered across the deck.
+
+    def test_under_deck_sensor_stays_anchored_through_full_rotation(self):
+        from viz.render_overlay import SENSOR_CENTER, board_world_points
+
+        # The sensor and deck center must be different reference points. A pitch
+        # turn moves the deck center around the sensor while keeping a rigid deck.
+        points = np.array([SENSOR_CENTER, [0, 0, 0], [0.395, 0, 0], [-0.395, 0, 0]])
+        initial = board_world_points(points, np.eye(3))
+        self.assertGreater(SENSOR_CENTER[0], 0)
+        self.assertEqual(SENSOR_CENTER[1], 0)
+        self.assertLess(SENSOR_CENTER[2], -0.011)
+        for angle in np.linspace(0, 2 * math.pi, 17):
+            attitude = matrix([math.cos(angle / 2), 0, math.sin(angle / 2), 0])
+            world = board_world_points(points, attitude)
+            np.testing.assert_allclose(world[0], 0, atol=1e-12)
+            np.testing.assert_allclose(
+                np.linalg.norm(world[1:], axis=1),
+                np.linalg.norm(initial[1:], axis=1),
+                atol=1e-12,
+            )
+            self.assertAlmostEqual(np.linalg.norm(world[2] - world[3]), 0.79)
+        half_turn = board_world_points(points, matrix([0, 0, 1, 0]))
+        np.testing.assert_allclose(half_turn[1], -initial[1], atol=1e-12)
+        np.testing.assert_allclose(world, initial, atol=1e-12)
+
     def test_context_uses_video_clock_and_clamps_to_recorded_coverage(self):
         from viz.render_overlay import attempt_segments
 

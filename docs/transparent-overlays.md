@@ -95,6 +95,19 @@ handles, and place trimmed clips using their corresponding source in-points.
 
 ## What the skateboard motion represents
 
+A small cyan sensor marker sits **underneath the deck**, centered across its
+width, between the trucks. Its nose-facing end touches the **inboard edge of the
+nose-side truck's baseplate** (positive model X), so the housing extends toward
+the deck's middle. Its housing
+is schematic. The arrow on its outward face shows sensor **+X** using the selected
+mounting transform. For **a7s-023**, +X points toward the **tail** and −X toward
+the nose: use `--nose-axis=-x --up-axis=-z`. The grip tape is solid black, with
+no stripes, lines, or exposed bolt markings.
+The animation holds this sensor location
+at its presentation origin and rotates the board around it. This is a display
+reference, not a measurement of the board's physical pivot or sensor trajectory.
+The manifest records the marker position and rotation origin in model coordinates.
+
 The model's **rotation is estimated from the recorded IMU**. The gyroscope is
 integrated using measured sample intervals, with a Mahony-style gravity
 correction only when acceleration is near gravity and rotation is slow. Quiet
@@ -102,17 +115,19 @@ samples from the first two seconds provide an initial gyro-bias estimate when
 available. The implementation follows the same approach as the live viewer;
 see the [Mahony filter equations](https://ahrs.readthedocs.io/en/latest/filters/mahony.html).
 
-The skateboard has **fixed position**. No jump height, horizontal travel, wheel
-speed, or rider motion is invented. Without a magnetometer, heading can drift;
+The **under-deck sensor position stays fixed in the animation**; the deck's center
+moves around that anchor as the board turns. No jump height, horizontal travel,
+wheel speed, or rider motion is inferred. Without a magnetometer, heading can drift;
 each clip uses the saved attempt's starting heading as its presentation-camera
 reference (the clip start in session mode). Roll and
 pitch are preserved, including full flips. The presentation camera pulls back
 when needed to keep the model clear of captions. This is an explanatory orientation
 visualization, not a motion-capture reconstruction of the trick.
 
-The A7S recording uses sensor X along the deck and Y across it. Resting gravity
-points toward sensor −Z, so `--nose-axis x --up-axis=-z` maps the model correctly.
-The sign of the nose direction can be reversed with `--nose-axis=-x`. Without
+The A7S recordings use sensor X along the deck and Y across it. Resting gravity
+points toward sensor −Z. For **a7s-023**, the confirmed nose direction is sensor
+**−X**, so render with `--nose-axis=-x --up-axis=-z`; earlier a7s-001 examples
+retain that recording's original mounting convention. Without
 explicit axes, the script infers deck-up from initial gravity and the long axis
 from the dominant kickflip rotation axis when labeled kickflips exist. This
 cannot distinguish the nose from the tail; the assumption is recorded in the

@@ -8,7 +8,7 @@
     uv run viz/render_overlay.py sessions/a7s-001 --video C0642.MP4
     uv run viz/render_overlay.py sessions/a7s-001 --video C0642.MP4 --speed .25
 
-The skateboard rotates from recorded IMU data; its center stays fixed. Output
+The skateboard rotates from recorded IMU data around a fixed under-deck sensor. Output
 includes alpha MOVs, PNG previews, and a timing manifest. Use --reel for a compilation.
 """
 
@@ -52,13 +52,60 @@ PURPLE = (192, 170, 255, 255)
 CYAN = (119, 225, 232, 255)
 GOLD = (255, 204, 123, 255)
 CORAL = (255, 165, 130, 255)
+GRIP_COLOR = (0, 0, 0)
+TRUCK_OFFSET_X = 0.245
+SENSOR_TRUCK_X = TRUCK_OFFSET_X
+DECK_UNDERSIDE_Z = -0.011
+TRUCK_BASEPLATE_SIZE = (0.055, 0.050, 0.012)
+SENSOR_SIZE = (0.060, 0.040, 0.022)
+# Flush under the deck, touching the inboard edge of the positive-X truck.
+# Board +X points toward the nose, +Y across the deck, and +Z above the grip tape.
+SENSOR_CENTER = (
+    SENSOR_TRUCK_X - TRUCK_BASEPLATE_SIZE[0] / 2 - SENSOR_SIZE[0] / 2,
+    0.0,
+    DECK_UNDERSIDE_Z - SENSOR_SIZE[2] / 2,
+)
 
 
 def unit(v):
     return np.asarray(v) / np.linalg.norm(v)
 
 
-def skateboard_mesh():
+def board_world_points(points, attitude):
+    """Anchor the under-deck sensor at the presentation origin for every pose."""
+    return (np.asarray(points) - SENSOR_CENTER) @ np.asarray(attitude).T
+
+
+def rasterize_faces(polygons, width, height):
+    """Draw projected XYZ polygons with perspective-correct per-pixel depth."""
+    pixels = np.zeros((height, width, 4), dtype=np.uint8)
+    inverse_depth = np.zeros((height, width), dtype=np.float32)
+    for vertices, color in polygons:
+        for index in range(1, len(vertices) - 1):
+            a, b, c = np.asarray(vertices[[0, index, index + 1]], dtype=np.float32)
+            denominator = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1])
+            if abs(denominator) < 1e-8:
+                continue
+            left = max(0, math.floor(min(a[0], b[0], c[0])))
+            top = max(0, math.floor(min(a[1], b[1], c[1])))
+            right = min(width, math.ceil(max(a[0], b[0], c[0])))
+            bottom = min(height, math.ceil(max(a[1], b[1], c[1])))
+            if left >= right or top >= bottom:
+                continue
+            x = np.arange(left, right, dtype=np.float32)[None, :] + 0.5
+            y = np.arange(top, bottom, dtype=np.float32)[:, None] + 0.5
+            wa = ((b[1] - c[1]) * (x - c[0]) + (c[0] - b[0]) * (y - c[1])) / denominator
+            wb = ((c[1] - a[1]) * (x - c[0]) + (a[0] - c[0]) * (y - c[1])) / denominator
+            wc = 1 - wa - wb
+            depth = wa / a[2] + wb / b[2] + wc / c[2]
+            previous = inverse_depth[top:bottom, left:right]
+            visible = (wa >= -1e-6) & (wb >= -1e-6) & (wc >= -1e-6) & (depth > previous)
+            previous[visible] = depth[visible]
+            pixels[top:bottom, left:right][visible] = color
+    return Image.fromarray(pixels)
+
+
+def skateboard_mesh(sensor_x_axis=(1.0, 0.0, 0.0)):
     """A real 3D deck, maple plies, trucks, bushings, and four urethane wheels."""
     faces = []
 
@@ -124,17 +171,16 @@ def skateboard_mesh():
 
     for a, b in zip(xs[:-1], xs[1:]):
         for u, v in zip(np.linspace(-1, 1, 7)[:-1], np.linspace(-1, 1, 7)[1:]):
-            face([point(a, u), point(b, u), point(b, v), point(a, v)], (46, 65, 65))
+            face([point(a, u), point(b, u), point(b, v), point(a, v)], GRIP_COLOR)
             # Bright underside makes the kickflip's full turn easy to read.
-            color = (186, 233, 114) if not -0.055 < a < 0.025 else (32, 66, 60)
             face(
                 [
-                    point(a, u, -0.011),
-                    point(a, v, -0.011),
-                    point(b, v, -0.011),
-                    point(b, u, -0.011),
+                    point(a, u, DECK_UNDERSIDE_Z),
+                    point(a, v, DECK_UNDERSIDE_Z),
+                    point(b, v, DECK_UNDERSIDE_Z),
+                    point(b, u, DECK_UNDERSIDE_Z),
                 ],
-                color,
+                (186, 233, 114),
             )
         for side in [-1, 1]:
             for k in range(5):
@@ -149,19 +195,9 @@ def skateboard_mesh():
                     ],
                     color,
                 )
-    # A narrow nose stripe and mounting bolts provide a visible orientation cue.
-    for a, b in [(0.297, 0.307), (0.315, 0.319)]:
-        face(
-            [
-                point(a, -0.9, 0.0007),
-                point(b, -0.9, 0.0007),
-                point(b, 0.9, 0.0007),
-                point(a, 0.9, 0.0007),
-            ],
-            (198, 240, 128),
-        )
-    for x in [-0.245, 0.245]:
-        box([x, 0, -0.016], [0.055, 0.05, 0.012], (141, 168, 176))
+    # The grip surface is uninterrupted black, including over the mounting bolts.
+    for x in [-TRUCK_OFFSET_X, TRUCK_OFFSET_X]:
+        box([x, 0, -0.016], TRUCK_BASEPLATE_SIZE, (141, 168, 176))
         cylinder([x, 0, -0.04], 0.014, 0.035, 2, (202, 156, 83), 12)
         cylinder([x, 0, -0.063], 0.01, 0.215, 1, (179, 200, 207), 12)
         box([x, 0, -0.054], [0.027, 0.139, 0.02], (173, 196, 199))
@@ -177,9 +213,32 @@ def skateboard_mesh():
                 (115, 139, 148),
                 12,
             )
-        for dx in [-0.016, 0.016]:
-            for y in [-0.023, 0.023]:
-                cylinder([x + dx, y, 0.001], 0.0035, 0.001, 2, (166, 183, 182), 8)
+    # Schematic sensor marker: underneath the deck, inboard of the nose-side truck.
+    # The animation pivots here; this is not a measured physical rotation center.
+    sensor_x, _, sensor_z = SENSOR_CENTER
+    outward_z = sensor_z - SENSOR_SIZE[2] / 2
+    box(SENSOR_CENTER, SENSOR_SIZE, (35, 74, 77))
+    box([sensor_x, 0, outward_z - 0.0005], [0.052, 0.032, 0.002], CYAN)
+    # Show sensor +X on the outward face using the same mounting transform as
+    # the animation. If X is normal to the deck, omit the in-plane arrow.
+    direction = np.asarray(sensor_x_axis, float)[:2]
+    norm = np.linalg.norm(direction)
+    direction = direction / norm if norm > 1e-8 else np.zeros(2)
+    chip_xy = np.array([sensor_x, 0]) - 0.012 * direction
+    box([*chip_xy, outward_z - 0.003], [0.016, 0.016, 0.003], (26, 39, 42))
+    if norm > 1e-8:
+        side = np.array([-direction[1], direction[0]])
+        for outline in (
+            [(0.002, -0.003), (0.014, -0.003), (0.014, 0.003), (0.002, 0.003)],
+            [(0.014, -0.008), (0.024, 0), (0.014, 0.008)],
+        ):
+            face(
+                [
+                    [*(np.array([sensor_x, 0]) + x * direction + y * side), outward_z - 0.002]
+                    for x, y in outline
+                ],
+                (240, 249, 246),
+            )
     return faces
 
 
@@ -229,7 +288,7 @@ class Renderer:
         self.samples, self.attitudes, self.audio = samples, attitudes, audio
         self.scale, self.offset, self.origin = mapping
         self.mount, self.args = mount, args
-        self.mesh = skateboard_mesh()
+        self.mesh = skateboard_mesh(mount.T @ [1.0, 0.0, 0.0])
         self.camera = np.array([0.95, -2.7, 1.65])
         forward = unit(-self.camera)
         right = unit(np.cross(forward, [0, 0, 1]))
@@ -297,7 +356,7 @@ class Renderer:
         bounds = (60, 154, 1020, 526) if portrait else (90, 172, 720, 460)
         focal = 1800 if portrait else 2050
         for points, color in self.mesh:
-            world = points @ attitude.T
+            world = board_world_points(points, attitude)
             camera = (world - self.camera) @ self.view.T
             xy = camera[:, :2] / camera[:, 2, None]
             screen = np.column_stack([xy[:, 0], -xy[:, 1]])
@@ -309,9 +368,9 @@ class Renderer:
                 else 0.7
             )
             rgb = tuple(int(v) for v in np.clip(color * shade, 0, 255)) + (255,)
-            polygons.append((np.mean(camera[:, 2]), screen, rgb))
+            polygons.append((camera[:, 2], screen, rgb))
         # Keep every pose clear of captions. Presentation zoom may pull back
-        # for a tall pose; the measured orientation and fixed center are intact.
+        # for a tall pose; the measured orientation and fixed sensor are intact.
         vertices = np.concatenate([row[1] for row in polygons])
         low, high = vertices.min(axis=0), vertices.max(axis=0)
         for axis in range(2):
@@ -319,10 +378,15 @@ class Renderer:
                 focal = min(focal, (center[axis] - bounds[axis]) / -low[axis])
             if high[axis] > 0:
                 focal = min(focal, (bounds[axis + 2] - center[axis]) / high[axis])
-        for _, points, color in sorted(polygons, key=lambda item: -item[0]):
-            self.draw.polygon(
-                [tuple((p * focal + center) * self.aa) for p in points], fill=color
-            )
+        left, top, right, bottom = (int(value * self.aa) for value in bounds)
+        projected = [
+            (np.column_stack([(points * focal + center) * self.aa - [left, top], depth]), color)
+            for depth, points, color in polygons
+        ]
+        # Mean-face sorting lets buried truck faces bleed through the deck.
+        # Compare actual depth at each pixel so the grip surface fully occludes them.
+        board = rasterize_faces(projected, right - left + 1, bottom - top + 1)
+        self.layer.alpha_composite(board, (left, top))
 
     def trace(self, times, values, lo, hi, bounds, limit, color, now, gap=None):
         left, top, right, bottom = bounds
@@ -432,11 +496,11 @@ class Renderer:
             )
         if portrait:
             self.text((60, 550), "IMU ROTATION", 18, MUTED, True)
-            self.text((305, 550), "Estimated attitude · fixed position", 18, MUTED)
+            self.text((305, 550), "Estimated attitude · sensor pivot", 18, MUTED)
             self.text((1016, 550), f"{self.args.speed:g}×", 22, LIME, True, anchor="ra")
         else:
             self.text((92, 472), "IMU ROTATION", 17, MUTED, True)
-            self.text((92, 502), "Estimated attitude · fixed position", 18, MUTED)
+            self.text((92, 502), "Estimated attitude · sensor pivot", 18, MUTED)
             self.text((704, 502), f"{self.args.speed:g}×", 20, LIME, True, anchor="ra")
         lo, hi = segment["start"], segment["end"]
         if segment.get("session"):
@@ -859,12 +923,25 @@ def main(argv=None):
             "flat_sync_reference": args.flat_syncs,
             "effective_board_to_sensor_matrix": mount.tolist(),
         },
+        "sensor_visual": {
+            "location": "under deck, centered across width, touching inboard edge of nose-side truck baseplate",
+            "truck_board_x_m": SENSOR_TRUCK_X,
+            "center_board_m": list(SENSOR_CENTER),
+            "housing_size_m": list(SENSOR_SIZE),
+            "marker_arrow": "sensor +X projected onto deck plane",
+            "sensor_x_axis_board_unit": (mount.T @ [1.0, 0.0, 0.0]).tolist(),
+            "geometry": "schematic marker, not measured enclosure dimensions",
+            "rotation_origin_board_m": list(SENSOR_CENTER),
+            "rotation_origin_kind": "fixed presentation anchor, not a measured physical pivot",
+        },
+        "grip_tape": {"color": "black", "markings": False},
         "attitude": {
             "method": attitude_method,
             **calibration,
         },
         "limitations": [
             "Estimated rotation only; no measured translation or jump height.",
+            "The sensor is held fixed for presentation; its physical trajectory is not measured.",
             "Yaw has no magnetometer correction; heading is reset for each clip.",
             "Automatic mounting cannot distinguish the nose from the tail.",
         ],
