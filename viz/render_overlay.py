@@ -839,6 +839,8 @@ def main(argv=None):
             "Saved labels refer to different media. Review them before rendering."
         )
     attempts = [r for r in labels if r["outcome"] != "background"]
+    # A selective rerender keeps the attempt's original number in its title/file.
+    attempt_numbers = {row["id"]: index + 1 for index, row in enumerate(attempts)}
     if args.label:
         attempts = [r for r in attempts if r["id"].startswith(args.label)]
         if len(attempts) != 1:
@@ -888,6 +890,8 @@ def main(argv=None):
         min(analysis["duration_s"], (samples[-1, 0] - offset) / scale - origin),
     )
     segments = attempt_segments(attempts, origin, coverage, args.before, args.after)
+    for segment in segments:
+        segment["number"] = attempt_numbers[segment["label"]["id"]]
     if args.mode == "session":
         segments = [
             dict(
