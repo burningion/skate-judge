@@ -17,8 +17,10 @@ import tempfile
 
 if __package__:
     from .session import OUTCOMES, fit_video_points
+    from .motion_events import board_motion_context, overlapping_events
 else:
     from session import OUTCOMES, fit_video_points
+    from motion_events import board_motion_context, overlapping_events
 
 CHANNELS = ("t_s", "ax", "ay", "az", "gx", "gy", "gz")
 MAX_GAP_S = 0.03
@@ -44,8 +46,10 @@ def load_samples(content):
 def inspect_session(path, *, allow_sample_gaps=False):
     """Read one snapshot; latest revision per label ID is authoritative."""
     content = {name: (path / name).read_bytes() if (path / name).exists() else b""
-               for name in ("metadata.json", "labels.jsonl", "video_sync.jsonl", "samples.csv")}
+               for name in ("metadata.json", "labels.jsonl", "video_sync.jsonl", "samples.csv", "events.jsonl")}
+    events_present = (path / "events.jsonl").exists()
     meta = json.loads(content["metadata.json"])
+    board_events = board_motion_context(meta, content["events.jsonl"] if events_present else None)
     history = jsonl(content["labels.jsonl"])
     latest = {row["id"]: row for row in history}
     if any(not isinstance(identity, str) or not identity for identity in latest):
@@ -54,6 +58,9 @@ def inspect_session(path, *, allow_sample_gaps=False):
     samples = load_samples(content["samples.csv"])
     times = [row[0] for row in samples]
     issues, session_warnings = [], []
+    session_warnings.extend(board_events["warnings"])
+    if board_events["availability"] in ("missing", "unverified", "incomplete"):
+        session_warnings.append(board_events["message"])
     if meta.get("synthetic") is not False:
         issues.append("synthetic or unverified recording")
     if not meta.get("closed_utc"):
@@ -134,14 +141,26 @@ def inspect_session(path, *, allow_sample_gaps=False):
                    sample_count=len(window),
                    outcome_training=not reasons and label.get("outcome") != "unknown")
         rows.append(row)
+        matched = overlapping_events(board_events["events"], start, end) if row["eligible"] else []
+        # Missing event recording is not a zero count and does not invalidate
+        # an otherwise usable raw IMU example. Observations never assign labels.
+        row["board_motion"] = dict(availability=board_events["availability"], profile=board_events["profile"],
+                                   poll_interval_us=board_events["poll_interval_us"],
+                                   observed_packets=len(matched) if row["eligible"] else None,
+                                   count=len(matched) if row["eligible"] and board_events["availability"] == "recorded" else None,
+                                   events=matched)
         if row["eligible"]:
             windows[row["example_id"]] = window
     for name, data in content.items():
         current = (path / name).read_bytes() if (path / name).exists() else b""
         if current != data:
             raise ValueError("Session changed during scan; rerun after saving review")
+    if (path / "events.jsonl").exists() != events_present:
+        raise ValueError("Session event file changed during scan; rerun after saving review")
     info = dict(session_id=path.name, source=str(path.resolve()), issues=issues,
                 warnings=session_warnings,
+                board_motion={k: v for k, v in board_events.items() if k not in ("events", "warnings")},
+                events_file_present=events_present,
                 label_revisions=len(history), unique_labels=len(latest),
                 eligible_attempts=sum(r["outcome_training"] and r["label"]["outcome"] != "background" for r in rows),
                 background=sum(r["outcome_training"] and r["label"]["outcome"] == "background" for r in rows),
@@ -181,6 +200,7 @@ def collect(root, pattern="a7s-*", *, labeled_only=False, allow_sample_gaps=()):
     activities = Counter(r["label"].get("activity") or "unspecified" for r in labels
                          if r["outcome_training"] and r["label"]["outcome"] == "background")
     report = dict(schema=1, created_utc=datetime.now(timezone.utc).isoformat(),
+                  board_motion_schema=1,
                   sessions_root=str(root.resolve()), pattern=pattern, sessions=sessions,
                   labeled_only=labeled_only, skipped_unlabeled_sessions=skipped_sessions,
                   allow_sample_gaps=sorted(allowed_gap_sessions),
@@ -213,6 +233,9 @@ def print_report(report):
         print(f"  {row['trick'] or '(background / unnamed)'} / {row['outcome']}: {row['count']}")
     for activity, count in report.get("background_activities", {}).items():
         print(f"  Background activity / {activity}: {count}")
+    event_sessions = [s for s in report["sessions"] if s.get("board_motion", {}).get("availability") == "recorded"]
+    print(f"  Board events: {sum(s['board_motion']['observed_packets'] for s in event_sessions)} observed packets "
+          f"across {len(event_sessions)} session(s) with complete event recording.")
 
 
 def build(output, report, labels, windows):
@@ -228,7 +251,14 @@ def build(output, report, labels, windows):
         staging.mkdir()
         (staging / "report.json").write_text(json.dumps(report, indent=2, allow_nan=False) + "\n")
         (staging / "manifest.jsonl").write_text(
-            "".join(json.dumps(row, allow_nan=False) + "\n" for row in labels))
+            "".join(json.dumps(dict(row, board_motion={k: v for k, v in row["board_motion"].items() if k != "events"}),
+                               allow_nan=False) + "\n" for row in labels))
+        with (staging / "motion_events.jsonl").open("w") as stream:
+            for row in labels:
+                for event in row["board_motion"]["events"]:
+                    stream.write(json.dumps(dict(event, example_id=row["example_id"], session_id=row["session_id"],
+                                                 profile=row["board_motion"]["profile"],
+                                                 poll_interval_us=row["board_motion"]["poll_interval_us"]), allow_nan=False) + "\n")
         with (staging / "samples.csv").open("w", newline="") as stream:
             writer = csv.writer(stream)
             writer.writerow(("example_id", "relative_s", *CHANNELS))
@@ -239,9 +269,16 @@ def build(output, report, labels, windows):
             "Immutable labeled IMU snapshot. Original video/raw recordings remain in sessions/.\n"
             "manifest.jsonl: latest labels, session/rider groups, eligibility and exclusions.\n"
             "samples.csv: eligible windows joined by example_id; [start_s, end_s), original sampling.\n"
+            "motion_events.jsonl: observed board events whose uncertain bounds overlap eligible windows.\n"
+            "Join by example_id; event_id identifies the same observation across adjacent windows.\n"
+            "earliest/observed/latest_s are session sensor seconds; relative_*_s are relative to label start.\n"
+            "Full uncertainty bounds are preserved; fully_contained marks intervals inside the label.\n"
+            "available_by_window_end=false means the event was only fully observed after that window.\n"
+            "manifest board_motion.count is null if recording was unavailable/incomplete or the label excluded.\n"
+            "Count packets, not physical events or tricks; flags may coalesce and polling may miss events.\n"
             "Channels: t_s in sensor seconds, acceleration in m/s^2, gyro in rad/s.\n"
             "Unknown outcomes are preserved; filter outcome_training=true for outcome supervision.\n"
-            "report.json: counts and SHA-256 hashes of the source annotation/sensor files.\n"
+            "report.json: counts and SHA-256 hashes of source annotations, sensors, and events.jsonl.\n"
             "allow_sample_gaps records explicit session overrides; warnings retain their quality flags.\n"
             "Split by whole session (or rider), never random samples from an attempt.\n"
             "Eligibility checks data integrity, not whether a label is semantically correct.\n")

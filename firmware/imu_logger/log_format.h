@@ -5,7 +5,7 @@
 
 // Versioned, little-endian packets. CRC covers the first 20 header bytes and
 // payload, so a power-cut tail can be detected without inventing missing data.
-enum LogKind : uint8_t { META = 0, FIFO = 1, CLOCK = 2, SYNC = 3, END = 4 };
+enum LogKind : uint8_t { META = 0, FIFO = 1, CLOCK = 2, SYNC = 3, END = 4, MOTION = 5 };
 struct __attribute__((packed)) LogHeader {
   char magic[4];
   uint8_t kind, version;

@@ -1,0 +1,514 @@
+{
+  "evaluation": "retrospective development comparison; not held-out validation",
+  "pop_tolerance_s": 0.15,
+  "background_rule": "Entire proposed pop/contact interval is inside an eligible human background label.",
+  "unknown_rule": "Other unmatched candidates are unclassified, not assumed false positives.",
+  "results": [
+    {
+      "settings": {
+        "threshold": 0.65,
+        "min_gap": 0.18,
+        "max_gap": 0.9,
+        "show_filtered": false,
+        "candidate_mode": "audio"
+      },
+      "totals": {
+        "candidates": 385,
+        "known_attempts": 67,
+        "attempts_with_pop": 67,
+        "matched_attempts": 58,
+        "background_candidates": 92,
+        "unclassified_candidates": 235,
+        "unchecked_candidates": 0
+      },
+      "sessions": [
+        {
+          "session": "a7s-001",
+          "video": "C0642.MP4",
+          "candidates": 37,
+          "known_attempts": 8,
+          "attempts_with_pop": 8,
+          "matched_attempts": 7,
+          "background_candidates": 0,
+          "unclassified_candidates": 30,
+          "unchecked_candidates": 0,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 3,
+              "matched": 2
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-002",
+          "video": "C0672.MP4",
+          "candidates": 56,
+          "known_attempts": 9,
+          "attempts_with_pop": 9,
+          "matched_attempts": 8,
+          "background_candidates": 0,
+          "unclassified_candidates": 48,
+          "unchecked_candidates": 0,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 4
+            },
+            "bail": {
+              "with_pop": 4,
+              "matched": 4
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-008",
+          "video": "C0688.MP4",
+          "candidates": 119,
+          "known_attempts": 21,
+          "attempts_with_pop": 21,
+          "matched_attempts": 18,
+          "background_candidates": 0,
+          "unclassified_candidates": 101,
+          "unchecked_candidates": 0,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 16,
+              "matched": 13
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-018",
+          "video": "C0703.MP4",
+          "candidates": 173,
+          "known_attempts": 29,
+          "attempts_with_pop": 29,
+          "matched_attempts": 25,
+          "background_candidates": 92,
+          "unclassified_candidates": 56,
+          "unchecked_candidates": 0,
+          "outcomes": {
+            "make": {
+              "with_pop": 3,
+              "matched": 3
+            },
+            "bail": {
+              "with_pop": 25,
+              "matched": 21
+            },
+            "fall": {
+              "with_pop": 1,
+              "matched": 1
+            }
+          },
+          "lost_attempt_ids": []
+        }
+      ]
+    },
+    {
+      "settings": {
+        "threshold": 0.65,
+        "min_gap": 0.18,
+        "max_gap": 0.9,
+        "show_filtered": false,
+        "candidate_mode": "audio_filtered",
+        "filter_threshold": 0.25
+      },
+      "totals": {
+        "candidates": 283,
+        "known_attempts": 67,
+        "attempts_with_pop": 67,
+        "matched_attempts": 58,
+        "background_candidates": 45,
+        "unclassified_candidates": 180,
+        "unchecked_candidates": 19
+      },
+      "sessions": [
+        {
+          "session": "a7s-001",
+          "video": "C0642.MP4",
+          "candidates": 32,
+          "known_attempts": 8,
+          "attempts_with_pop": 8,
+          "matched_attempts": 7,
+          "background_candidates": 0,
+          "unclassified_candidates": 25,
+          "unchecked_candidates": 1,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 3,
+              "matched": 2
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-002",
+          "video": "C0672.MP4",
+          "candidates": 53,
+          "known_attempts": 9,
+          "attempts_with_pop": 9,
+          "matched_attempts": 8,
+          "background_candidates": 0,
+          "unclassified_candidates": 45,
+          "unchecked_candidates": 11,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 4
+            },
+            "bail": {
+              "with_pop": 4,
+              "matched": 4
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-008",
+          "video": "C0688.MP4",
+          "candidates": 82,
+          "known_attempts": 21,
+          "attempts_with_pop": 21,
+          "matched_attempts": 18,
+          "background_candidates": 0,
+          "unclassified_candidates": 64,
+          "unchecked_candidates": 4,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 16,
+              "matched": 13
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-018",
+          "video": "C0703.MP4",
+          "candidates": 116,
+          "known_attempts": 29,
+          "attempts_with_pop": 29,
+          "matched_attempts": 25,
+          "background_candidates": 45,
+          "unclassified_candidates": 46,
+          "unchecked_candidates": 3,
+          "outcomes": {
+            "make": {
+              "with_pop": 3,
+              "matched": 3
+            },
+            "bail": {
+              "with_pop": 25,
+              "matched": 21
+            },
+            "fall": {
+              "with_pop": 1,
+              "matched": 1
+            }
+          },
+          "lost_attempt_ids": []
+        }
+      ]
+    },
+    {
+      "settings": {
+        "threshold": 0.65,
+        "min_gap": 0.18,
+        "max_gap": 0.9,
+        "show_filtered": false,
+        "candidate_mode": "audio_filtered",
+        "filter_threshold": 0.4
+      },
+      "totals": {
+        "candidates": 237,
+        "known_attempts": 67,
+        "attempts_with_pop": 67,
+        "matched_attempts": 58,
+        "background_candidates": 37,
+        "unclassified_candidates": 142,
+        "unchecked_candidates": 19
+      },
+      "sessions": [
+        {
+          "session": "a7s-001",
+          "video": "C0642.MP4",
+          "candidates": 26,
+          "known_attempts": 8,
+          "attempts_with_pop": 8,
+          "matched_attempts": 7,
+          "background_candidates": 0,
+          "unclassified_candidates": 19,
+          "unchecked_candidates": 1,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 3,
+              "matched": 2
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-002",
+          "video": "C0672.MP4",
+          "candidates": 46,
+          "known_attempts": 9,
+          "attempts_with_pop": 9,
+          "matched_attempts": 8,
+          "background_candidates": 0,
+          "unclassified_candidates": 38,
+          "unchecked_candidates": 11,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 4
+            },
+            "bail": {
+              "with_pop": 4,
+              "matched": 4
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-008",
+          "video": "C0688.MP4",
+          "candidates": 64,
+          "known_attempts": 21,
+          "attempts_with_pop": 21,
+          "matched_attempts": 18,
+          "background_candidates": 0,
+          "unclassified_candidates": 46,
+          "unchecked_candidates": 4,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 16,
+              "matched": 13
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-018",
+          "video": "C0703.MP4",
+          "candidates": 101,
+          "known_attempts": 29,
+          "attempts_with_pop": 29,
+          "matched_attempts": 25,
+          "background_candidates": 37,
+          "unclassified_candidates": 39,
+          "unchecked_candidates": 3,
+          "outcomes": {
+            "make": {
+              "with_pop": 3,
+              "matched": 3
+            },
+            "bail": {
+              "with_pop": 25,
+              "matched": 21
+            },
+            "fall": {
+              "with_pop": 1,
+              "matched": 1
+            }
+          },
+          "lost_attempt_ids": []
+        }
+      ]
+    },
+    {
+      "settings": {
+        "threshold": 0.65,
+        "min_gap": 0.18,
+        "max_gap": 0.9,
+        "show_filtered": false,
+        "candidate_mode": "audio_filtered",
+        "filter_threshold": 0.65
+      },
+      "totals": {
+        "candidates": 187,
+        "known_attempts": 67,
+        "attempts_with_pop": 67,
+        "matched_attempts": 55,
+        "background_candidates": 28,
+        "unclassified_candidates": 104,
+        "unchecked_candidates": 19
+      },
+      "sessions": [
+        {
+          "session": "a7s-001",
+          "video": "C0642.MP4",
+          "candidates": 20,
+          "known_attempts": 8,
+          "attempts_with_pop": 8,
+          "matched_attempts": 7,
+          "background_candidates": 0,
+          "unclassified_candidates": 13,
+          "unchecked_candidates": 1,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 3,
+              "matched": 2
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-002",
+          "video": "C0672.MP4",
+          "candidates": 32,
+          "known_attempts": 9,
+          "attempts_with_pop": 9,
+          "matched_attempts": 7,
+          "background_candidates": 0,
+          "unclassified_candidates": 25,
+          "unchecked_candidates": 11,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 4
+            },
+            "bail": {
+              "with_pop": 4,
+              "matched": 3
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": [
+            "457afc9806a6449f8cc0b6402e236079"
+          ]
+        },
+        {
+          "session": "a7s-008",
+          "video": "C0688.MP4",
+          "candidates": 50,
+          "known_attempts": 21,
+          "attempts_with_pop": 21,
+          "matched_attempts": 18,
+          "background_candidates": 0,
+          "unclassified_candidates": 32,
+          "unchecked_candidates": 4,
+          "outcomes": {
+            "make": {
+              "with_pop": 5,
+              "matched": 5
+            },
+            "bail": {
+              "with_pop": 16,
+              "matched": 13
+            },
+            "fall": {
+              "with_pop": 0,
+              "matched": 0
+            }
+          },
+          "lost_attempt_ids": []
+        },
+        {
+          "session": "a7s-018",
+          "video": "C0703.MP4",
+          "candidates": 85,
+          "known_attempts": 29,
+          "attempts_with_pop": 29,
+          "matched_attempts": 23,
+          "background_candidates": 28,
+          "unclassified_candidates": 34,
+          "unchecked_candidates": 3,
+          "outcomes": {
+            "make": {
+              "with_pop": 3,
+              "matched": 2
+            },
+            "bail": {
+              "with_pop": 25,
+              "matched": 20
+            },
+            "fall": {
+              "with_pop": 1,
+              "matched": 1
+            }
+          },
+          "lost_attempt_ids": [
+            "2b78499e75444f0f854ddd184f2f8a7f",
+            "3d4d1f1f53f14302ab66147510816320"
+          ]
+        }
+      ]
+    }
+  ],
+  "dataset": "a7s-v3",
+  "snapshot_manifest_sha256": "21b1f1d606fc07993b04fd1e196aa7c084531e24717d64d1195f82c86225ebd0"
+}

@@ -13,6 +13,7 @@ import zlib
 
 HEADER = struct.Struct("<4sBBHIQI")
 META, FIFO, CLOCK, SYNC, END = range(5)
+MOTION = 5
 FIELDS = ("t_s", "device_us", "host_monotonic_ns", "sequence", "boot_id",
           "ax", "ay", "az", "gx", "gy", "gz", "temp_C")
 
@@ -36,7 +37,7 @@ def read_packets(path, allow_incomplete=False):
                 issues.append("truncated_header")
                 break
             magic, kind, version, length, number, device_us, checksum = HEADER.unpack(header)
-            if magic != b"SKL1" or version != 1 or kind not in range(5) or length > 896:
+            if magic != b"SKL1" or version != 1 or kind not in range(6) or length > 896:
                 raise ValueError("Invalid onboard packet header.")
             if number != sequence:
                 raise ValueError("Missing or reordered onboard packet.")
@@ -165,6 +166,18 @@ def decode_log(path, allow_incomplete=False):
                 raise ValueError("Invalid LED event.")
             syncs.append(dict(kind="sync", device_us=stamp, sync_id=identity, edge=edge,
                               led_enabled=bool(enabled), boot_id=meta["boot_id"], source="onboard"))
+        elif kind == MOTION:
+            if len(payload) != 19 or meta.get("motion_events_version") != 1:
+                raise ValueError("Invalid or unconfigured motion record.")
+            version, since_us, end_us, wake, orientation = struct.unpack("<BQQBB", payload)
+            if version != 1 or not 0 < since_us <= stamp <= end_us or not (wake & 0x28 or orientation & 0x40):
+                raise ValueError("Invalid motion event bounds or flags.")
+            syncs.append(dict(kind="board_motion", device_us=stamp, boot_id=meta["boot_id"],
+                              source="lsm6dso32_basic_interrupts", earliest_device_us=since_us,
+                              latest_device_us=end_us, free_fall=bool(wake & 0x20),
+                              wake_up=bool(wake & 0x08), orientation_changed=bool(orientation & 0x40),
+                              wake_up_src=wake, d6d_src=orientation,
+                              timing_note="Latched status observed during polling; events may coalesce."))
         elif kind == FIFO:
             if not payload or len(payload) % 7:
                 raise ValueError("Invalid FIFO payload length.")

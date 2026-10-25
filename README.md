@@ -7,10 +7,17 @@ The original live 3D orientation viewer is also included.
 
 ![hardware layout](./hardware/fritzing/skate-judge-direct-lipo.png)
 
-This is the **data collection stage**: the review tool suggests audio- and IMU-based
-pop/contact pairs for human review and records background activity types. It does
-not yet classify tricks, train a model, or play automatic judgments. A board-mounted IMU measures the board's
-motion, which does not always reveal whether the rider stayed on or fell.
+The review tool suggests audio- and IMU-based pop/contact pairs for human review
+and records background activity types. An [offline attempt detector](docs/attempt-detector.md)
+scans continuous IMU recordings for trick attempts, including makes, bails, and
+falls. Separate [feature-based](docs/landing-baseline.md) and
+[raw-signal CNN](docs/landing-cnn.md) landing models evaluate landed versus
+not-landed kickflips using known contact times. An expanded
+[multi-task CNN](docs/trick-cnn.md) adds experimental trick naming, magnitude
+channels, separable convolutions, int8 export, and device benchmarks. Its
+accuracy remains limited; live automatic judgments are not implemented.
+A board-mounted IMU measures the board's motion, which does not always reveal
+whether the rider stayed on.
 Start with [your first dataset recording](docs/first-recording.md). The
 [hardware and recording reference](docs/recording.md) covers wiring, file formats,
 and the model plan.
@@ -24,6 +31,12 @@ firmware/imu_stream/   legacy live stream for the orientation viewer
 capture/onboard.py    onboard recording controls, verified download, recovery, CSV import
 capture/session.py    recorder, human outcome labels, phone/video clock alignment
 capture/dataset.py    collection progress and versioned datasets across reviewed sessions
+learning/landing.py   offline landing baseline, session-held-out evaluation, saved inference
+learning/attempts.py  continuous IMU attempt detection, event evaluation, saved inference
+learning/landing_cnn.py raw six-channel landing CNN, grouped evaluation, saved inference
+learning/trick_cnn.py matched multi-task/magnitude/separable CNN experiments
+learning/export_trick_cnn.py int8 conversion and held-out quantization evaluation
+firmware/trick_benchmark/ standalone S3 inference parity/memory/latency benchmark
 capture/controls.html local webcam recording and countdown UI (--controls)
 viz/imu_viz.py         pygame + OpenGL viewer: Mahony sensor fusion, calibration, 3D board with axes
 viz/render_overlay.py transparent 3D skateboard + synchronized sensor/audio graphics for video editing
@@ -206,6 +219,12 @@ positive; saving advances to the next suggestion. Labels save to `labels.jsonl`
 with aligned sensor times. **Download saved labels** exports this clip's current
 labels. Audio suggestions and unreviewed time remain unlabeled until you decide.
 
+Recordings with onboard motion events enabled also show free-fall, wake-up, and
+orientation bands after LED alignment. Click an event to inspect its video;
+the bands preserve polling uncertainty and do not assign outcomes. New dataset
+exports include these observations in `motion_events.jsonl`. Older recordings
+show event data as unavailable. Restart the review server after updating.
+
 ## Accumulate labeled sessions
 
 Each session keeps its raw recordings and saved labels. After finishing or
@@ -249,6 +268,53 @@ quality flags.
 See [dataset collection and export](docs/dataset.md) for exclusions, file formats,
 and how to plan the first 100 attempts. Sessions and exports are local and
 excluded from Git; back up the original session directories separately.
+
+## Detect trick attempts
+
+Train and evaluate the IMU-only attempt detector on full recordings associated
+with a frozen dataset, then scan a CSV without providing labels or contact times:
+
+```bash
+uv run learning/attempts.py train datasets/a7s-v7 --output .build/attempts-v1
+uv run learning/attempts.py scan --model .build/attempts-v1/model.json \
+  --samples sessions/a7s-027/samples.csv --output .build/a7s-027-attempts.json
+```
+
+Choose unused output paths. The training command holds out whole sessions and
+reports attempts caught, false events per reviewed background minute, duplicates,
+and unclassified detections. The scan example uses a training recording, so its
+output is a usage check; use the run's held-out report to assess performance.
+See the [attempt detector guide](docs/attempt-detector.md) for results and scope.
+
+## First landing baseline
+
+Train and evaluate the kickflip baseline on a frozen dataset:
+
+```bash
+uv run learning/landing.py train datasets/a7s-v7 --output .build/landing-kickflip-v1
+```
+
+Choose a new output directory for each run. This writes held-out predictions,
+metrics, exclusions, and a portable JSON model. It holds out whole sessions and
+compares against an always-miss baseline. It requires a known attempt and contact
+time; it does not detect attempts in continuous recordings. See the
+[baseline guide and first results](docs/landing-baseline.md) for inference,
+limitations, and test commands.
+
+## Raw-signal landing CNN
+
+Train a small CNN on the same landing windows, with feature baselines refitted
+on identical session splits:
+
+```bash
+uv run learning/landing_cnn.py train datasets/a7s-v7 --output .build/landing-cnn-v1
+```
+
+The default experiment runs three fixed seeds and saves seed 0, without choosing
+the seed from test results. It uses six channels, 230 resampled points, and
+6,345 parameters. Outputs include held-out predictions, training histories,
+and float32 weights with a prediction command. See the [CNN guide](docs/landing-cnn.md)
+for results and limitations; this does not deploy an int8 model to the board.
 
 ## One-time setup
 

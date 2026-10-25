@@ -135,6 +135,78 @@ after checking their windows; downloading labels is blocked until those flags
 are resolved. Manual offset/scale changes are exploratory and cannot be used
 for saving labels. A stale tab cannot overwrite another tab's or CLI's labels.
 
+<a id="recorded-board-events"></a>
+
+## Potential trick attempts and raw board observations
+
+The event panel below the IMU plot defaults to **Potential attempts (learned
+model)**. It scans the full `samples.csv` using the saved
+[attempt detector](attempt-detector.md), whose decision-tree thresholds were
+learned from reviewed attempts (makes, bails, and falls) and background. The
+model's score cutoff is 0.50. Raw hardware interrupts do not qualify an attempt.
+No audio, video, or labels from the recording under review are needed at inference.
+
+The default model is `.build/attempts-v1/model.json`. To use another trained run:
+
+```bash
+uv run viz/trick_review.py sessions/a7s-028/C0771.MP4 \
+  --attempt-model .build/attempts-v1/model.json
+```
+
+Save the LED flash alignment first so the event bands use the video's clock.
+Click a listed event, click the event plot, or use **Previous event** /
+**Next event** to inspect the corresponding video. The review page groups
+overlapping two-second detection windows, including chains of neighboring windows,
+and joins windows separated by at most one second. A band spans the entire group;
+its score is the highest original detection score, and its button reports how
+many detections were combined. Known gaps in scored sensor coverage keep groups
+separate. These bands are not estimated pop/contact boundaries, and scores are
+uncalibrated, not confidence percentages.
+Selecting a listed event or using the event navigation buttons also selects it
+for **Play attempt** / **Space**, even when the audio review queue is empty.
+Playback covers the full group, with half a second of lead-in and one second
+of follow-through. It stops after that preview, or repeats the entire preview
+with **Loop**; it does not stop at the individual windows inside a group.
+Context is clipped to the video and neighboring groups. **Next event** advances
+to the next group rather than another detection of the same motion.
+Raw observations use **Play event**, with one second before and two seconds after
+their interval, clipped to the video. Queue drafts are preserved; selecting a
+queue suggestion restores its label editor and playback window. While previewing
+an event, select a queue suggestion or use **+ Missed attempt** to begin labeling.
+Very closely spaced distinct tricks can be grouped, and false detections remain
+possible. Navigation does not save human labels or change the audio suggestion
+queue. To filter that queue using these detections, choose **Audio filtered by
+attempt model** under **Candidate detection settings**. Use the existing label
+controls after checking the action in the video.
+The queue filter uses original window scores, so a strong detection in a group
+does not raise the score of its weaker neighbors or treat the gap as a detection.
+
+Model results are cached in the video's review directory as `attempts.json`.
+Changing the sensor file or model invalidates the cache by content hash on the
+next launch. Missing models, unfinished imports, and unusable sensor windows
+show an unavailable/unknown state, rather than turning raw motion into attempts.
+Scans of a model's own training recording are identified in the panel. A new
+label does not retrain the model automatically; export a new dataset snapshot
+and train a new run to incorporate additional reviewed examples.
+
+Choose **All raw board observations** to inspect the LSM6DSO32's free-fall,
+wake-up, and orientation interrupts, including everyday board movement.
+These use fixed sensor thresholds and can greatly outnumber actual attempts.
+
+Each band covers the possible event interval between register reads, usually
+about 250 ms for the current profile. It is not an exact pop/contact marker.
+Free-fall describes the board's sensor reading, not whether the rider fell;
+confirm trick and outcome from the video. Events can be missed or combined by
+polling. Incomplete recordings show a warning, and older recordings explicitly
+say event recording was not enabled instead of claiming zero events.
+
+The tool reads the imported session's `events.jsonl` and scans its IMU on startup.
+Restart the Python review server and reload the page after updating or importing a recording.
+Existing raw IMU plots, candidate modes, and human label controls continue to
+work with recordings that have no board events, as does learned attempt detection. The
+[dataset exporter](dataset.md#recorded-board-observations) includes these
+observations with each eligible labeled window in new snapshots.
+
 ## Find and refine pop/contact boundaries
 
 Expand **Candidate detection settings** to choose **Audio only** (default) or
@@ -152,6 +224,28 @@ or no clear audio pair. Gap settings are search parameters, not universal airtim
 limits. **Export review JSON** includes the current suggestions, skips, labels,
 and explicit draft status for diagnostics; use **Download saved labels** for
 confirmed labels. Save each edited interval before closing the tab.
+
+### Filter audio suggestions using the trained attempt model
+
+Choose **Audio filtered by attempt model** under **Candidate detection settings**.
+It keeps audio pop/contact pairs that overlap a two-second learned detection
+window with a score at or above **Minimum attempt score**. The default is **0.50**;
+raise it up to 1.00 for a stricter filter. Scores are uncalibrated, not confidence
+percentages. This filters existing audio suggestions; it does not invent action
+boundaries or add detections that have no audio pair. Those remain accessible in
+the **Potential trick attempts** event panel.
+
+Use **Show filtered suggestions** to inspect hidden pairs, or select **Audio
+only** to restore them. Original IDs, timing, saved labels, skipped decisions,
+and unsaved human edits are preserved. No hidden suggestion becomes a background
+label automatically. The mode, cutoff, and visibility settings are saved with
+the next label or skip, matching the other detection controls.
+
+LED alignment and an available trained model are required. Missing models and
+unverified alignment keep the audio queue visible with an explanation. Where
+the model skipped sensor windows, candidates without sufficient scored coverage
+also stay visible as **model unchecked**. A successful scan with no matching
+detection can hide a candidate only in regions the model actually scored.
 
 ### Filter audio suggestions using motion
 

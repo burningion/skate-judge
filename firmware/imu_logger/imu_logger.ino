@@ -15,6 +15,11 @@
 #include <unistd.h>
 #include "log_format.h"
 #include "battery_monitor.h"
+#include "motion_events.h"
+
+#ifndef IMU_MOTION_EVENTS
+#define IMU_MOTION_EVENTS 0 // Enable explicitly while validating on the physical board.
+#endif
 
 #ifndef IMU_SDA
 #define IMU_SDA 3
@@ -156,6 +161,7 @@ static bool setupSensor() {
 }
 
 static uint32_t packetSequence = 0;
+static uint64_t lastMotionReadUs = 0;
 static uint8_t fifoBuffer[FIFO_BYTES];
 static uint16_t fifoUsed = 0;
 static bool fifoDiscarded = false;
@@ -196,6 +202,25 @@ static bool clockAnchor(State &s) {
   if (!ok) { ++s.ioErrors; s.error = "timestamp_read_failed"; return false; }
   memcpy(payload, &after, 8);
   return flushFIFO(s) && writePacket(s, CLOCK, before, payload, sizeof(payload));
+}
+static bool pollMotionEvents(State &s, bool discard = false) {
+  if (!IMU_MOTION_EVENTS) return true;
+  uint8_t sources[3]; // WAKE_UP_SRC, TAP_SRC, D6D_SRC; reading clears latches.
+  const uint64_t before = esp_timer_get_time();
+  if (!readReg(sensorAddress, 0x1b, sources, sizeof(sources))) {
+    ++s.ioErrors; s.error = "motion_status_read_failed"; return false;
+  }
+  const uint64_t after = esp_timer_get_time();
+  uint8_t payload[19];
+  payload[0] = 1;
+  memcpy(payload + 1, &lastMotionReadUs, 8);
+  memcpy(payload + 9, &after, 8);
+  payload[17] = sources[0]; payload[18] = sources[2];
+  lastMotionReadUs = before;
+  if (discard || !hasMotionEvent(sources[0], sources[2])) return true;
+  // Timestamp bounds cover the interval since the preceding latch clear.
+  // Multiple physical events may coalesce; this is not an exact contact time.
+  return flushFIFO(s) && writePacket(s, MOTION, before, payload, sizeof(payload));
 }
 static bool peekFIFO(State &s, uint8_t *tag) {
   // Reading the tag does not consume a FIFO word. Retry this operation only;
@@ -296,7 +321,7 @@ static void stopLog(State &s, bool &lit) {
   s.phase = STOPPING; publish(s);
   if (!writeReg(0x09, 0)) { ++s.ioErrors; s.error = "fifo_stop_failed"; }
   if (lit) { syncEdge(s, s.marker, false); lit = false; }
-  drainFIFO(s); flushFIFO(s); clockAnchor(s);
+  drainFIFO(s); pollMotionEvents(s); flushFIFO(s); clockAnchor(s);
   s.endedUs = esp_timer_get_time();
   durable(s); // Batching is stopped; drain the queue before writing the footer.
   if (*firstError) s.error = firstError; // Keep the cause, not a cleanup failure.
@@ -336,6 +361,10 @@ static bool startLog(State &s, const Command &command) {
       !checkedWrite(0x09, 0) || !checkedWrite(0x0a, 0)) {
     ++s.ioErrors; s.error = "sensor_preflight_failed"; return false;
   }
+  if (IMU_MOTION_EVENTS && !configureMotionEvents(checkedWrite)) {
+    ++s.ioErrors; s.error = "motion_configuration_failed"; return false;
+  }
+  if (!pollMotionEvents(s, true)) return false; // Clear idle events before opening the recording.
   logQueue.reset();
   String path = String(recordingStorage->mount) + recordingStorage->path(s.id);
   if (!writerControl(OPEN_LOG, path.c_str())) { s.error = writerSnapshot().error; return false; }
@@ -345,9 +374,9 @@ static bool startLog(State &s, const Command &command) {
   int16_t rawTemp = int16_t(uint16_t(temp[0]) | (uint16_t(temp[1]) << 8));
   char meta[560];
   snprintf(meta, sizeof(meta),
-    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\",\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u}",
+    "{\"schema\":1,\"id\":\"%s\",\"boot_id\":\"%08lx\",\"sensor\":\"LSM6DSO32\",\"odr_hz\":208,\"accel_g_per_lsb\":0.000976,\"gyro_dps_per_lsb\":0.070,\"timestamp_tick_us\":25,\"frequency_fine\":%d,\"initial_temp_C\":%.4f,\"flash_bytes\":%lu,\"psram_bytes\":%lu,\"storage\":\"%s\",\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u,\"motion_events_version\":%u,\"motion_profile\":2,\"motion_poll_us\":%u}",
     s.id, (unsigned long)bootId, int(int8_t(frequencyFine)), 25.0 + rawTemp / 256.0,
-    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name, unsigned(SD_SPI_HZ));
+    (unsigned long)ESP.getFlashChipSize(), (unsigned long)ESP.getPsramSize(), recordingStorage->name, unsigned(SD_SPI_HZ), unsigned(IMU_MOTION_EVENTS != 0), unsigned(MOTION_POLL_US));
   if (!writePacket(s, META, s.startedUs, meta, strlen(meta)) || !clockAnchor(s) || !durable(s)) return false;
   // 208 Hz accel + gyro batching, timestamp every slot, temperature 1.6 Hz,
   // stop-on-full FIFO. The sensor continues sampling during ESP32 flash writes.
@@ -413,6 +442,7 @@ static void acquire(void *) {
       bool ok = true;
       if (lit && now - s.lastSyncUs >= 150000) { ok = syncEdge(s, s.marker, false); lit = false; }
       ok = ok && drainFIFO(s);
+      if (IMU_MOTION_EVENTS && now - lastMotionReadUs >= MOTION_POLL_US) ok = ok && pollMotionEvents(s);
       if (now - lastBatch >= 50000) { ok = ok && flushFIFO(s); lastBatch = now; }
       if (now - lastClock >= 1000000) { ok = ok && clockAnchor(s); lastClock = now; }
       WriterStatus writer = writerSnapshot();

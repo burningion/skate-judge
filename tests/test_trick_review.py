@@ -11,10 +11,108 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from viz.trick_review import (
-    audio_features, byte_range, cached_video_timing, extract_audio, make_server, motion_features, probe, sensor_context, validate_review, video_timing,
+    attempt_context, audio_features, byte_range, cached_video_timing, extract_audio, make_server, motion_features, probe, sensor_context, validate_review, video_timing,
 )
 
 HAS_SCIENCE = all(importlib.util.find_spec(name) for name in ("numpy", "scipy"))
+
+
+@unittest.skipUnless(HAS_SCIENCE and importlib.util.find_spec("sklearn"), "attempt inference requires scientific dependencies")
+class LearnedAttemptReviewTests(unittest.TestCase):
+    def setUp(self):
+        from learning import attempts
+        self.detector = attempts
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.session = Path(temporary.name)
+        self.model_path = self.session / "model.json"
+        self.cache = self.session / "attempts.json"
+        self.samples = self.session / "samples.csv"
+        (self.session / "metadata.json").write_text('{"closed_utc":"2026-10-24"}')
+        self.rows = [[i / 100, 0, 0, 9.80665, 8 if 2.8 < i / 100 < 3.2 else 0, 0, 0]
+                     for i in range(701)]
+        self.write_samples()
+        self.model = dict(schema=1, feature_version=attempts.VERSION, feature_names=attempts.FEATURE_NAMES,
+                          scan=attempts.SCAN_CONFIG, threshold=attempts.THRESHOLD, classes=["background", "attempt"],
+                          score_note="Uncalibrated score", provenance=dict(source_sha256={}), trees=[dict(
+                              left=[1, -1, -1], right=[2, -1, -1], feature=[2, -2, -2],
+                              threshold=[4, -2, -2], positive_fraction=[.5, .1, .9])])
+        self.write_model()
+
+    def write_samples(self):
+        self.samples.write_text("t_s,ax,ay,az,gx,gy,gz\n" + "".join(
+            ",".join(map(str, row)) + "\n" for row in self.rows))
+
+    def write_model(self):
+        self.model_path.write_text(json.dumps(self.model))
+
+    def scan(self):
+        return attempt_context(self.session, self.model_path, self.cache)
+
+    def test_review_uses_trained_decisions_without_interrupts_audio_or_labels(self):
+        original = self.samples.read_bytes()
+        result = self.scan()
+        self.assertEqual(result["availability"], "ready")
+        self.assertTrue(result["events"])
+        self.assertTrue(all(row["score"] == .9 for row in result["events"]))
+        self.assertFalse(result["training_session_overlap"])
+        self.assertEqual(self.samples.read_bytes(), original)
+        self.assertFalse((self.session / "labels.jsonl").exists())
+        with patch.object(self.detector, "scan_file", side_effect=AssertionError("cache should be reused")):
+            self.assertEqual(self.scan(), result)
+        # Same motion, different learned tree threshold: no potential attempts.
+        self.model["trees"][0]["threshold"][0] = 20
+        self.write_model()
+        updated = self.scan()
+        self.assertEqual(updated["availability"], "ready")
+        self.assertEqual(updated["events"], [])
+        self.assertNotEqual(updated["model_sha256"], result["model_sha256"])
+
+    def test_sensor_changes_invalidate_cache_and_bad_coverage_is_unknown(self):
+        result = self.scan()
+        for row in self.rows:
+            row[4] = 0
+        self.write_samples()
+        quiet = self.scan()
+        self.assertEqual(quiet["events"], [])
+        self.assertNotEqual(quiet["samples_sha256"], result["samples_sha256"])
+        for row in self.rows:
+            row[3] = 0
+        self.write_samples()
+        unknown = self.scan()
+        self.assertEqual(unknown["availability"], "unknown")
+        self.assertEqual(unknown["quality"]["valid_windows"], 0)
+        self.assertIn("No usable", unknown["message"])
+        self.assertEqual(unknown["scored_center_ranges_s"], [])
+
+    def test_filter_coverage_excludes_sensor_faults_and_upgrades_old_cache(self):
+        result = self.scan()
+        self.assertEqual(result["scored_center_ranges_s"], [[1, 6]])
+        cached = json.loads(self.cache.read_text())
+        cached["identity"]["schema"] = 1
+        del cached["scan"]["scored_center_ranges_s"]
+        self.cache.write_text(json.dumps(cached))
+        self.assertEqual(self.scan()["scored_center_ranges_s"], [[1, 6]])
+        self.rows[350][3] = 0
+        self.write_samples()
+        ranges = self.scan()["scored_center_ranges_s"]
+        self.assertEqual(len(ranges), 2)
+        self.assertTrue(all(not (lo <= 3.5 <= hi) for lo, hi in ranges))
+        self.assertLessEqual(ranges[0][1], 2.5)
+        self.assertGreater(ranges[1][0], 4.5)
+
+    def test_missing_invalid_and_unfinished_inputs_never_fall_back_to_raw_events(self):
+        self.model_path.unlink()
+        self.assertIn("model is missing", self.scan()["message"])
+        self.write_model()
+        self.model["schema"] = 99
+        self.write_model()
+        self.assertEqual(self.scan()["availability"], "unavailable")
+        self.assertEqual(self.scan()["events"], [])
+        (self.session / "metadata.json").write_text('{}')
+        self.assertIn("Stop recording", self.scan()["message"])
+        self.samples.unlink()
+        self.assertIn("samples.csv", self.scan()["message"])
 
 
 @unittest.skipUnless(HAS_SCIENCE, "motion detection requires numpy/scipy")
@@ -107,6 +205,21 @@ class SensorContextTests(unittest.TestCase):
         result = self.context()
         self.assertIn("no usable sensor samples", result["samples_message"])
         self.assertIn("no enabled LED flashes", result["sync_unavailable_reason"])
+
+    def test_recorded_events_use_device_origin_and_leave_sync_and_motion_peaks_separate(self):
+        from test_board_motion import motion_event, motion_metadata
+        self.meta = motion_metadata()
+        rows = [dict(kind="sync", edge=1, led_enabled=True, boot_id="boot", device_us=2000000, sync_id=1),
+                motion_event(), motion_event(boot_id="other")]
+        (self.session / "events.jsonl").write_text("\n".join(map(json.dumps, rows)))
+        result = self.context()
+        self.assertEqual(result["syncs"], [dict(id=1, session_s=1)])
+        self.assertEqual(result["board_motion"]["events"][0]["earliest_s"], .49)
+        self.assertEqual(result["board_motion"]["observed_packets"], 1)
+        self.assertEqual(result["motion"]["events"], [])
+        self.assertIn("another device boot", result["warnings"][0])
+        (self.session / "events.jsonl").write_text(json.dumps(motion_event(wake_up=True)))
+        self.assertEqual(self.context()["board_motion"]["availability"], "invalid")
 
 
 class FrameTimingTests(unittest.TestCase):
@@ -277,7 +390,7 @@ class ReviewHttpTests(unittest.TestCase):
 
     def test_range_and_head(self):
         with self.request("/api/data") as response:
-            self.assertEqual(json.load(response)["api_version"], 4)
+            self.assertEqual(json.load(response)["api_version"], 7)
         with self.request("/media.webm", headers={"Range": "bytes=10-19"}) as response:
             self.assertEqual(response.status, 206)
             self.assertEqual(response.read(), bytes(range(10, 20)))
@@ -408,7 +521,9 @@ class ReviewHttpTests(unittest.TestCase):
                 self.request("/api/label", value)
             self.assertEqual(caught.exception.code, 400)
         for updates in (dict(candidate_mode="unknown"), dict(motion_threshold=True), dict(motion_threshold=0),
-                        dict(filter_threshold=True), dict(filter_threshold=0), dict(show_filtered="yes")):
+                        dict(filter_threshold=True), dict(filter_threshold=0), dict(show_filtered="yes"),
+                        dict(attempt_threshold=True), dict(attempt_threshold=.49), dict(attempt_threshold=1.01),
+                        dict(attempt_threshold=float("nan"))):
             value = self.decision()
             value["settings"].update(updates)
             with self.assertRaises(HTTPError):
@@ -424,6 +539,20 @@ class ReviewHttpTests(unittest.TestCase):
         self.assertEqual(saved["settings"]["candidate_mode"], "audio_filtered")
         self.assertEqual(saved["settings"]["filter_threshold"], .4)
         self.assertTrue(saved["settings"]["show_filtered"])
+        with self.request("/api/labels") as response:
+            self.assertEqual(len(json.load(response)["labels"]), 1)
+
+    def test_learned_filter_settings_round_trip_without_automatic_labels(self):
+        self.aligned()
+        value = self.decision()
+        value["settings"].update(candidate_mode="audio_attempts", attempt_threshold=.85, show_filtered=True)
+        with self.request("/api/label", value) as response:
+            saved = json.load(response)
+        self.assertEqual(saved["settings"]["candidate_mode"], "audio_attempts")
+        self.assertEqual(saved["settings"]["attempt_threshold"], .85)
+        self.assertTrue(saved["settings"]["show_filtered"])
+        with self.request("/api/review") as response:
+            self.assertEqual(json.load(response)["settings"], saved["settings"])
         with self.request("/api/labels") as response:
             self.assertEqual(len(json.load(response)["labels"]), 1)
 

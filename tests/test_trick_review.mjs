@@ -1,11 +1,115 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {readFile} from "node:fs/promises";
-import {attemptWindow, backgroundWindow, init, mergeReviews, motionTimeline, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {attemptEventTimeline, attemptFilterTimeline, attemptWindow, backgroundWindow, boardEventTimeline, groupAttemptEvents, init, mergeReviews, motionTimeline, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAttemptCandidates, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
 import {evaluateClips} from "../viz/evaluate_candidates.mjs";
 
 const opts = {threshold: .65, min_gap: .18, max_gap: .9};
 const combined = {...opts, candidate_mode: "audio_motion", motion_threshold: .65};
+
+function attemptFixture() {
+  return {availability: "ready", threshold: .5, model_name: "trained", model_sha256: "model",
+    scored_center_ranges_s: [[1, 19]], events: [
+      {time_s: 2.3, window_start_s: 1.3, window_end_s: 3.3, score: .8}]};
+}
+
+test("attempt-model filter retains matching audio pairs and supports a stricter score cutoff", () => {
+  const audio = audioFixture([2, 2.5, 8, 8.5]);
+  const context = attemptFixture(), before = structuredClone(context);
+  const attempts = attemptFilterTimeline(context, {scale: 1, offset_s: 0}, 0, 20);
+  const settings = {...opts, candidate_mode: "audio_attempts", attempt_threshold: .5};
+  const baseline = proposePairs(audio.onsets, [], .01, opts);
+  const kept = proposeCandidates(audio, {}, settings, attempts);
+  assert.deepEqual(kept.map(row => row.id), [baseline[0].id]);
+  assert.deepEqual(kept.map(row => [row.start_s, row.end_s]), [[2, 2.5]]);
+  assert.equal(kept[0].attempt_score, .8);
+  const all = proposeCandidates(audio, {}, {...settings, show_filtered: true}, attempts);
+  assert.deepEqual(all.map(row => row.attempt_filter), ["supported", "suppressed"]);
+  assert.deepEqual(proposeCandidates(audio, {}, {...settings, attempt_threshold: .85}, attempts), []);
+  assert.ok(all.every(row => row.outcome === undefined && row.status === "suggested"));
+  assert.deepEqual(context, before);
+});
+
+test("attempt filter keeps unscored regions and unavailable or unaligned data visible", () => {
+  const pairs = proposePairs(audioFixture([2, 2.5, 8, 8.5]).onsets, [], .01, opts);
+  const context = {...attemptFixture(), events: [], scored_center_ranges_s: [[1, 5], [9, 19]]};
+  const timeline = attemptFilterTimeline(context, {scale: 1, offset_s: 0}, 0, 20);
+  assert.deepEqual(screenAttemptCandidates(pairs, timeline).map(row => row.attempt_filter), ["suppressed", "unchecked"]);
+  for (const [source, mapping] of [[context, null], [undefined, {scale: 1, offset_s: 0}],
+    [{...context, availability: "unknown"}, {scale: 1, offset_s: 0}]]) {
+    const result = screenAttemptCandidates(pairs, attemptFilterTimeline(source, mapping, 0, 20));
+    assert.ok(result.every(row => row.attempt_filter === "unchecked"));
+  }
+  const mapped = attemptFilterTimeline(context, {scale: 1.01, offset_s: 10}, .5, 20);
+  assert.equal(mapped.scored_ranges[1][1], (19 - 10) / 1.01 - .5);
+  assert.equal(mapped.scored_ranges[1][0], (9 - 10) / 1.01 - .5);
+});
+
+test("learned events require model scores and map input windows through drift and media origin", () => {
+  const context = {availability: "ready", threshold: .5, model_sha256: "model", events: [
+    {time_s: 13.02, window_start_s: 12.01, window_end_s: 14.03, score: .8},
+    {time_s: 15, window_start_s: 14, window_end_s: 16, score: .49}]};
+  const before = structuredClone(context), mapping = {scale: 1.01, offset_s: 10};
+  const mapped = attemptEventTimeline(context, mapping, 1, 20);
+  assert.equal(mapped.length, 1);
+  assert.ok(Math.abs(mapped[0].earliest_s - (2.01 / 1.01 - 1)) < 1e-9);
+  assert.ok(Math.abs(mapped[0].observed_s - (3.02 / 1.01 - 1)) < 1e-9);
+  assert.ok(Math.abs(mapped[0].latest_s - (4.03 / 1.01 - 1)) < 1e-9);
+  assert.equal(mapped[0].potential_attempt, true);
+  assert.equal(mapped[0].score, .8);
+  assert.deepEqual(attemptEventTimeline(context, null, 0, 20), []);
+  assert.deepEqual(attemptEventTimeline({...context, availability: "unknown"}, mapping, 0, 20), []);
+  assert.deepEqual(context, before);
+});
+
+test("overlapping detections become one complete attempt with the strongest score and stable identity", () => {
+  const events = [3, 4, 5, 10].map((time, index) => ({event_id: String(index), potential_attempt: true,
+    earliest_s: time - 1, observed_s: time, latest_s: time + 1, score: [.6, .95, .7, .8][index]}));
+  const before = structuredClone(events);
+  const grouped = groupAttemptEvents([events[2], events[0], events[3], events[1]], [[1, 19]]);
+  assert.equal(grouped.length, 2);
+  assert.deepEqual(grouped.map(row => [row.earliest_s, row.latest_s]), [[2, 6], [9, 11]]);
+  assert.equal(grouped[0].score, .95);
+  assert.equal(grouped[0].observed_s, 4);
+  assert.equal(grouped[0].event_id, events[0].event_id);
+  assert.equal(grouped[0].detections.length, 3);
+  assert.deepEqual(events, before, "grouping must preserve original detector results");
+  assert.deepEqual(groupAttemptEvents([]), []);
+});
+
+test("attempt groups require at most a one-second gap and never bridge known unscored regions", () => {
+  const events = [2, 5, 8.01].map((time, index) => ({event_id: String(index), potential_attempt: true,
+    earliest_s: time - 1, observed_s: time, latest_s: time + 1, score: .8}));
+  const grouped = groupAttemptEvents(events, [[1, 19]]);
+  assert.deepEqual(grouped.map(row => row.detections.length), [2, 1]);
+  assert.equal(groupAttemptEvents(events, [[1, 2], [5, 19]]).length, 3);
+});
+
+test("grouping for playback never promotes a weak neighbor or a quiet gap in the queue score filter", () => {
+  const context = {...attemptFixture(), events: [
+    {time_s: 3, window_start_s: 2, window_end_s: 4, score: .95},
+    {time_s: 5.5, window_start_s: 4.5, window_end_s: 6.5, score: .55}]};
+  const timeline = attemptFilterTimeline(context, {scale: 1, offset_s: 0}, 0, 20);
+  const group = groupAttemptEvents(timeline.events, timeline.scored_ranges);
+  assert.equal(group.length, 1);
+  assert.equal(group[0].score, .95);
+  const screened = screenAttemptCandidates([
+    {start_s: 2.5, end_s: 3}, {start_s: 4.1, end_s: 4.3}, {start_s: 5, end_s: 5.4}], timeline, .9);
+  assert.deepEqual(screened.map(row => row.attempt_filter), ["supported", "suppressed", "suppressed"]);
+});
+
+test("recorded event intervals follow drift and PTS without clipping bounds or mutating observations", () => {
+  const context = {events: [{event_id: "first", earliest_s: 12.01, observed_s: 12.515, latest_s: 13.02},
+    {event_id: "late", earliest_s: 30, observed_s: 31, latest_s: 32}]};
+  const before = structuredClone(context);
+  const events = boardEventTimeline(context, {scale: 1.01, offset_s: 10}, 2, 5);
+  assert.equal(events.length, 1);
+  assert.ok(Math.abs(events[0].earliest_s + .00990099) < 1e-6);
+  assert.ok(Math.abs(events[0].latest_s - .99009901) < 1e-6);
+  assert.deepEqual(context, before);
+  assert.deepEqual(boardEventTimeline(context, null, 2, 5), []);
+  assert.deepEqual(boardEventTimeline(context, {scale: 0, offset_s: 0}, 0, 5), []);
+});
 const audioFixture = times => ({onsets: times.map(time_s => ({time_s, strength: 1})), strength: [], step_s: .01});
 const motionFixture = () => ({events: [
   {time_s: 2.03, kind: "accel", strength: 1}, {time_s: 2.1, kind: "gyro", strength: 1},
@@ -210,7 +314,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
   const state = {revision: 0, labels_revision: "0", intervals,
     settings: {...opts, offset: 999, scale: .99},
     label_context: {available: true, mapping, coverage: [0, 20]}};
-  const data = {api_version: 4, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
+  const data = {api_version: 7, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
     video_timing: {fps: 120000 / 1001, frame_times_s: [0, 1001 / 120000, 2002 / 120000]},
     audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
@@ -218,9 +322,10 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
   if (legacyServer) { delete data.api_version; delete state.label_context; delete state.labels_revision; }
   const calls = [];
   let fail = false;
+  let nextFrame = null;
   const globals = {document: {getElementById: get, createElement: element,
       addEventListener: (name, handler) => listeners.set(name, handler)},
-    window: {devicePixelRatio: 1, addEventListener() {}}, requestAnimationFrame() {},
+    window: {devicePixelRatio: 1, addEventListener() {}}, requestAnimationFrame(callback) { nextFrame = callback; },
     ResizeObserver: class { observe() {} },
     fetch: async (url, options) => {
       if (!options) return {ok: true, json: async () => structuredClone(url === "/api/data" ? data : state)};
@@ -230,6 +335,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
       const row = {...body.interval, status: body.decision === "skip" ? "rejected" : "labeled"};
       if (body.decision === "label") row.label_id = row.id;
       state.intervals = [...state.intervals.filter(old => old.id !== row.id), row];
+      state.settings = body.settings;
       state.revision++; state.labels_revision = String(state.revision);
       return {ok: true, json: async () => structuredClone(state)};
     }};
@@ -246,7 +352,7 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
   assert.doesNotMatch(get("status").textContent, /Could not open/);
   assert.equal(Number(get("offset").value), 0, "current alignment supersedes saved exploratory settings");
   assert.equal(Number(get("scale").value), 1);
-  return {get, calls, state, fail: () => { fail = true; }, key: key => {
+  return {get, calls, state, frame: () => nextFrame?.(), fail: () => { fail = true; }, key: key => {
     listeners.get("keydown")({key, target: {closest: () => null}, preventDefault() {}});
   }};
 }
@@ -267,6 +373,196 @@ test("missing sensor data keeps flash controls visible and explains recovery", a
   assert.equal(get("sync-id").disabled, true);
   await get("save-sync").click();
   assert.equal(calls.length, 0);
+});
+
+test("board events seek within their uncertainty bands and never create labels or proposals", async t => {
+  const {get, calls, state} = await controller(t, {sensor: {board_motion: {
+    availability: "recorded", message: "", events: [
+      {event_id: "one", earliest_s: 1.75, observed_s: 1.99, latest_s: 2, orientation_changed: true},
+      {event_id: "two", earliest_s: 10, observed_s: 10.24, latest_s: 10.25, wake_up: true}]}}});
+  get("board-event-mode").value = "raw";
+  get("board-event-mode").onchange();
+  const candidates = get("candidates").children.length;
+  assert.equal(get("board-events").hidden, false);
+  assert.match(get("board-event-status").textContent, /2 raw observation/);
+  assert.match(get("board-event-list").children[0].textContent, /Orientation.*1.750–2.000/);
+  await get("board-event-list").children[0].click();
+  assert.equal(get("video").currentTime, 1.75);
+  await get("board-event-next").click();
+  assert.equal(get("video").currentTime, 10);
+  assert.match(get("board-event-list").children[0].textContent, /Wake-up/);
+  get("imu").onpointerdown({clientX: 100});
+  const imuTime = get("video").currentTime;
+  get("board-events").onpointerdown({clientX: 100});
+  assert.equal(get("video").currentTime, imuTime, "event and IMU plots share the horizontal time axis");
+  assert.equal(get("candidates").children.length, candidates);
+  assert.equal(state.intervals.length, 0);
+  assert.equal(calls.length, 0);
+  get("offset").value = 2;
+  get("offset").oninput();
+  assert.equal(get("board-events").hidden, true);
+  assert.match(get("board-event-status").textContent, /Match LED flashes/);
+  assert.equal(get("board-event-list").children.length, 0);
+  assert.equal(get("board-event-next").disabled, true);
+});
+
+test("old recordings explain unavailable event capture instead of claiming zero motion", async t => {
+  const {get} = await controller(t, {sensor: {board_motion: {availability: "not_recorded", events: [],
+    message: "Board-event recording was not enabled for this session."}}});
+  get("board-event-mode").value = "raw";
+  get("board-event-mode").onchange();
+  assert.equal(get("board-events").hidden, true);
+  assert.match(get("board-event-status").textContent, /not enabled/);
+  assert.equal(get("board-event-next").disabled, true);
+});
+
+test("event panel defaults to learned attempts and keeps raw interrupts separate", async t => {
+  const {get, calls, state} = await controller(t, {sensor: {
+    attempts: {availability: "ready", threshold: .5, model_name: "trained", model_sha256: "model",
+      quality: {skipped: {}}, events: [
+        {time_s: 3, window_start_s: 2, window_end_s: 4, score: .8},
+        {time_s: 11, window_start_s: 10, window_end_s: 12, score: .6}]},
+    board_motion: {availability: "recorded", events: [
+      {event_id: "raw", earliest_s: 1, observed_s: 1.2, latest_s: 1.25, wake_up: true}]}}});
+  assert.equal(get("board-event-mode").value, "attempts");
+  assert.equal(get("board-event-title").textContent, "Potential trick attempts");
+  assert.match(get("board-event-status").textContent, /2 potential attempt.*cutoff 0.50/);
+  assert.match(get("board-event-list").children[0].textContent, /Potential attempt.*score 0.80.*2.000–4.000/);
+  assert.doesNotMatch(get("board-event-list").children[0].textContent, /Wake-up/);
+  await get("board-event-list").children[0].click();
+  assert.equal(get("video").currentTime, 2);
+  await get("board-event-next").click();
+  assert.equal(get("video").currentTime, 10);
+  await get("board-event-previous").click();
+  assert.equal(get("video").currentTime, 2);
+  get("board-event-mode").value = "raw";
+  get("board-event-mode").onchange();
+  assert.match(get("board-event-status").textContent, /1 raw observation/);
+  assert.match(get("board-event-list").children[0].textContent, /Wake-up/);
+  get("board-event-mode").value = "attempts";
+  get("board-event-mode").onchange();
+  get("offset").value = 2;
+  get("offset").oninput();
+  assert.equal(get("board-events").hidden, true);
+  assert.match(get("board-event-status").textContent, /Match LED flashes/);
+  assert.equal(calls.length, 0);
+  assert.equal(state.intervals.length, 0);
+});
+
+test("event navigation makes Play attempt use that event instead of the previous queue selection", async t => {
+  const {get, calls, frame} = await controller(t, {sensor: {attempts: {
+    ...attemptFixture(), events: [{time_s: 11, window_start_s: 10, window_end_s: 12, score: .8}]}}});
+  get("note").value = "keep my queue draft"; get("note").oninput();
+  await get("board-event-next").click();
+  assert.equal(get("video").currentTime, 10);
+  assert.equal(get("audition").disabled, false);
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 9.5, "playback includes lead-in to this event, not the old audio suggestion");
+  assert.equal(get("video").paused, false);
+  get("video").currentTime = 13; frame();
+  assert.equal(get("video").paused, true, "preview stops after the event follow-through");
+  assert.equal(get("save").disabled, true, "previewing an event cannot save an unrelated queue label");
+  await get("save").click();
+  assert.equal(calls.length, 0);
+  await get("candidates").children[0].click();
+  assert.equal(get("note").value, "keep my queue draft");
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 1, "selecting a queue row restores its own playback window");
+});
+
+test("grouped event playback covers all three detections before stopping or looping, then advances to the next attempt", async t => {
+  const {get, key, frame, calls} = await controller(t, {onsets: [], sensor: {attempts: {
+    ...attemptFixture(), events: [
+      {time_s: 3, window_start_s: 2, window_end_s: 4, score: .8},
+      {time_s: 4, window_start_s: 3, window_end_s: 5, score: .9},
+      {time_s: 5, window_start_s: 4, window_end_s: 6, score: .7},
+      {time_s: 11, window_start_s: 10, window_end_s: 12, score: .6}]}}});
+  assert.equal(get("audition").disabled, true);
+  assert.match(get("board-event-status").textContent, /2 potential attempt.*Grouped from 4 model detections/);
+  assert.match(get("board-event-list").children[0].textContent, /3 detections grouped.*2.000–6.000/);
+  await get("board-event-next").click();
+  assert.equal(get("audition").disabled, false);
+  key(" ");
+  assert.equal(get("video").currentTime, 1.5);
+  assert.equal(get("video").paused, false);
+  for (const time of [4, 5, 6]) {
+    get("video").currentTime = time; frame();
+    assert.equal(get("video").paused, false, "internal detection boundaries do not stop playback");
+  }
+  get("loop").checked = true;
+  get("video").currentTime = 7; frame();
+  assert.equal(get("video").currentTime, 1.5);
+  assert.equal(get("video").paused, false);
+  get("loop").checked = false;
+  get("video").currentTime = 7; frame();
+  assert.equal(get("video").paused, true);
+  await get("board-event-next").click();
+  assert.equal(get("video").currentTime, 10, "next event skips the duplicate detections inside the first group");
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 9.5);
+  await get("board-event-previous").click();
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 1.5);
+  assert.equal(calls.length, 0);
+});
+
+test("event preview survives filtering but clears when its alignment or event view is changed", async t => {
+  const {get} = await controller(t, {onsets: [], sensor: {attempts: attemptFixture()}});
+  await get("board-event-list").children[0].click();
+  get("candidate-mode").value = "audio_attempts"; get("candidate-mode").oninput();
+  get("pending-only").checked = true; get("pending-only").onchange();
+  await get("audition").click();
+  assert.equal(get("video").paused, false);
+  assert.equal(get("video").currentTime, .8);
+  get("offset").value = 2; get("offset").oninput();
+  assert.equal(get("video").paused, true);
+  assert.equal(get("audition").disabled, true);
+  get("offset").value = 0; get("offset").oninput();
+  await get("board-event-list").children[0].click();
+  await get("audition").click();
+  get("board-event-mode").value = "raw"; get("board-event-mode").onchange();
+  assert.equal(get("video").paused, true);
+  assert.equal(get("audition").disabled, true);
+});
+
+test("raw event playback includes context and clips its bounds to the video", async t => {
+  const {get, frame} = await controller(t, {onsets: [], sensor: {board_motion: {
+    availability: "recorded", events: [
+      {event_id: "start", earliest_s: -.1, observed_s: 0, latest_s: .1, wake_up: true},
+      {event_id: "end", earliest_s: 19.9, observed_s: 20, latest_s: 20.1, wake_up: true}]}}});
+  get("board-event-mode").value = "raw"; get("board-event-mode").onchange();
+  await get("board-event-list").children[0].click();
+  assert.equal(get("audition").disabled, false);
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 0);
+  get("video").currentTime = 2.1; frame();
+  assert.equal(get("video").paused, true);
+  await get("board-event-next").click();
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 18.9);
+  get("video").currentTime = 20; frame();
+  assert.equal(get("video").paused, true);
+});
+
+test("unavailable detection never presents raw interrupts as potential attempts", async t => {
+  const {get} = await controller(t, {sensor: {
+    attempts: {availability: "unavailable", events: [], message: "Attempt model is missing."},
+    board_motion: {availability: "recorded", events: [
+      {event_id: "raw", earliest_s: 1, observed_s: 1.2, latest_s: 1.25, wake_up: true}]}}});
+  assert.match(get("board-event-status").textContent, /model is missing/);
+  assert.equal(get("board-events").hidden, true);
+  assert.equal(get("board-event-list").children.length, 0);
+  assert.equal(get("board-event-next").disabled, true);
+});
+
+test("successful quiet scans report zero attempts even with recorded board motion", async t => {
+  const {get} = await controller(t, {sensor: {
+    attempts: {availability: "ready", threshold: .5, model_name: "trained", events: [], quality: {skipped: {}}},
+    board_motion: {availability: "recorded", events: [
+      {event_id: "raw", earliest_s: 1, observed_s: 1.2, latest_s: 1.25, wake_up: true}]}}});
+  assert.match(get("board-event-status").textContent, /0 potential attempt/);
+  assert.equal(get("board-events").hidden, false);
+  assert.equal(get("board-event-list").children.length, 0);
 });
 
 test("recovered data shows motion plots and enables recorded flash matching", async t => {
@@ -372,6 +668,56 @@ test("UI filter is reversible, keeps saved labels and drafts, and never saves re
   assert.equal(calls[0].interval.outcome, "make");
   get("filter-threshold").value = "2"; get("filter-threshold").oninput();
   assert.equal(get("candidates").children.length, 1, "a saved label survives even when every suggestion is filtered");
+});
+
+test("UI learned filter preserves drafts and labels, saves settings, and restores them on reload", async t => {
+  const {get, calls} = await controller(t, {sensor: {attempts: attemptFixture()}});
+  get("candidate-mode").value = "audio_attempts"; get("candidate-mode").oninput();
+  assert.equal(get("candidates").children.length, 1);
+  assert.equal(get("attempt-threshold-field").hidden, false);
+  assert.equal(get("filter-threshold-field").hidden, true);
+  assert.match(get("motion-status").textContent, /1 of 2 audio candidates hidden by attempt model/);
+  assert.match(get("candidate-evidence").textContent, /learned attempt window.*0.80/);
+  get("show-filtered").checked = true; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.match(get("candidates").children[1].children[1].textContent, /filtered/);
+  await get("candidates").children[1].click();
+  get("note").value = "review a possible missed attempt"; get("note").oninput();
+  get("show-filtered").checked = false; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.equal(get("note").value, "review a possible missed attempt");
+  get("attempt-threshold").value = "0.85"; get("attempt-threshold").oninput();
+  assert.equal(get("candidates").children.length, 1, "only the human draft survives the stricter filter");
+  assert.equal(calls.length, 0);
+  get("trick").value = "ollie"; get("trick").oninput();
+  get("outcome").value = "make"; get("outcome").oninput();
+  await get("save").click();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].settings.candidate_mode, "audio_attempts");
+  assert.equal(calls[0].settings.attempt_threshold, .85);
+  await init();
+  assert.equal(get("candidate-mode").value, "audio_attempts");
+  assert.equal(Number(get("attempt-threshold").value), .85);
+  assert.equal(get("candidates").children.length, 1, "the saved label stays visible on reload");
+  get("candidate-mode").value = "audio"; get("candidate-mode").oninput();
+  assert.equal(get("candidates").children.length, 2);
+});
+
+test("UI learned filter explains missing alignment and model without emptying the queue", async t => {
+  const {get, calls} = await controller(t, {sensor: {attempts: attemptFixture()}});
+  get("candidate-mode").value = "audio_attempts"; get("candidate-mode").oninput();
+  get("offset").value = "2"; get("offset").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.match(get("motion-status").textContent, /Match LED flashes.*Keeping all audio candidates/);
+  assert.equal(calls.length, 0);
+});
+
+test("UI learned filter reports unavailable model and keeps suggestions", async t => {
+  const {get} = await controller(t, {sensor: {attempts: {
+    availability: "unavailable", message: "Attempt model is missing.", events: []}}});
+  get("candidate-mode").value = "audio_attempts"; get("candidate-mode").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.match(get("motion-status").textContent, /model is missing.*Keeping all audio candidates/);
 });
 
 test("UI saves one watched background range covering multiple suggestions and restores it", async t => {

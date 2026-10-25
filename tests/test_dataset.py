@@ -1,10 +1,13 @@
 import csv
+import hashlib
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from capture.dataset import build, collect, inspect_session
+from test_board_motion import motion_event, motion_metadata
 
 
 class DatasetTests(unittest.TestCase):
@@ -77,6 +80,71 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "already exists"):
             build(output, report, labels, windows)
         self.assertEqual(before, {p.name: p.read_bytes() for p in self.path.iterdir()})
+
+    def configure_events(self, rows=()):
+        meta = json.loads((self.path / "metadata.json").read_text())
+        config = motion_metadata()
+        config["onboard_quality"] = dict(complete=True, usable=True, issues=[])
+        (self.path / "metadata.json").write_text(json.dumps(meta | config))
+        self.write_jsonl(self.path / "events.jsonl", rows)
+
+    def test_event_export_joins_adjacent_windows_preserving_full_bounds_and_raw_flags(self):
+        event = motion_event(earliest_device_us=1950000, device_us=2040000, latest_device_us=2050000)
+        self.configure_events([event])
+        self.write_jsonl(self.path / "labels.jsonl", [self.label(), self.label(
+            id="next", start_s=1, end_s=1.5, video_start_s=11, video_end_s=11.5, outcome="unknown")])
+        before = {p.name: p.read_bytes() for p in self.path.iterdir()}
+        report, labels, windows = collect(self.sessions)
+        output = self.root / "events-export"
+        build(output, report, labels, windows)
+        events = [json.loads(line) for line in (output / "motion_events.jsonl").read_text().splitlines()]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(len({r["event_id"] for r in events}), 1)
+        indexed = {r["example_id"].split("/")[-1]: r for r in events}
+        self.assertFalse(indexed["same-id"]["available_by_window_end"])
+        self.assertTrue(indexed["next"]["available_by_window_end"])
+        self.assertAlmostEqual(indexed["next"]["relative_earliest_s"], -.05)
+        self.assertTrue(all(e["earliest_s"] == .95 and e["latest_s"] == 1.05 for e in events))
+        self.assertTrue(all(e["d6d_src"] == 96 and e["profile"] == 2 for e in events))
+        manifest = [json.loads(line) for line in (output / "manifest.jsonl").read_text().splitlines()]
+        self.assertTrue(all(row["board_motion"]["count"] == 1 for row in manifest))
+        self.assertFalse(next(row for row in manifest if row["label"]["outcome"] == "unknown")["outcome_training"])
+        self.assertNotIn("events", manifest[0]["board_motion"])
+        self.assertEqual(report["sessions"][0]["source_sha256"]["events.jsonl"], hashlib.sha256(before["events.jsonl"]).hexdigest())
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.path.iterdir()})
+
+    def test_event_absence_is_not_a_negative_feature_and_excluded_windows_have_no_events(self):
+        _, rows, _ = collect(self.sessions)
+        self.assertEqual(rows[0]["board_motion"]["availability"], "not_recorded")
+        self.assertIsNone(rows[0]["board_motion"]["count"])
+        self.configure_events()
+        _, rows, _ = collect(self.sessions)
+        self.assertEqual(rows[0]["board_motion"]["count"], 0)
+        (self.path / "events.jsonl").unlink()
+        _, rows, windows = collect(self.sessions)
+        self.assertEqual(rows[0]["board_motion"]["availability"], "missing")
+        self.assertIsNone(rows[0]["board_motion"]["count"])
+        self.assertTrue(windows)
+        self.configure_events([motion_event()])
+        self.write_jsonl(self.path / "labels.jsonl", [self.label(source="live_human")])
+        _, rows, windows = collect(self.sessions)
+        self.assertEqual(rows[0]["board_motion"]["events"], [])
+        self.assertIsNone(rows[0]["board_motion"]["count"])
+        self.assertFalse(windows)
+
+    def test_bad_event_data_blocks_build_and_event_edits_during_scan_are_detected(self):
+        self.configure_events([motion_event(wake_up=True)])
+        report, rows, windows = collect(self.sessions)
+        self.assertTrue(report["sessions"][0]["error"])
+        with self.assertRaisesRegex(ValueError, "unreadable"):
+            build(self.root / "invalid-events", report, rows, windows)
+        self.configure_events([motion_event()])
+        from capture.dataset import load_samples
+        def changed(content):
+            (self.path / "events.jsonl").write_text("")
+            return load_samples(content)
+        with patch("capture.dataset.load_samples", side_effect=changed), self.assertRaisesRegex(ValueError, "changed during scan"):
+            inspect_session(self.path)
 
     def test_background_and_unknown_do_not_inflate_attempt_count(self):
         self.write_jsonl(self.path / "labels.jsonl", [

@@ -24,6 +24,11 @@
   label { display: block; } .transport { margin: 10px 0; } #time { font-variant-numeric: tabular-nums; color: #c9f887; margin-left: auto; }
   .timeline { margin-top: 16px; } canvas { display: block; width: 100%; cursor: crosshair; touch-action: none; }
   #overview { height: 80px; } #detail { height: 268px; } #imu { height: 220px; }
+  #board-event-panel { margin-top: 16px; border-top: 1px solid #354946; padding-top: 12px; }
+  #board-events { height: 102px; }
+  #board-event-list { display: flex; gap: 6px; flex-wrap: wrap; max-height: 140px; overflow-y: auto; margin-top: 8px; }
+  #board-event-list button { font-size: 12px; padding: 5px 8px; text-align: left; }
+  #board-event-list button[aria-pressed=true] { background: #38523d; border-color: #c9f887; }
   .legend { display: flex; gap: 15px; flex-wrap: wrap; font-size: 12px; margin-top: 6px; }
   .start { color: #c9f887; } .finish { color: #ffb08a; } .onset { color: #bdacff; }
   .settings { display: grid; gap: 12px; margin: 14px 0; } .gap { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -46,7 +51,7 @@
 <main>
   <div class="brand">SKATE JUDGE / REVIEW</div>
   <h1>Review trick attempts</h1>
-  <p class="muted">Label attempts and everyday board activity. Audio and motion peaks help you find places to review.</p>
+  <p class="muted">Label attempts and everyday board activity. Learned attempt detections and audio peaks help you find places to review.</p>
   <div class="row between"><span id="filename" class="file muted">Loading recording…</span><span class="badge">LOCAL AUDIO + VIDEO</span></div>
   <div class="workspace">
     <div>
@@ -87,6 +92,16 @@
           </details>
           <p id="sensor-help" class="help muted">Raw magnitudes on the same time window as the audio above. Click to seek.</p>
           <canvas id="imu" role="img" aria-label="Acceleration magnitude in metres per second squared and angular speed in radians per second, with start and finish markers. Click to seek."></canvas>
+          <section id="board-event-panel" aria-labelledby="board-event-title">
+            <div class="row between"><h2 id="board-event-title">Potential trick attempts</h2>
+              <div class="row"><button id="board-event-previous" type="button" disabled>← Previous event</button><button id="board-event-next" type="button" disabled>Next event →</button></div>
+            </div>
+            <label>Events to show <select id="board-event-mode"><option value="attempts" selected>Potential attempts (learned model)</option><option value="raw">All raw board observations</option></select></label>
+            <p id="board-event-status" class="help muted"></p>
+            <p id="board-event-help" class="help muted" hidden></p>
+            <canvas id="board-events" role="img" aria-label="Learned potential trick attempt windows. Click to seek." hidden></canvas>
+            <div id="board-event-list" aria-label="Events in the visible time window"></div>
+          </section>
         </section>
       </section>
     </div>
@@ -94,13 +109,14 @@
       <div class="row between"><h2>Review queue</h2><span id="count" class="badge">Analyzing</span></div>
       <p class="help muted">Review real attempts first. Skip duplicate suggestions. For rolling, pushing, or waiting, label one watched background range across as many sounds as needed.</p>
       <details><summary>Candidate detection settings</summary><div class="settings">
-        <label>Candidate sources<select id="candidate-mode"><option value="audio">Audio only</option><option value="audio_filtered">Audio filtered by motion (experimental)</option><option value="audio_motion">Audio + extra motion candidates (experimental)</option></select></label>
+        <label>Candidate sources<select id="candidate-mode"><option value="audio">Audio only</option><option value="audio_attempts">Audio filtered by attempt model</option><option value="audio_filtered">Audio filtered by motion (experimental)</option><option value="audio_motion">Audio + extra motion candidates (experimental)</option></select></label>
         <label>Onset threshold <output id="threshold-value">0.65</output><input id="threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
         <label id="motion-threshold-field" hidden>Motion threshold <output id="motion-threshold-value">0.65</output><input id="motion-threshold" type="range" min="0.1" max="2" step="0.05" value="0.65"></label>
         <div id="filter-controls" hidden>
-          <label>Required motion near pop <output id="filter-threshold-value">0.40</output><input id="filter-threshold" type="range" min="0.1" max="2" step="0.05" value="0.4"></label>
+          <label id="filter-threshold-field">Required motion near pop <output id="filter-threshold-value">0.40</output><input id="filter-threshold" type="range" min="0.1" max="2" step="0.05" value="0.4"></label>
+          <label id="attempt-threshold-field" hidden>Minimum attempt score <output id="attempt-threshold-value">0.50</output><input id="attempt-threshold" type="range" min="0.5" max="1" step="0.05" value="0.5"></label>
           <label class="help"><input id="show-filtered" type="checkbox"> Show filtered suggestions</label>
-          <small>Higher values hide more audio candidates and may hide real attempts. Missing or unreliable IMU coverage keeps a candidate visible. Hidden suggestions remain unlabeled.</small>
+          <small id="filter-help">Higher values hide more audio candidates and may hide real attempts. Missing or unreliable IMU coverage keeps a candidate visible. Hidden suggestions remain unlabeled.</small>
         </div>
         <div class="gap"><label>Min pop → contact (s)<input id="min-gap" type="number" min="0.1" max="4.9" step="0.05" value="0.18"></label><label>Max pop → contact (s)<input id="max-gap" type="number" min="0.15" max="5" step="0.05" value="0.9"></label></div>
         <small>Lower thresholds find more peaks. Motion can support audio or suggest a pair when the microphone misses an impact. Strength is relative, not confidence in a trick.</small>

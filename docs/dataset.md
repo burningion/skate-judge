@@ -1,7 +1,10 @@
 # Accumulate a labeled dataset
 
+The [multi-task CNN guide](trick-cnn.md) covers matched-session comparisons,
+training-only int8 calibration, and the limits of the current trick/outcome labels.
+
 The session directories are the source dataset. Keep each recording's
-`samples.csv`, `metadata.json`, raw `.bin`, video, `video_sync.jsonl`, and
+`samples.csv`, `events.jsonl`, `metadata.json`, raw `.bin`, video, `video_sync.jsonl`, and
 `labels.jsonl` together. Saving in the review UI already accumulates labels;
 there is no need to download and combine the clip exports manually. Label
 corrections append a revision with the same ID. Count the last revision per ID,
@@ -52,9 +55,10 @@ sensor samples. Run `status` without the flag to inspect the entire collection.
 
 | File | Contents |
 | --- | --- |
-| `manifest.jsonl` | One row per latest saved label, including excluded labels and their reasons; original label/provenance, session ID, rider, board, sample count, and eligibility flags |
+| `manifest.jsonl` | One row per latest saved label, including excluded labels and their reasons; original label/provenance, session ID, rider, board, sample count, eligibility flags, and board-event availability/count |
 | `samples.csv` | Original six-axis samples for eligible windows, joined to the manifest by `example_id`, with sensor and window-relative seconds |
-| `report.json` | Counts, session issues, source paths, and SHA-256 hashes of metadata, labels, alignment, and sensor CSV |
+| `motion_events.jsonl` | Recorded board observations overlapping eligible windows, joined by `example_id`, with full timing bounds, raw flags, and detector profile |
+| `report.json` | Counts, session issues, source paths, and SHA-256 hashes of metadata, labels, alignment, sensor CSV, and source `events.jsonl` |
 | `README.txt` | Units, joins, and evaluation reminders |
 
 `example_id` combines session name and label ID. Windows include samples at
@@ -92,6 +96,41 @@ snapshot rather than silently dropping a session.
 Keep and back up original session folders: the export contains labeled IMU
 windows, not copies of videos, raw logs, or complete continuous recordings.
 Both `sessions/` and `datasets/` are excluded from Git and are not uploaded.
+
+### Recorded board observations
+
+New snapshots include the LSM6DSO32 free-fall, wake-up, and orientation flags
+when the recording firmware enabled them. The importer writes these to the
+session's `events.jsonl`; no extra annotation step is needed. The review UI
+also [shows these observations alongside video](trick-review.md#recorded-board-events).
+Human trick/outcome labels remain authoritative, and the current forest/CNN
+training code continues to use raw IMU data without these optional flags.
+
+In `motion_events.jsonl`, `earliest_s`, `observed_s`, and `latest_s` use the
+session sensor clock; `relative_*_s` subtract the label's start time. The bounds
+cover the previous register read through completion of the current read.
+They are not exact contact times. Raw register values, device timestamps,
+detector profile, and polling interval are retained for later analysis.
+
+An observation is included when its uncertainty interval overlaps an eligible
+label window. It can appear for both adjacent windows with the same `event_id`;
+deduplicate by `(session_id, event_id)` when counting across windows.
+`fully_contained` identifies intervals entirely inside the window.
+`available_by_window_end` is false when the register read did not finish before
+the window ended; exclude such observations when evaluating features that must
+be available by that time. Bounds are never clipped to make them fit a label.
+
+The manifest's `board_motion.count` is `null` when event recording was disabled,
+missing, unverified, incomplete, or the label was excluded. Zero means a complete
+enabled recording had no observed packets overlapping that window; it does not
+prove no physical motion occurred. Polling can miss events or combine several
+into one packet. `observed_packets` retains the number actually found when an
+eligible window has only partial event data. Session availability and warnings
+appear in `report.json`, including whether the event file existed.
+
+Older recordings cannot acquire these flags retrospectively. Their raw samples
+and eligible labels still export normally, and existing snapshots stay frozen.
+Build a new snapshot to get the added fields and event file.
 
 ### Accepting a session with small sample gaps
 
@@ -155,3 +194,11 @@ a simple feature-based baseline at increasing dataset sizes. Use validation
 performance and a [learning curve](https://scikit-learn.org/stable/modules/learning_curve.html)
 to decide what more data helps. Board motion may identify a trick while leaving
 rider outcome ambiguous; there is no promised dataset size that solves that.
+
+Offline implementations are available. The [attempt detector](attempt-detector.md)
+combines makes, bails, and falls into one class and scans continuous recordings
+against reviewed background. The [landing baseline](landing-baseline.md) predicts
+landed versus not landed for known kickflip contacts. The [raw-signal CNN](landing-cnn.md)
+compares a small convolutional model with those feature baselines on the same
+windows and sessions. The guides include preprocessing, held-out evaluation,
+commands, and initial results.

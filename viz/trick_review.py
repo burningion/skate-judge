@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
-# requires-python = ">=3.10"
-# dependencies = ["numpy>=1.26,<3", "scipy>=1.12,<2"]
+# requires-python = ">=3.11"
+# dependencies = ["numpy==2.4.6", "scipy==1.16.3", "scikit-learn==1.8.0"]
 # ///
 """Review audio onset pairs alongside a recorded video and optional raw IMU.
 
@@ -28,13 +28,15 @@ import sys
 import threading
 
 VERSION = 1
-API_VERSION = 4
+API_VERSION = 7
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ATTEMPT_MODEL = ROOT / ".build" / "attempts-v1" / "model.json"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping
+from capture.motion_events import board_motion_context
 
 
 def read_json(path, fallback=None):
@@ -212,6 +214,14 @@ def sensor_context(source):
     meta = read_json(session / "metadata.json", {})
     sidecar = read_json(source.with_suffix(".json"), {})
     result = dict(samples=[], syncs=[], mapping=None, offset_hint_s=0, warnings=[])
+    event_path = session / "events.jsonl"
+    event_content = event_path.read_bytes() if event_path.exists() else None
+    try:
+        result["board_motion"] = board_motion_context(meta, event_content)
+        result["warnings"].extend(result["board_motion"]["warnings"])
+    except (ValueError, TypeError, KeyError) as error:
+        result["board_motion"] = dict(schema=1, availability="invalid", events=[],
+                                       message=f"Board events could not be read: {error}")
     if "created_utc" in sidecar and "created_utc" in meta:
         result["offset_hint_s"] = round((datetime.fromisoformat(sidecar["created_utc"])
             - datetime.fromisoformat(meta["created_utc"])).total_seconds(), 3)
@@ -238,8 +248,10 @@ def sensor_context(source):
                 result["warnings"].append(
                     f"IMU quality: {rate:.1f} samples/s; {zero:.0%} of rows have zero acceleration. "
                     "Raw points are for inspection; gaps over 30 ms are not connected.")
-    if (session / "events.jsonl").exists():
-        for line in (session / "events.jsonl").read_text().splitlines():
+    if event_content:
+        for line in event_content.splitlines():
+            if not line.strip():
+                continue
             row = json.loads(line)
             if (row.get("kind") == "sync" and row.get("edge") == 1
                     and row.get("led_enabled") and row.get("boot_id") == meta.get("boot_id")
@@ -278,7 +290,48 @@ def sensor_context(source):
     return result
 
 
-def prepare(source, rebuild=False):
+def attempt_context(session, model_path, cache_path):
+    """Score continuous IMU with the trained detector; raw interrupts are not a gate.
+
+    Cache only derived results, keyed by the complete sensor and model contents.
+    Missing/invalid inference stays distinct from a successful scan with no hits.
+    """
+    result = dict(availability="unavailable", events=[], message="")
+    if not model_path.is_file():
+        return dict(result, message="Attempt model is missing. Train learning/attempts.py, then restart with --attempt-model pointing to model.json.")
+    samples_path = session / "samples.csv"
+    if not samples_path.is_file():
+        return dict(result, message="Attempt detection needs this session's samples.csv. Finish importing the recording and restart the review server.")
+    if not read_json(session / "metadata.json", {}).get("closed_utc"):
+        return dict(result, message="Stop recording and finish importing the sensor data before detecting attempts.")
+    try:
+        from learning import attempts
+
+        identity = dict(schema=2, detector=attempts.VERSION,
+                        model_sha256=attempts.landing.sha256(model_path),
+                        samples_sha256=attempts.landing.sha256(samples_path))
+        with file_lock(cache_path.with_suffix(".lock")):
+            try:
+                cached = read_json(cache_path, {})
+            except (ValueError, OSError):
+                cached = {}
+            if isinstance(cached, dict) and cached.get("identity") == identity and isinstance(cached.get("scan"), dict):
+                scan = cached["scan"]
+            else:
+                scan = attempts.scan_file(model_path, samples_path)
+                if any(scan[key] != identity[key] for key in ("model_sha256", "samples_sha256")):
+                    raise ValueError("Model or sensor data changed during detection; restart to try again.")
+                write_json(cache_path, dict(identity=identity, scan=scan))
+        result.update(scan, availability="ready" if scan["status"] == "scanned" else "unknown",
+                      model_name=model_path.parent.name, model_path=str(model_path.resolve()))
+        if scan["status"] != "scanned":
+            result["message"] = "No usable two-second IMU windows. Attempt detection is unknown for this recording."
+        return result
+    except (ImportError, OSError, ValueError, KeyError, TypeError, IndexError) as error:
+        return dict(result, message=f"Attempt detector unavailable: {error}")
+
+
+def prepare(source, rebuild=False, attempt_model=DEFAULT_ATTEMPT_MODEL):
     for binary in ("ffmpeg", "ffprobe"):
         if not shutil.which(binary):
             raise ValueError(f"Install {binary} first (macOS: brew install ffmpeg).")
@@ -324,6 +377,7 @@ def prepare(source, rebuild=False):
     data["api_version"] = API_VERSION
     data["video_timing"] = cached_video_timing(directory, media, data["duration_s"])
     data["sensor"] = sensor_context(source)
+    data["sensor"]["attempts"] = attempt_context(source.parent, attempt_model, directory / "attempts.json")
     return directory, media, data
 
 
@@ -360,7 +414,7 @@ def validate_review(value, duration):
             raise ValueError(f"Invalid {key}.")
     if settings["min_gap"] >= settings["max_gap"]:
         raise ValueError("Minimum gap must be less than maximum gap.")
-    if settings.get("candidate_mode", "audio") not in ("audio", "audio_motion", "audio_filtered"):
+    if settings.get("candidate_mode", "audio") not in ("audio", "audio_motion", "audio_filtered", "audio_attempts"):
         raise ValueError("Invalid candidate mode.")
     if not finite_number(settings.get("motion_threshold", .65)) or not .1 <= settings.get("motion_threshold", .65) <= 2:
         raise ValueError("Invalid motion threshold.")
@@ -368,6 +422,8 @@ def validate_review(value, duration):
         raise ValueError("Invalid filter threshold.")
     if not isinstance(settings.get("show_filtered", False), bool):
         raise ValueError("Invalid filtered-suggestion visibility.")
+    if not finite_number(settings.get("attempt_threshold", .5)) or not .5 <= settings.get("attempt_threshold", .5) <= 1:
+        raise ValueError("Invalid attempt score threshold.")
     return dict(intervals=value["intervals"], settings=settings)
 
 
@@ -675,9 +731,11 @@ def main():
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--rebuild", action="store_true", help="Rebuild derived audio/media; preserve reviewed intervals")
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--attempt-model", type=Path, default=DEFAULT_ATTEMPT_MODEL,
+                        help="Trained attempt model JSON (default: .build/attempts-v1/model.json)")
     args = parser.parse_args()
     try:
-        directory, media, data = prepare(args.video, args.rebuild)
+        directory, media, data = prepare(args.video, args.rebuild, args.attempt_model)
         print(f"Ready: {data['duration_s']:.2f}s, {len(data['audio']['onsets'])} raw onsets.\nDerived files: {directory}", flush=True)
         if args.prepare_only:
             return
