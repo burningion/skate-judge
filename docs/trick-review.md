@@ -235,6 +235,16 @@ percentages. This filters existing audio suggestions; it does not invent action
 boundaries or add detections that have no audio pair. Those remain accessible in
 the **Potential trick attempts** event panel.
 
+Nearby supported audio suggestions for the same model-detection group are
+consolidated when their action intervals are separated by at most one second.
+The strongest audio pair remains the representative, with its original ID and
+pop/contact markers; its suggested playback/training window includes the whole
+cluster plus the usual context. Explicitly edited window boundaries are preserved.
+Grouping uses each detection's own score at the selected cutoff and never crosses
+unscored coverage. More distant suggestions remain separate. The queue shows how
+many suggestions were grouped, and **Show filtered suggestions** restores the
+alternatives for inspection. Saved decisions and human edits remain visible.
+
 Use **Show filtered suggestions** to inspect hidden pairs, or select **Audio
 only** to restore them. Original IDs, timing, saved labels, skipped decisions,
 and unsaved human edits are preserved. No hidden suggestion becomes a background

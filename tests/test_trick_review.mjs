@@ -45,6 +45,66 @@ test("attempt filter keeps unscored regions and unavailable or unaligned data vi
   assert.equal(mapped.scored_ranges[1][0], (9 - 10) / 1.01 - .5);
 });
 
+test("learned filtering keeps one original audio pair for adjacent suggestions and restores every alternative", () => {
+  const audio = audioFixture([2, 2.2, 2.4, 2.6, 2.8, 3, 8, 8.5]);
+  const attempts = attemptFilterTimeline(attemptFixture(), {scale: 1, offset_s: 0}, 0, 20);
+  const before = structuredClone({audio, attempts});
+  const settings = {...opts, candidate_mode: "audio_attempts", attempt_threshold: .5};
+  const baseline = proposePairs(audio.onsets, [], .01, opts);
+  assert.equal(baseline.length, 4);
+  const kept = proposeCandidates(audio, {}, settings, attempts);
+  assert.equal(kept.length, 1);
+  assert.equal(kept[0].id, baseline[0].id);
+  assert.deepEqual([kept[0].start_s, kept[0].end_s], [2, 2.2]);
+  assert.equal(kept[0].attempt_cluster_count, 3);
+  assert.deepEqual(attemptWindow(kept[0], 20, [0, 20]), [1, 5]);
+  assert.deepEqual(attemptWindow({...kept[0], label_start_s: 1.5, label_end_s: 4}, 20, [0, 20]), [1.5, 4]);
+  const audit = proposeCandidates(audio, {}, {...settings, show_filtered: true}, attempts);
+  assert.deepEqual(audit.map(row => row.id), baseline.map(row => row.id));
+  assert.deepEqual(audit.map(row => row.attempt_duplicate_of), [undefined, kept[0].id, kept[0].id, undefined]);
+  assert.ok(audit.every(row => row.outcome === undefined && row.status === "suggested"));
+  assert.deepEqual(proposeCandidates(audio, {}, {...settings, candidate_mode: "audio"}, attempts), baseline);
+  assert.deepEqual({audio, attempts}, before);
+});
+
+test("nearby candidate grouping keeps the strongest audio pair and covers earlier alternatives in playback", () => {
+  const audio = audioFixture([2, 2.2, 2.4, 2.6]);
+  audio.onsets[2].strength = audio.onsets[3].strength = 2;
+  const attempts = attemptFilterTimeline(attemptFixture(), {scale: 1, offset_s: 0}, 0, 20);
+  const [kept] = proposeCandidates(audio, {}, {...opts, candidate_mode: "audio_attempts"}, attempts);
+  assert.equal(kept.id, "auto-2.4000-2.6000");
+  assert.deepEqual([kept.start_s, kept.end_s], [2.4, 2.6]);
+  assert.deepEqual(attemptWindow(kept, 20, [0, 20]), [1, 4.6]);
+});
+
+test("candidate grouping allows a one-second gap but keeps more distant suggestions separate", () => {
+  const audio = audioFixture([2, 2.2, 3.2, 3.4, 4.4001, 4.6]);
+  const context = {...attemptFixture(), events: [
+    {time_s: 2.5, window_start_s: 1.5, window_end_s: 3.5, score: .8},
+    {time_s: 4, window_start_s: 3, window_end_s: 5, score: .8}]};
+  const attempts = attemptFilterTimeline(context, {scale: 1, offset_s: 0}, 0, 20);
+  const kept = proposeCandidates(audio, {}, {...opts, candidate_mode: "audio_attempts"}, attempts);
+  assert.deepEqual(kept.map(row => row.start_s), [2, 4.4001]);
+  assert.equal(kept[0].attempt_cluster_count, 2);
+});
+
+test("candidate grouping never hides pairs across unscored regions or extends stronger model scores", () => {
+  const audio = audioFixture([2, 2.2, 2.4, 2.6]);
+  const settings = {...opts, candidate_mode: "audio_attempts"};
+  for (const ranges of [[[1, 2.2], [2.4, 19]], [[1, 2.2]]]) {
+    const attempts = attemptFilterTimeline({...attemptFixture(), scored_center_ranges_s: ranges}, {scale: 1, offset_s: 0}, 0, 20);
+    assert.equal(proposeCandidates(audio, {}, settings, attempts).length, 2);
+  }
+  const context = {...attemptFixture(), events: [
+    {...attemptFixture().events[0], score: .95},
+    {time_s: 3.5, window_start_s: 2.5, window_end_s: 4.5, score: .55}]};
+  const attempts = attemptFilterTimeline(context, {scale: 1, offset_s: 0}, 0, 20);
+  const audit = proposeCandidates(audioFixture([2.2, 2.4, 3.4, 3.6]), {},
+    {...settings, attempt_threshold: .9, show_filtered: true}, attempts);
+  assert.deepEqual(audit.map(row => row.attempt_filter), ["supported", "suppressed"]);
+  assert.ok(audit.every(row => !row.attempt_duplicate_of && !row.attempt_cluster_count));
+});
+
 test("learned events require model scores and map input windows through drift and media origin", () => {
   const context = {availability: "ready", threshold: .5, model_sha256: "model", events: [
     {time_s: 13.02, window_start_s: 12.01, window_end_s: 14.03, score: .8},
@@ -668,6 +728,40 @@ test("UI filter is reversible, keeps saved labels and drafts, and never saves re
   assert.equal(calls[0].interval.outcome, "make");
   get("filter-threshold").value = "2"; get("filter-threshold").oninput();
   assert.equal(get("candidates").children.length, 1, "a saved label survives even when every suggestion is filtered");
+});
+
+test("UI learned filtering reviews a nearby cluster once, plays it fully, and retains edited alternatives", async t => {
+  const {get, calls, frame} = await controller(t, {onsets: [2, 2.2, 2.4, 2.6, 2.8, 3, 8, 8.5],
+    sensor: {attempts: {...attemptFixture(), events: [...attemptFixture().events,
+      {time_s: 8.2, window_start_s: 7.2, window_end_s: 9.2, score: .8}]}}});
+  get("candidate-mode").value = "audio_attempts"; get("candidate-mode").oninput();
+  assert.equal(get("candidates").children.length, 2);
+  assert.match(get("motion-status").textContent, /2 nearby alternatives grouped/);
+  assert.match(get("candidates").children[0].children[1].textContent, /3 suggestions grouped/);
+  await get("audition").click();
+  assert.equal(get("video").currentTime, 1);
+  get("video").currentTime = 4.5; frame();
+  assert.equal(get("video").paused, false, "playback includes the later contacts and follow-through");
+  get("video").currentTime = 5; frame();
+  assert.equal(get("video").paused, true);
+  await get("next").click();
+  assert.equal(Number(get("start").value), 8, "Next skips alternatives within the previous cluster");
+  get("show-filtered").checked = true; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 4);
+  assert.match(get("candidates").children[1].children[1].textContent, /grouped alternative/);
+  await get("candidates").children[1].click();
+  get("note").value = "keep this alternate pop"; get("note").oninput();
+  get("show-filtered").checked = false; get("show-filtered").oninput();
+  assert.equal(get("candidates").children.length, 3, "a human-edited alternative stays visible");
+  assert.equal(get("note").value, "keep this alternate pop");
+  assert.equal(calls.length, 0);
+  get("trick").value = "ollie"; get("trick").oninput();
+  get("outcome").value = "make"; get("outcome").oninput();
+  await get("save").click();
+  assert.equal(calls.length, 1);
+  assert.deepEqual([calls[0].interval.start_s, calls[0].interval.end_s], [2.4, 2.6]);
+  await init();
+  assert.equal(get("candidates").children.length, 2, "saved alternate and the later attempt survive reload");
 });
 
 test("UI learned filter preserves drafts and labels, saves settings, and restores them on reload", async t => {

@@ -56,7 +56,7 @@ export function attemptEventTimeline(context, mapping, origin, duration) {
 }
 
 export function groupAttemptEvents(events, scoredRanges = null, gap = 1) {
-  // Group for navigation only. Keep the original detections for score filtering;
+  // Keep the original detections for score filtering;
   // a strong peak must not lend its score to a weaker neighboring window.
   const groups = [];
   for (const event of [...events].sort((a, b) => a.earliest_s - b.earliest_s)) {
@@ -105,6 +105,40 @@ export function screenAttemptCandidates(pairs, attempts, threshold = .5) {
   });
 }
 
+function consolidateAttemptCandidates(pairs, attempts, threshold, gap = 1) {
+  // Screen individual windows first, then collapse nearby supported audio pairs.
+  // Group scores must never promote a weak neighbor or an unscored interval.
+  const events = groupAttemptEvents((attempts.events || []).filter(event => event.score >= threshold),
+    attempts.scored_ranges || []);
+  const clusters = [];
+  for (const pair of pairs.filter(row => row.attempt_filter === "supported")) {
+    const coverage = attempts.scored_ranges.findIndex(([lo, hi]) => pair.start_s >= lo && pair.end_s <= hi);
+    const group = events.findIndex(event => event.detections.some(detection =>
+      pair.start_s < detection.latest_s && pair.end_s > detection.earliest_s));
+    const previous = clusters.at(-1);
+    if (coverage >= 0 && group >= 0 && previous?.coverage === coverage && previous.group === group &&
+        pair.start_s <= previous.end_s + gap + 1e-7) {
+      previous.pairs.push(pair);
+      previous.end_s = Math.max(previous.end_s, pair.end_s);
+    } else clusters.push({pairs: [pair], group, coverage, start_s: pair.start_s, end_s: pair.end_s});
+  }
+  for (const cluster of clusters.filter(row => row.pairs.length > 1)) {
+    // Keep an original audio pair and its ID; grouping only adds review context.
+    const [primary, ...alternatives] = [...cluster.pairs].sort((a, b) =>
+      b.score - a.score || b.attempt_score - a.attempt_score || a.start_s - b.start_s);
+    primary.attempt_cluster_start_s = cluster.start_s;
+    primary.attempt_cluster_end_s = cluster.end_s;
+    primary.attempt_cluster_count = cluster.pairs.length;
+    primary.filter_reason += ` ${cluster.pairs.length} nearby audio suggestions grouped; playback covers the whole cluster. Show filtered suggestions to inspect alternatives.`;
+    for (const alternative of alternatives) {
+      alternative.attempt_filter = "suppressed";
+      alternative.attempt_duplicate_of = primary.id;
+      alternative.filter_reason = "Nearby alternative for the same potential attempt; grouped with another audio suggestion. Kept in Show filtered suggestions for review.";
+    }
+  }
+  return pairs;
+}
+
 const attemptEventKinds = [["potential_attempt", "Potential attempt", "#c9f887"]];
 const boardEventKinds = [
   ["free_fall", "Free-fall", "#bdacff"],
@@ -141,7 +175,8 @@ export function screenAudioCandidates(pairs, motion, threshold = .4) {
 export function proposeCandidates(audio, motion, opts, attempts = {unavailable_reason: "Attempt model is unavailable."}) {
   const audioPairs = proposePairs(audio.onsets, audio.strength, audio.step_s, opts);
   if (opts.candidate_mode === "audio_attempts") {
-    return screenAttemptCandidates(audioPairs, attempts, opts.attempt_threshold ?? .5)
+    const threshold = opts.attempt_threshold ?? .5;
+    return consolidateAttemptCandidates(screenAttemptCandidates(audioPairs, attempts, threshold), attempts, threshold)
       .filter(pair => opts.show_filtered || pair.attempt_filter !== "suppressed");
   }
   if (opts.candidate_mode === "audio_filtered") {
@@ -201,8 +236,8 @@ export function attemptWindow(pair, duration, coverage, reviewed = []) {
     if (other.label_end_s <= pair.start_s) lo = Math.max(lo, Math.ceil(other.label_end_s * 1000) / 1000);
     if (other.label_start_s >= pair.end_s) hi = Math.min(hi, Math.floor(other.label_start_s * 1000) / 1000);
   }
-  const start = pair.label_start_s ?? Math.max(lo, pair.start_s - 1);
-  const end = pair.label_end_s ?? Math.min(hi, pair.end_s + 2);
+  const start = pair.label_start_s ?? Math.max(lo, Math.min(pair.start_s, pair.attempt_cluster_start_s ?? pair.start_s) - 1);
+  const end = pair.label_end_s ?? Math.min(hi, Math.max(pair.end_s, pair.attempt_cluster_end_s ?? pair.end_s) + 2);
   return validInterval(start, end, duration) && start >= coverageLo && end <= coverageHi ? [start, end] : null;
 }
 
@@ -370,8 +405,10 @@ export async function init() {
       detail.textContent = row.edited ? "unsaved" : row.label_stale ? "review alignment" : row.outcome === "background" ? backgroundName(row) : row.outcome ? `${row.trick || "trick"} · ${row.outcome}` : row.status === "rejected" ? "skipped" : evidence(row) || "unlabeled";
       if (!row.label_id && row.status !== "rejected") {
         if (row.attempt_score != null) detail.textContent += ` · attempt score ${row.attempt_score.toFixed(2)}`;
-        if (row.motion_filter === "suppressed" || row.attempt_filter === "suppressed") detail.textContent += " · filtered";
+        if (row.attempt_duplicate_of) detail.textContent += " · grouped alternative";
+        else if (row.motion_filter === "suppressed" || row.attempt_filter === "suppressed") detail.textContent += " · filtered";
         else if (row.attempt_filter === "unchecked") detail.textContent += " · model unchecked";
+        if (row.attempt_cluster_count > 1) detail.textContent += ` · ${row.attempt_cluster_count} suggestions grouped`;
       }
       if (needsReview(row) && overlappingLabels(row, windowFor(row), reviewed).length) detail.textContent += " · overlaps saved";
       button.disabled = saving;
@@ -417,6 +454,7 @@ export async function init() {
     const filterKey = modelFilter ? "attempt_filter" : "motion_filter";
     const allProposals = proposeCandidates(audio, motion, {...opts, show_filtered: true}, attempts);
     const suppressed = allProposals.filter(pair => pair[filterKey] === "suppressed").length;
+    const duplicates = allProposals.filter(pair => pair.attempt_duplicate_of).length;
     const unchecked = allProposals.filter(pair => pair[filterKey] === "unchecked").length;
     const proposals = allProposals.filter(pair => opts.show_filtered || pair[filterKey] !== "suppressed");
     $("filter-controls").hidden = !modelFilter && opts.candidate_mode !== "audio_filtered";
@@ -424,14 +462,14 @@ export async function init() {
     $("attempt-threshold-field").hidden = !modelFilter;
     $("attempt-threshold-value").textContent = opts.attempt_threshold.toFixed(2);
     $("filter-help").textContent = modelFilter
-      ? "Keeps audio pairs that overlap a model detection meeting this score. Higher scores hide more suggestions and can miss real attempts. Scores are not confidence percentages. Unscored regions stay visible; hidden suggestions remain unlabeled."
+      ? "Keeps audio pairs that overlap a model detection meeting this score, grouping nearby suggestions for the same attempt with up to a 1 s gap. Show filtered suggestions to inspect alternatives. Higher scores can miss real attempts; scores are not confidence percentages. Unscored regions stay visible; hidden suggestions remain unlabeled."
       : "Higher values hide more audio candidates and may hide real attempts. Missing or unreliable IMU coverage keeps a candidate visible. Hidden suggestions remain unlabeled.";
     $("motion-threshold-field").hidden = opts.candidate_mode !== "audio_motion";
     $("filter-threshold-value").textContent = opts.filter_threshold.toFixed(2);
     $("motion-threshold-value").textContent = opts.motion_threshold.toFixed(2);
     $("motion-status").textContent = opts.candidate_mode === "audio" ? "Using audio suggestions only."
       : modelFilter ? (attempts.unavailable_reason ? `${attempts.unavailable_reason} Keeping all audio candidates.`
-        : `${suppressed} of ${allProposals.length} audio candidates ${opts.show_filtered ? "marked as filtered" : "hidden by attempt model"}; ${unchecked} kept without complete model coverage. Minimum score ${opts.attempt_threshold.toFixed(2)}. Saved labels and edits stay visible.`)
+        : `${suppressed} of ${allProposals.length} audio candidates ${opts.show_filtered ? "marked as filtered" : "hidden by attempt model"}${duplicates ? ` (including ${duplicates} nearby alternatives grouped)` : ""}; ${unchecked} kept without complete model coverage. Minimum score ${opts.attempt_threshold.toFixed(2)}. Saved labels and edits stay visible.`)
       : !alignmentMatches() ? "Match LED flashes to enable motion suggestions. Using audio only."
       : data.sensor.motion?.unavailable_reason || (!data.sensor.motion ? "No motion features available. Using audio only."
       : opts.candidate_mode === "audio_filtered" ? `${suppressed} of ${allProposals.length} audio candidates ${opts.show_filtered ? "marked as filtered" : "hidden by motion filter"}; ${unchecked} kept without enough IMU coverage. Show filtered suggestions to review them. No labels are assigned by the filter.`
