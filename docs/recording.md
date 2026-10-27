@@ -110,7 +110,9 @@ off. `/status` should report `led_count=5`, `led_format="GRB"` and `led_pin=5`.
 
 See the [editable Fritzing project](../hardware/fritzing/README.md) for a
 connector-level drawing, with a bundled-parts `.fzz` file. Its artwork still
-shows the old rigid stick; use the replacement strip's DIN/power labels. The
+shows the old rigid stick; use the replacement strip's DIN/power labels. The SD
+artwork and [soldering guide](../hardware/fritzing/sd-4899-wiring.png) now show the
+Adafruit 4899 512 MB board. The
 [compact R10 enclosure](../hardware/enclosure/compact/README.md) has a removable
 carrier for two flexible pixels and fit samples for the provisional dimensions.
 Use `SYNC_LED_COUNT=2 ./flash-feather.sh` if shortening the strip to two pixels;

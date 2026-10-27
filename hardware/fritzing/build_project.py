@@ -25,7 +25,7 @@ SOURCE_PARTS = {
     "feather": "Adafruit ESP32-S3 Feather.fzpz",
     "imu": "Adafruit LSM6DSO32.fzpz",
     "stick": "Adafruit NeoPixel Stick.fzpz",
-    "sd": "Adafruit MicroSD card breakout board.fzpz",
+    "sd": "Adafruit SPI Flash SD Card.fzpz",
 }
 COLORS = {
     "battery": "#cf202f",
@@ -263,8 +263,8 @@ def parts():
             },
         ),
         (
-            "sd", 6, "U3 · Adafruit 254 microSD",
-            {"breadboard": (620, 470), "schematic": (730, 300), "pcb": (430, 350)},
+            "sd", 6, "U3 · Adafruit 4899 · 512 MB",
+            {"breadboard": (620, 480), "schematic": (730, 300), "pcb": (430, 350)},
         ),
     ]
     result = {}
@@ -309,13 +309,14 @@ def connection(parent, connector, layer):
 def build(output, replace_generated=False):
     output.mkdir(parents=True, exist_ok=True)
     targets = [output / (NAME + suffix) for suffix in (".fz", ".fzz", ".svg")]
+    targets.append(output / "sd-4899-wiring.svg")
     if not replace_generated and any(target.exists() for target in targets):
         raise FileExistsError(
             "Use a new output directory; existing editable projects are never overwritten."
         )
     ps = parts()
     root = ET.Element("module", fritzingVersion="1.0.5")
-    element(root, "title", "Skate Judge — direct-LiPo first prototype")
+    element(root, "title", "Skate Judge — direct LiPo / 4899 soldered SD")
     views = element(root, "views")
     for view in ("breadboard", "schematic", "pcb"):
         element(
@@ -461,18 +462,18 @@ def build(output, replace_generated=False):
             "scl",
             [(220, 287.7895), (280, 277.5168)],
         ),
-        ("3.3 V → SD 3V (regulated supply)", "feather", "connector61", "sd", "connector33", "3v3",
-         [(354.55, 390), (770, 390), (770, 537.95)]),
-        ("Common ground → SD GND", "feather", "connector60", "sd", "connector34", "ground",
-         [(363.55, 380), (760, 380), (760, 528.95)]),
-        ("SCK / GPIO36 → SD CLK", "feather", "connector53", "sd", "connector35", "sck",
-         [(426.55, 420), (790, 420), (790, 519.95)]),
-        ("MISO / GPIO37 ← SD DO", "feather", "connector51", "sd", "connector36", "miso",
-         [(444.55, 410), (800, 410), (800, 510.95)]),
-        ("MOSI / GPIO35 → SD DI", "feather", "connector52", "sd", "connector37", "mosi",
-         [(435.55, 400), (810, 400), (810, 501.95)]),
-        ("GPIO10 → SD CS", "feather", "connector70", "sd", "connector38", "cs",
-         [(426.55, 185), (820, 185), (820, 492.95)]),
+        ("Feather 3.3 V → SD VIN", "feather", "connector61", "sd", "connector13", "3v3",
+         [(354.55, 390), (770, 390), (770, 590), (631.25, 590)]),
+        ("Common ground → SD GND", "feather", "connector60", "sd", "connector15", "ground",
+         [(363.55, 380), (760, 380), (760, 580), (649.25, 580)]),
+        ("SCK / GPIO36 → SD SCK", "feather", "connector53", "sd", "connector16", "sck",
+         [(426.55, 420), (790, 420), (790, 570), (658.25, 570)]),
+        ("MISO / GPIO37 ← SD MISO", "feather", "connector51", "sd", "connector17", "miso",
+         [(444.55, 410), (800, 410), (800, 560), (667.25, 560)]),
+        ("MOSI / GPIO35 → SD MOSI", "feather", "connector52", "sd", "connector18", "mosi",
+         [(435.55, 400), (810, 400), (810, 550), (676.25, 550)]),
+        ("GPIO10 → SD CS", "feather", "connector70", "sd", "connector19", "cs",
+         [(426.55, 185), (820, 185), (820, 545), (685.25, 545)]),
     ]
     wire_id = 100
     preview_wires = []
@@ -552,7 +553,7 @@ def build(output, replace_generated=False):
             25,
             720,
             50,
-            "SKATE JUDGE — DIRECT-LiPo FIRST PROTOTYPE",
+            "SKATE JUDGE — DIRECT LiPo / 4899 SOLDERED SD",
             "Editable wiring layout · power disconnected while wiring · not a production PCB design",
         ),
         (
@@ -573,8 +574,8 @@ def build(output, replace_generated=False):
         ),
         (
             55, 465, 460, 110,
-            "ADAFRUIT 254 — SPI microSD",
-            "Feather 3.3V to 3V; GND to GND. SCK/GPIO36 to CLK, MOSI/GPIO35 to DI, MISO/GPIO37 to DO, GPIO10 to CS. Leave 5V and CD unconnected. Use short wires. Insert a FAT32 card before power-on. Firmware selects SD if mounted, otherwise internal flash. Stop and save before switching off or removing the card.",
+            "ADAFRUIT 4899 — 512 MB SOLDERED SD",
+            "Feather 3.3V to VIN; GND to GND. SCK/GPIO36 to SCK, MOSI/GPIO35 to MOSI, MISO/GPIO37 to MISO, GPIO10 to CS. Leave SD 3V3 unconnected (regulator output). Use Feather power, not IMU power. No removable card: download over USB or Wi-Fi. Verify storage=sd, record and download a short test. Stop/save before power-off.",
         ),
         (
             55,
@@ -615,6 +616,7 @@ def build(output, replace_generated=False):
     )
     archive(targets[1], members)
     preview(targets[2], ps, preview_wires, notes)
+    sd_wiring_preview(targets[3], ps["sd"])
     return targets[1]
 
 
@@ -718,6 +720,78 @@ def preview(path, ps, wires, notes):
     path.write_bytes(xml_bytes(svg))
 
 
+def sd_wiring_preview(path, sd):
+    """A readable soldering reference with the same official, unrotated SD artwork."""
+    svg = ET.Element(
+        "svg", xmlns="http://www.w3.org/2000/svg", viewBox="0 0 1100 780",
+        width="1650", height="1170",
+    )
+    element(svg, "title", "Adafruit 4899 512 MB SD wiring to Feather ESP32-S3")
+    element(svg, "rect", width=1100, height=780, fill="white")
+
+    def label(x, y, text, size=18, bold=False, color="#202a35"):
+        element(svg, "text", text, x=x, y=y, fill=color,
+                **{"font-family": "Arial", "font-size": size,
+                   "font-weight": "bold" if bold else "normal"})
+
+    label(40, 48, "4899 · 512 MB SD wiring", 30, True)
+    label(40, 80, "Feather ESP32-S3 · disconnect USB and battery before soldering", 18)
+    label(40, 135, "FEATHER CONNECTION", 16, True)
+    label(422, 135, "NEW SD PIN", 16, True)
+    rows = [
+        ("3.3V", "VIN", "3v3", "connector13"),
+        ("GND", "GND", "ground", "connector15"),
+        ("SCK / GPIO36", "SCK", "sck", "connector16"),
+        ("MO / GPIO35", "MOSI", "mosi", "connector18"),
+        ("MI / GPIO37", "MISO", "miso", "connector17"),
+        ("10 / GPIO10", "CS", "cs", "connector19"),
+    ]
+    for i, (feather_pin, sd_pin, color, connector) in enumerate(rows):
+        y = 180 + i * 46
+        element(svg, "rect", x=40, y=y - 27, width=510, height=40, rx=5,
+                fill="#f3f5f7")
+        element(svg, "circle", cx=59, cy=y - 7, r=6, fill=COLORS[color])
+        label(80, y, feather_pin, 20)
+        label(370, y, "→", 20)
+        label(422, y, sd_pin, 20, True)
+
+    label(680, 135, "SD BOARD · COMPONENT SIDE", 16, True)
+    node = ET.fromstring(sd.svg_bytes("breadboard"))
+    w, h = svg_size(node)
+    vx, vy, vw, vh = map(float, node.get("viewBox").split())
+    node.tag = "{http://www.w3.org/2000/svg}g"
+    node.attrib.clear()
+    node.set("transform", f"translate(680,155) scale({4*w/vw},{4*h/vh}) translate({-vx},{-vy})")
+    svg.append(node)
+
+    def pin_position(connector):
+        point = sd.point(connector)
+        origin = sd.positions["breadboard"]
+        return 680 + 4 * (point[0] - origin[0]), 155 + 4 * (point[1] - origin[1])
+
+    for _, _, color, connector in rows:
+        x, y = pin_position(connector)
+        element(svg, "circle", cx=x, cy=y, r=13, fill="none",
+                stroke=COLORS[color], **{"stroke-width": 3})
+    x, y = pin_position("connector14")
+    element(svg, "polyline", points=f"{x},{y+14} {x},449 680,449",
+            fill="none", stroke="#697786", **{"stroke-width": 1.5})
+    label(680, 476, "3V3: leave unconnected (output)", 18, True)
+
+    element(svg, "rect", x=40, y=505, width=1020, height=115, rx=8, fill="#fff6dc")
+    label(60, 534, "POWER AND FIRST CHECK", 16, True)
+    label(60, 561, "Power VIN from the Feather’s main 3.3V rail; do not use IMU 3Vo or switched VIN.")
+    label(60, 585, "IMU GND can share ground. Keep SPI wires short and connect them to the Feather.")
+    label(60, 609, "Verify storage=sd, record a short test, and download it over USB or Wi-Fi. Stop/save before power-off.", 17)
+
+    element(svg, "rect", x=40, y=638, width=1020, height=100, rx=8, fill="#edf4fa")
+    label(60, 666, "REUSING THE OLD 254 BOARD’S WIRES", 16, True)
+    label(60, 693, "Old 3V → VIN  ·  CLK → SCK  ·  DI → MOSI  ·  DO → MISO  ·  GND → GND  ·  CS → CS", 18)
+    label(60, 720, "Match labels, not header positions. The 4899 has soldered storage: there is no removable card.", 17)
+    label(40, 763, "Board artwork: Adafruit · CC BY-SA 3.0 · Connection reference, not a mounting template", 13)
+    path.write_bytes(xml_bytes(svg))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -747,14 +821,16 @@ def main():
         from PyQt6.QtWidgets import QApplication
 
         app = QApplication([])
-        renderer = QSvgRenderer(str(result.with_suffix(".svg")))
-        image = QImage(1700, 1400, QImage.Format.Format_ARGB32)
-        image.fill(0xFFFFFFFF)
-        painter = QPainter(image)
-        renderer.render(painter, QRectF(0, 0, 1700, 1400))
-        painter.end()
-        if not image.save(str(result.with_suffix(".png"))):
-            raise RuntimeError("Could not save preview")
+        for svg_path in (result.with_suffix(".svg"), args.output / "sd-4899-wiring.svg"):
+            renderer = QSvgRenderer(str(svg_path))
+            size = renderer.defaultSize()
+            image = QImage(size, QImage.Format.Format_ARGB32)
+            image.fill(0xFFFFFFFF)
+            painter = QPainter(image)
+            renderer.render(painter, QRectF(0, 0, size.width(), size.height()))
+            painter.end()
+            if not image.save(str(svg_path.with_suffix(".png"))):
+                raise RuntimeError("Could not save preview")
         app.quit()
     print(result)
 

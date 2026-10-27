@@ -105,6 +105,10 @@ connecting by **pin labels**, not the old breakout's physical pin order. See
 [the existing SD wiring](../../../docs/onboard-recording.md#sd-card-and-internal-flash) and
 [Adafruit's pinouts](https://learn.adafruit.com/adafruit-spi-flash-sd-card/pinouts).
 
+The [updated circuit](../../fritzing/README.md) and
+[SD soldering close-up](../../fritzing/sd-4899-wiring.png) show the 4899's actual
+header order and the old-to-new wire mapping.
+
 | Feather ESP32-S3 | Adafruit 4899 |
 | --- | --- |
 | 3.3V | VIN |
@@ -115,6 +119,9 @@ connecting by **pin labels**, not the old breakout's physical pin order. See
 | 10 / GPIO10 | CS |
 
 Do not connect the breakout's 3V3 regulator **output** as though it were VIN.
+Power it from the Feather's main 3.3 V rail; the IMU's supply is switched during
+sensor initialization/rechecks. IMU GND can share ground, but use the Feather
+connections above for the SPI signals.
 This new board has not been bench-validated with this logger: verify `storage=sd`,
 record a short batch and download it before riding; the logger can otherwise
 fall back to its much smaller internal flash. Do not apply the old removable-card

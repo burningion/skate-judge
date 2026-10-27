@@ -49,7 +49,9 @@ tests/                 sensor/video integrity, local HTTP, and webcam controller
 ## Your hardware and pinout
 
 An [editable Fritzing wiring project](hardware/fritzing/README.md) is included,
-with bundled parts and a preview of the direct-LiPo prototype.
+with bundled parts and a preview of the direct-LiPo prototype using the new
+Adafruit 4899 512 MB SD board. The [SD soldering guide](hardware/fritzing/sd-4899-wiring.png)
+shows its pin labels and how to reuse the old SD wires.
 
 A [parametric OpenSCAD enclosure](hardware/enclosure/compact/README.md) includes PETG print
 files, a screw-mounted deck base, a Velcro alternative, and a recessed LED mount

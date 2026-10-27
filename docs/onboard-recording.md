@@ -59,40 +59,47 @@ physical LED visibility and real skating impacts still require video review.
 
 ## SD card and internal flash
 
-**2026-10-26 hardware replacement:** the new Adafruit 4899 / Mouser 485-4899 is
-512 MB of soldered SD-protocol storage. Its [compact enclosure guide](../hardware/enclosure/compact/README.md#storage-and-firmware)
-includes the new pin labels and two-pixel LED configuration. Keep the existing
-SPI pin assignments; bench-check this board before relying on it. The removable
-card instructions and recorded validation results below refer to the old 254.
+The current **Adafruit 4899 / Mouser 485-4899** has 512 MB of soldered SD-protocol
+storage, replacing the removable-card 254 board on 2026-10-26. The logger uses the
+same SPI SD library and pin assignments. The [editable Fritzing design](../hardware/fritzing/skate-judge-direct-lipo.fzz)
+and [SD soldering guide](../hardware/fritzing/sd-4899-wiring.png) now show these connections:
 
-The logger now prefers an **Adafruit 254 microSD breakout board+** with a mounted
-card. The [editable Fritzing design](../hardware/fritzing/skate-judge-direct-lipo.fzz)
-includes these connections:
-
-| Feather ESP32-S3 | Adafruit 254 |
+| Feather ESP32-S3 | Adafruit 4899 |
 | --- | --- |
-| `3.3V` | `3V` |
+| `3.3V` | `VIN` |
 | `GND` | `GND` |
-| `SCK` / GPIO36 | `CLK` |
-| `MO` / GPIO35 | `DI` |
-| `MI` / GPIO37 | `DO` |
+| `SCK` / GPIO36 | `SCK` |
+| `MO` / GPIO35 | `MOSI` |
+| `MI` / GPIO37 | `MISO` |
 | `10` / GPIO10 | `CS` |
 
-Leave `5V` and `CD` unconnected. The `3V` pin accepts a regulated 3.3 V supply
-([Adafruit confirmation](https://forums.adafruit.com/viewtopic.php?p=755866));
-do not connect it to BAT. The main Feather 3.3 V rail powers the card, while the
-IMU remains on switched STEMMA QT power. Use short SPI wires.
+Leave the 4899's **3V3 regulator output unconnected**; use **VIN** for power
+([Adafruit pinout](https://learn.adafruit.com/adafruit-spi-flash-sd-card/pinouts)).
+The main Feather 3.3 V rail powers storage, while the IMU remains on switched
+STEMMA QT power. Do not use IMU `3Vo` or `VIN` for SD power: sensor initialization
+and rechecks interrupt that supply. IMU `GND` can share ground. Use short SPI wires.
 
-Use a **FAT32** card, such as the previously selected 32 GB SanDisk High Endurance.
-Insert it with power off, then boot. The firmware mounts without formatting and
+There is no removable card on the 4899; download recordings over USB or Wi-Fi.
+Reuse the old board's wires by function: `3V → VIN`, `CLK → SCK`, `DI → MOSI`,
+`DO → MISO`; `GND` and `CS` retain their names. The physical pin order differs.
+The [compact enclosure guide](../hardware/enclosure/compact/README.md#storage-and-firmware)
+also covers the two-pixel LED configuration. The 4899 still needs a physical
+bench check: confirm `storage=sd`, record a short batch and verify its download.
+Recorded validation results below apply to the old 254 and its removable card.
+
+For the **legacy 254 only**, use a FAT32 card such as the previously selected
+32 GB SanDisk High Endurance; insert/remove it with power off. Its old power
+connection was Feather `3.3V` to `3V`, leaving `5V` and `CD` unconnected.
+
+The firmware mounts storage without formatting and
 creates `/skate-judge/`; recordings are `/skate-judge/<32-character-id>.bin`.
-No card, a mount failure, or an unusable recording directory selects internal
+Unavailable SD storage, a mount failure, or an unusable recording directory selects internal
 flash instead. Status and the recorder show `storage: "sd"` or `"flash"`,
 `sd_ready`, `flash_ready`, free bytes, and a fallback warning. Selection remains
 fixed until reboot. Temporary SD write/flush failures trigger on-board recovery
 while acquisition continues. It does not start a second file on another medium. There is no
-hot-swap support. A read-only/full card that mounts can still fail at recording
-start; correct that issue or power down and remove it to use flash.
+hot-swap support. Read-only/full SD storage that mounts can still fail at recording
+start; correct that issue or explicitly disable SD to use flash.
 
 The recorder displays a prominent **SD card not in use** warning above the
 storage estimate when the board reports internal flash with SD unavailable.
@@ -131,20 +138,23 @@ These results establish SD operation for this USB bench setup; battery-only
 operation and skating impacts still need testing. Local raw files, status samples,
 imports, and the full report are under `.build/board-check-20260921/`.
 
-Repeat the bench check after changing the card, wiring, or firmware:
+Repeat the bench check after changing the storage board/card, wiring, or firmware:
 
 1. Run `uv run --offline capture/onboard.py --board serial:auto status` and
-   confirm `storage` is `sd` and free space matches the card, including above 4 GiB.
+   confirm `storage` is `sd` and free space matches the device's capacity and existing
+   files. The 4899 is nominally 512 MB; the old 32 GB card also exercises capacities above 4 GiB.
 2. Record a five-minute bench batch, exercise several sync flashes, then stop,
    download, and import. Check `onboard_quality.usable`, normal measured rates,
    and zero read errors/FIFO overruns. Repeat on battery power.
 3. Inspect `storage_queue_peak_bytes` against `storage_buffer_bytes` (32768),
    and `storage_max_write_us` / `storage_max_flush_us` in status. The footer
    includes timing through the pre-footer flush; status includes the final flush.
-   These measured pauses and queue headroom establish whether the actual card
+   These measured pauses and queue headroom establish whether the actual storage
    and wiring keep up.
-4. Power off, remove the card, reboot and confirm the explicit flash fallback.
-   Existing flash recordings remain listed/downloadable with the card installed.
+4. For the legacy 254, power off, remove the card, reboot and confirm the explicit
+   flash fallback. The 4899 has no removable card; an explicit `SKATE_SD=0` build
+   selects internal flash if that check is needed. Existing flash recordings
+   remain listed/downloadable when SD storage is enabled.
 
 ## Internal flash capacity
 

@@ -1,0 +1,498 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns:ns0="http://www.w3.org/2000/svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" width="1650" height="1170">
+  <title>Adafruit 4899 512 MB SD wiring to Feather ESP32-S3</title>
+  <rect width="1100" height="780" fill="white" />
+  <text x="40" y="48" fill="#202a35" font-family="Arial" font-size="30" font-weight="bold">4899 · 512 MB SD wiring</text>
+  <text x="40" y="80" fill="#202a35" font-family="Arial" font-size="18" font-weight="normal">Feather ESP32-S3 · disconnect USB and battery before soldering</text>
+  <text x="40" y="135" fill="#202a35" font-family="Arial" font-size="16" font-weight="bold">FEATHER CONNECTION</text>
+  <text x="422" y="135" fill="#202a35" font-family="Arial" font-size="16" font-weight="bold">NEW SD PIN</text>
+  <rect x="40" y="153" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="173" r="6" fill="#e37a12" />
+  <text x="80" y="180" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">3.3V</text>
+  <text x="370" y="180" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="180" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">VIN</text>
+  <rect x="40" y="199" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="219" r="6" fill="#333333" />
+  <text x="80" y="226" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">GND</text>
+  <text x="370" y="226" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="226" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">GND</text>
+  <rect x="40" y="245" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="265" r="6" fill="#9464b5" />
+  <text x="80" y="272" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">SCK / GPIO36</text>
+  <text x="370" y="272" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="272" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">SCK</text>
+  <rect x="40" y="291" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="311" r="6" fill="#278d9d" />
+  <text x="80" y="318" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">MO / GPIO35</text>
+  <text x="370" y="318" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="318" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">MOSI</text>
+  <rect x="40" y="337" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="357" r="6" fill="#d05e9c" />
+  <text x="80" y="364" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">MI / GPIO37</text>
+  <text x="370" y="364" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="364" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">MISO</text>
+  <rect x="40" y="383" width="510" height="40" rx="5" fill="#f3f5f7" />
+  <circle cx="59" cy="403" r="6" fill="#6b6eab" />
+  <text x="80" y="410" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">10 / GPIO10</text>
+  <text x="370" y="410" fill="#202a35" font-family="Arial" font-size="20" font-weight="normal">→</text>
+  <text x="422" y="410" fill="#202a35" font-family="Arial" font-size="20" font-weight="bold">CS</text>
+  <text x="680" y="135" fill="#202a35" font-family="Arial" font-size="16" font-weight="bold">SD BOARD · COMPONENT SIDE</text>
+  <ns0:g transform="translate(680,155) scale(5.0,5.0) translate(-0.0,-0.0)">
+    <ns0:desc>
+      <ns0:referenceFile>SPI SD rev A_breadboard.svg</ns0:referenceFile>
+    </ns0:desc>
+    <ns0:g>
+      <ns0:g id="icon" gorn="0.0.0">
+        <ns0:path d="M0,43.2v-36C0,3.2235,3.2235,0,7.2,0c0,0,0,0,0,0H54c3.9765,0,7.2,3.2235,7.2,7.2c0,0,0,0,0,0v36c0,3.9765-3.2235,7.2-7.2,7.2c0,0,0,0,0,0H7.2C3.2235,50.4,0,47.1765,0,43.2C0,43.2,0,43.2,0,43.2 M7.5827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173S9.7828,41.7827,9,41.7827S7.5827,42.4172,7.5827,43.2z M14.7827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173s-0.6346-1.4173-1.4173-1.4173C15.4173,41.7827,14.7827,42.4172,14.7827,43.2z M21.9827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173s-0.6346-1.4173-1.4173-1.4173C22.6173,41.7827,21.9827,42.4172,21.9827,43.2z M29.1827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173s-0.6346-1.4173-1.4173-1.4173C29.8173,41.7827,29.1827,42.4172,29.1827,43.2z M36.3827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173s-0.6346-1.4173-1.4173-1.4173S36.3827,42.4172,36.3827,43.2z M43.5827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173c0.7828,0,1.4173-0.6346,1.4173-1.4173S45.7828,41.7827,45,41.7827S43.5827,42.4172,43.5827,43.2z M50.7827,43.2c0,0.7828,0.6346,1.4173,1.4173,1.4173s1.4173-0.6346,1.4173-1.4173s-0.6346-1.4173-1.4173-1.4173S50.7827,42.4172,50.7827,43.2z M3.6567,7.2c-0.0033,1.9569,1.5804,3.546,3.5373,3.5493s3.546-1.5804,3.5493-3.5373c0-0.004,0-0.008,0-0.012c0.0033-1.9569-1.5804-3.546-3.5374-3.5493C5.249,3.6475,3.66,5.2312,3.6567,7.1881C3.6567,7.1921,3.6567,7.196,3.6567,7.2z M50.4567,7.2c-0.0034,1.9569,1.5802,3.5461,3.5371,3.5495s3.5461-1.5802,3.5495-3.5371c0-0.0041,0-0.0083,0-0.0124c0.0034-1.9569-1.5802-3.5461-3.5371-3.5495c-1.9569-0.0034-3.5461,1.5802-3.5495,3.5371C50.4567,7.1917,50.4567,7.1958,50.4567,7.2z" />
+        <ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 5.3769 40.1904)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">VIN</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 12.5769 49.5504)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">3V3</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 19.7769 40.1904)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">GND</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 26.9769 49.5504)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">SCK</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 39.8093 49.5504)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">MOSI</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 49.7846 40.1904)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">CS</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1 0 0 1 32.9693 40.1904)">
+              <ns0:text font-family="'OCRA'" font-size="2.67264" fill="#FFFFFF">MISO</ns0:text>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g transform="matrix(1, 0, 0, 1, 0, -2.7144)">
+              <ns0:g>
+                <ns0:g transform="matrix(1 0 0 1 21.5426 10.2744)">
+                  <ns0:text font-family="'OCRA'" font-size="4.34304" fill="#FFFFFF">SPI SMT</ns0:text>
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+            <ns0:g transform="matrix(1, 0, 0, 1, 0, 2.7144)">
+              <ns0:g>
+                <ns0:g transform="matrix(1 0 0 1 21.5426 10.2744)">
+                  <ns0:text font-family="'OCRA'" font-size="4.34304" fill="#FFFFFF">SD Card</ns0:text>
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="36.36" stroke-linecap="round" stroke-width="0.864" y1="33.7861" x1="36.36" fill="none" y2="36.0539" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="9.72" stroke-linecap="round" stroke-width="0.864" y1="17.28" x1="9.72" fill="none" y2="20.16" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="10.08" stroke-linecap="round" stroke-width="0.864" y1="32.4" x1="10.08" fill="none" y2="35.28" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="48.96" stroke-linecap="round" stroke-width="0.864" y1="36.0539" x1="48.96" fill="none" y2="33.7861" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:circle cy="7.2" stroke="#FFFFFF" stroke-width="0.576" r="5.6693" fill="none" cx="7.2" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:circle cy="7.2" stroke="#FFFFFF" stroke-width="0.576" r="5.6693" fill="none" cx="54" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="29.808" stroke-linecap="round" stroke-width="0.576" y1="18.7291" x1="29.808" fill="none" y2="30.9509" />
+              <ns0:line stroke="#FFFFFF" x2="15.552" stroke-linecap="round" stroke-width="0.576" y1="30.5909" x1="15.552" fill="none" y2="18.7291" />
+              <ns0:circle cy="28.296" stroke="#FFFFFF" stroke-width="0.576" r="1.296" fill="none" cx="18.072" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="6.7323" stroke-linecap="round" stroke-width="0.576" y1="21.6028" x1="11.2677" fill="none" y2="21.6028" />
+              <ns0:line stroke="#FFFFFF" x2="6.7323" stroke-linecap="round" stroke-width="0.576" y1="30.9572" x1="11.2677" fill="none" y2="30.9572" />
+              <ns0:line stroke="#FFFFFF" x2="11.9764" stroke-linecap="round" stroke-width="0.576" y1="25.1461" x1="11.9764" fill="none" y2="27.4139" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g>
+            <ns0:g>
+              <ns0:line stroke="#FFFFFF" x2="32.9414" stroke-linecap="round" stroke-width="0.576" y1="32.2639" x1="55.6186" fill="none" y2="32.2639" />
+              <ns0:line stroke="#FFFFFF" x2="55.6186" stroke-linecap="round" stroke-width="0.576" y1="15.2561" x1="32.9414" fill="none" y2="15.2561" />
+              <ns0:line stroke="#FFFFFF" x2="55.6186" stroke-linecap="round" stroke-width="0.576" y1="15.2561" x1="55.6186" fill="none" y2="32.2639" />
+              <ns0:line stroke="#FFFFFF" x2="32.9414" stroke-linecap="round" stroke-width="0.576" y1="15.2561" x1="32.9414" fill="none" y2="32.2639" />
+              <ns0:circle cy="32.6336" stroke="#FFFFFF" stroke-width="0.576" r="0.72" fill="none" cx="55.8708" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:rect width="3.0472" height="2.8346" id="connector5pin" x="32.4269" gorn="0.0.0.2" fill="#9A916C" y="33.5027" />
+        <ns0:rect width="3.0472" height="2.8346" id="connector6pin" x="37.2458" gorn="0.0.0.3" fill="#9A916C" y="33.5027" />
+        <ns0:rect width="3.515" height="4.252" id="connector7pin" x="5.2696" gorn="0.0.0.4" fill="#9A916C" y="16.594" />
+        <ns0:rect width="3.515" height="4.252" id="connector8pin" x="10.6554" gorn="0.0.0.5" fill="#9A916C" y="16.594" />
+        <ns0:rect width="3.515" height="4.252" id="connector9pin" x="5.6296" gorn="0.0.0.6" fill="#9A916C" y="31.714" />
+        <ns0:rect width="3.515" height="4.252" id="connector10pin" x="11.0154" gorn="0.0.0.7" fill="#9A916C" y="31.714" />
+        <ns0:path id="connector11pin" d="M2.52,13.3427L2.52,13.3427c0.7828,0,1.4173,0.6346,1.4173,1.4173v0c0,0.7828-0.6346,1.4173-1.4173,1.4173h0c-0.7828,0-1.4173-0.6346-1.4173-1.4173v0C1.1027,13.9773,1.7372,13.3427,2.52,13.3427z" gorn="0.0.0.8" fill="#9A916C" />
+        <ns0:path id="connector12pin" d="M57.96,35.3027L57.96,35.3027c0.7828,0,1.4173,0.6346,1.4173,1.4173v0c0,0.7828-0.6346,1.4173-1.4173,1.4173h0c-0.7828,0-1.4173-0.6346-1.4173-1.4173v0C56.5427,35.9373,57.1773,35.3027,57.96,35.3027z" gorn="0.0.0.9" fill="#9A916C" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector13pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.10" fill="none" cx="9" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector14pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.11" fill="none" cx="16.2" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector15pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.12" fill="none" cx="23.4" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector16pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.13" fill="none" cx="30.6" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector17pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.14" fill="none" cx="37.8" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector18pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.15" fill="none" cx="45" />
+        <ns0:circle cy="43.2" stroke="#9A916C" id="connector19pin" stroke-width="1.1027" r="1.9687" gorn="0.0.0.16" fill="none" cx="52.2" />
+        <ns0:g transform="matrix(-1, 0, 0, -1, 102.739, 69.84)">
+          <ns0:g>
+            <ns0:rect width="3.0472" height="2.8346" id="connector20pin" x="49.8458" gorn="0.0.0.17.0.0" fill="#9A916C" y="33.5027" />
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(-1, 0, 0, -1, 93.101, 69.84)">
+          <ns0:g>
+            <ns0:rect width="3.0472" height="2.8346" id="connector21pin" x="45.0269" gorn="0.0.0.18.0.0" fill="#9A916C" y="33.5027" />
+          </ns0:g>
+        </ns0:g>
+        <ns0:circle cy="7.2" stroke="#9A916C" id="connector22pin" stroke-width="1.44" r="4.2633" gorn="0.0.0.19" fill="none" cx="7.2" />
+        <ns0:circle cy="7.2" stroke="#9A916C" id="connector23pin" stroke-width="1.44" r="4.2633" gorn="0.0.0.20" fill="none" cx="54" />
+        <ns0:rect width="0.864" height="2.808" id="connector24pin" x="15.7992" gorn="0.0.0.21" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector25pin" x="17.6417" gorn="0.0.0.22" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector26pin" x="19.4842" gorn="0.0.0.23" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector27pin" x="21.3268" gorn="0.0.0.24" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector28pin" x="23.1692" gorn="0.0.0.25" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector29pin" x="25.0118" gorn="0.0.0.26" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector30pin" x="26.8543" gorn="0.0.0.27" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector31pin" x="28.6968" gorn="0.0.0.28" fill="#9A916C" y="31.7069" />
+        <ns0:rect width="0.864" height="2.808" id="connector32pin" x="28.6968" gorn="0.0.0.29" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector33pin" x="26.8543" gorn="0.0.0.30" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector34pin" x="25.0118" gorn="0.0.0.31" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector35pin" x="23.1692" gorn="0.0.0.32" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector36pin" x="21.3268" gorn="0.0.0.33" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector37pin" x="19.4842" gorn="0.0.0.34" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector38pin" x="17.6417" gorn="0.0.0.35" fill="#9A916C" y="15.1651" />
+        <ns0:rect width="0.864" height="2.808" id="connector39pin" x="15.7992" gorn="0.0.0.36" fill="#9A916C" y="15.1651" />
+        <ns0:g transform="matrix(0, 1, -1, 0, 28.9017, 18.2724)">
+          <ns0:g>
+            <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 28.9018 18.2724)">
+              <ns0:rect width="3.4016" height="1.5591" id="connector40pin" x="3.6139" gorn="0.0.0.37.0.0.0" fill="#9A916C" y="22.8076" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, 1, -1, 0, 31.5947, 20.9653)">
+          <ns0:g>
+            <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 31.5947 20.9653)">
+              <ns0:rect width="3.4016" height="1.5591" id="connector41pin" x="3.6139" gorn="0.0.0.38.0.0.0" fill="#9A916C" y="25.5005" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, 1, -1, 0, 34.2876, 23.6583)">
+          <ns0:g>
+            <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 34.2877 23.6582)">
+              <ns0:rect width="3.4016" height="1.5591" id="connector42pin" x="3.6139" gorn="0.0.0.39.0.0.0" fill="#9A916C" y="28.1935" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, 1, -1, 0, 41.6583, 16.2876)">
+          <ns0:g>
+            <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 41.6583 16.2876)">
+              <ns0:rect width="3.4016" height="1.559" id="connector43pin" x="10.9845" gorn="0.0.0.40.0.0.0" fill="#9A916C" y="28.1935" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, 1, -1, 0, 36.2724, 10.9017)">
+          <ns0:g>
+            <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 36.2724 10.9017)">
+              <ns0:rect width="3.4016" height="1.559" id="connector44pin" x="10.9845" gorn="0.0.0.41.0.0.0" fill="#9A916C" y="22.8076" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 25.8916, 84.2119)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 25.8917 84.2117)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector45pin" x="53.3508" gorn="0.0.0.42.0.0.0" fill="#9A916C" y="28.3096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 29.4916, 80.6119)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 29.4917 80.6116)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector46pin" x="53.3508" gorn="0.0.0.43.0.0.0" fill="#9A916C" y="24.7096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 33.0916, 77.0119)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 33.0917 77.0116)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector47pin" x="53.3508" gorn="0.0.0.44.0.0.0" fill="#9A916C" y="21.1096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 36.6916, 73.4119)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 36.6917 73.4116)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector48pin" x="53.3508" gorn="0.0.0.45.0.0.0" fill="#9A916C" y="17.5096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 15.1484, 51.8684)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 15.1485 51.8684)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector49pin" x="31.8076" gorn="0.0.0.46.0.0.0" fill="#9A916C" y="17.5096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 11.5484, 55.4684)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 11.5485 55.4684)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector50pin" x="31.8076" gorn="0.0.0.47.0.0.0" fill="#9A916C" y="21.1096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 7.94837, 59.0684)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 7.9485 59.0684)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector51pin" x="31.8076" gorn="0.0.0.48.0.0.0" fill="#9A916C" y="24.7096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+        <ns0:g transform="matrix(0, -1, 1, 0, 4.34835, 62.6684)">
+          <ns0:g>
+            <ns0:g transform="matrix(-2.535182e-06 -1 1 -2.535182e-06 4.3485 62.6685)">
+              <ns0:rect width="3.4016" height="1.7008" id="connector52pin" x="31.8076" gorn="0.0.0.49.0.0.0" fill="#9A916C" y="28.3096" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 34.0925, 33.786)">
+        <ns0:g id="_x30_603-cap" gorn="0.0.1.0">
+          <ns0:path d="M4.245,2.268H0.29C0.13,2.268,0,2.138,0,1.977V0.29C0,0.13,0.13,0,0.29,0h3.955c0.16,0,0.29,0.13,0.29,0.29v1.687C4.535,2.138,4.405,2.268,4.245,2.268z" fill="#DCDCDC" />
+          <ns0:rect width="2.268" height="2.268" x="1.134" fill="#6E554B" y="0" />
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 6.8855, 16.9485)">
+        <ns0:g id="_x30_805-cap" gorn="0.0.2.0">
+          <ns0:path d="M5.386,3.543H0.283C0.127,3.543,0,3.416,0,3.26V0.283C0,0.127,0.127,0,0.283,0h5.102c0.157,0,0.283,0.127,0.283,0.283V3.26C5.669,3.416,5.542,3.543,5.386,3.543z" fill="#DCDCDC" />
+          <ns0:rect width="3.543" height="3.543" x="1.063" fill="#6E554B" y="0" />
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 7.2455, 32.0685)">
+        <ns0:g id="_x30_805-cap_1_" gorn="0.0.3.0">
+          <ns0:path d="M5.386,3.543H0.283C0.127,3.543,0,3.416,0,3.26V0.283C0,0.127,0.127,0,0.283,0h5.102c0.157,0,0.283,0.127,0.283,0.283V3.26C5.669,3.416,5.542,3.543,5.386,3.543z" fill="#DCDCDC" />
+          <ns0:rect width="3.543" height="3.543" x="1.063" fill="#6E554B" y="0" />
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 46.6925, 33.786)">
+        <ns0:g id="_x30_603-res" gorn="0.0.4.0">
+          <ns0:g transform="matrix(-1, 0, 0, -1, 4.535, 2.268)">
+            <ns0:g>
+              <ns0:path d="M4.245,2.268H0.29C0.13,2.268,0,2.138,0,1.977V0.29C0,0.13,0.13,0,0.29,0h3.955c0.16,0,0.29,0.13,0.29,0.29v1.687C4.535,2.138,4.405,2.268,4.245,2.268z" fill="#DCDCDC" />
+              <ns0:rect width="2.268" height="2.268" x="1.134" fill="#333333" y="0" />
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 12.3675, 4.49402)">
+        <ns0:g id="adafruit_3.5mm" gorn="0.0.5.0">
+          <ns0:path d="M10.0159,1.042c-0.032-0.2-0.141-0.257-0.403-0.341c-0.199-0.064-1.533-0.489-1.533-0.489s-0.93-0.351-1.619,0.146c-0.093,0.066-0.189,0.143-0.286,0.224c0.082-0.097,0.158-0.193,0.224-0.286c0.495-0.69,0.143-1.619,0.143-1.619s-0.427-1.334-0.492-1.533c-0.085-0.262-0.142-0.37-0.342-0.402s-0.288,0.054-0.449,0.277c-0.122,0.17-0.939,1.307-0.939,1.307s-0.621,0.777-0.361,1.586c0.034,0.109,0.077,0.224,0.125,0.341c-0.067-0.108-0.135-0.209-0.203-0.302c-0.503-0.684-1.496-0.636-1.496-0.636s-1.4-0.006-1.61-0.006c-0.275-0.001-0.396,0.02-0.488,0.201c-0.091,0.181-0.037,0.291,0.126,0.513c0.124,0.169,0.953,1.297,0.953,1.297s0.546,0.83,1.395,0.834c0.114,0,0.236-0.005,0.362-0.014c-0.122,0.03-0.24,0.064-0.348,0.1c-0.806,0.267-1.067,1.226-1.067,1.226s-0.438,1.33-0.503,1.529c-0.086,0.261-0.103,0.383,0.04,0.526c0.144,0.143,0.265,0.126,0.526,0.04c0.199-0.065,1.528-0.506,1.528-0.506s0.958-0.263,1.224-1.07c0.036-0.108,0.069-0.225,0.1-0.348c-0.009,0.126-0.014,0.248-0.013,0.362c0.005,0.849,0.836,1.394,0.836,1.394s1.13,0.827,1.298,0.951c0.223,0.162,0.333,0.216,0.514,0.124c0.181-0.092,0.201-0.213,0.2-0.488c-0.001-0.21-0.009-1.61-0.009-1.61s0.047-0.993-0.639-1.495c-0.092-0.067-0.194-0.135-0.301-0.202c0.117,0.047,0.232,0.09,0.34,0.124c0.81,0.258,1.584-0.364,1.584-0.364s1.136-0.819,1.306-0.941C9.9619,1.331,10.048,1.243,10.0159,1.042z M5.1939,0.011c0.152,0.024,0.228,0.349,0.169,0.726s-0.231,0.662-0.384,0.638s-0.229-0.349-0.169-0.725C4.8689,0.273,5.0409-0.013,5.1939,0.011z M3.2379,1.01c0.07-0.138,0.402-0.11,0.742,0.063c0.34,0.173,0.558,0.425,0.488,0.563s-0.402,0.11-0.742-0.063C3.3859,1.4,3.1679,1.148,3.2379,1.01z M4.2689,2.888c-0.269,0.27-0.577,0.4-0.686,0.291c-0.109-0.109,0.02-0.416,0.29-0.686c0.269-0.27,0.576-0.4,0.686-0.291C4.6679,2.311,4.5379,2.618,4.2689,2.888z M5.7529,3.521c-0.138,0.07-0.39-0.148-0.563-0.487c-0.174-0.34-0.203-0.673-0.065-0.743s0.39,0.148,0.563,0.487C5.8609,3.118,5.8899,3.45,5.7529,3.521z M6.1099,1.948c-0.377,0.06-0.701-0.015-0.726-0.168c-0.024-0.153,0.262-0.325,0.638-0.385c0.377-0.06,0.701,0.015,0.726,0.168C6.7719,1.716,6.4869,1.888,6.1099,1.948z" fill="#DCDCDC" />
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 15.5934, 15.7692)">
+        <ns0:g id="tssop16" gorn="0.0.6.0">
+          <ns0:g transform="matrix(1, 0, 0, 1, -0.6, 15.1909)">
+            <ns0:g id="g4272" gorn="0.0.6.0.0.0">
+              <ns0:g id="g4274" gorn="0.0.6.0.0.0.0">
+                <ns0:rect width="0.749" height="2.8347" id="rect4276" x="0.8834" gorn="0.0.6.0.0.0.0.0" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4278" x="2.7269" gorn="0.0.6.0.0.0.0.1" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4280" x="4.5694" gorn="0.0.6.0.0.0.0.2" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4282" x="6.412" gorn="0.0.6.0.0.0.0.3" fill="#CCCCCC" y="0.1162" />
+              </ns0:g>
+              <ns0:g transform="matrix(1, 0, 0, 1, 7.37107, 0)">
+                <ns0:g id="g4284" gorn="0.0.6.0.0.0.1.0">
+                  <ns0:rect width="0.749" height="2.8347" id="rect4286" x="0.8834" gorn="0.0.6.0.0.0.1.0.0" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4288" x="2.7269" gorn="0.0.6.0.0.0.1.0.1" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4290" x="4.5694" gorn="0.0.6.0.0.0.1.0.2" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4292" x="6.412" gorn="0.0.6.0.0.0.1.0.3" fill="#CCCCCC" y="0.1162" />
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g transform="matrix(1, 0, 0, 1, -0.6, -0.116168)">
+            <ns0:g id="g4260" gorn="0.0.6.0.1.0">
+              <ns0:g id="g4244" gorn="0.0.6.0.1.0.0">
+                <ns0:rect width="0.749" height="2.8347" id="rect13074" x="0.8834" gorn="0.0.6.0.1.0.0.0" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4238" x="2.7269" gorn="0.0.6.0.1.0.0.1" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4240" x="4.5694" gorn="0.0.6.0.1.0.0.2" fill="#CCCCCC" y="0.1162" />
+                <ns0:rect width="0.749" height="2.8347" id="rect4242" x="6.412" gorn="0.0.6.0.1.0.0.3" fill="#CCCCCC" y="0.1162" />
+              </ns0:g>
+              <ns0:g transform="matrix(1, 0, 0, 1, 7.37107, 0)">
+                <ns0:g id="g4250" gorn="0.0.6.0.1.0.1.0">
+                  <ns0:rect width="0.749" height="2.8347" id="rect4252" x="0.8834" gorn="0.0.6.0.1.0.1.0.0" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4254" x="2.7269" gorn="0.0.6.0.1.0.1.0.1" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4256" x="4.5694" gorn="0.0.6.0.1.0.1.0.2" fill="#CCCCCC" y="0.1162" />
+                  <ns0:rect width="0.749" height="2.8347" id="rect4258" x="6.412" gorn="0.0.6.0.1.0.1.0.3" fill="#CCCCCC" y="0.1162" />
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+          </ns0:g>
+          <ns0:g transform="matrix(1.17134, 0, 0, 1.17134, 0, 1.39517)">
+            <ns0:g id="g4212" gorn="0.0.6.0.2.0">
+              <ns0:polygon id="polygon39" points="11.6328,3.4312 0,3.4312 0,1.1944 12.1,1.1944 " gorn="0.0.6.0.2.0.0" fill="#3D3D3D" />
+              <ns0:polygon id="polygon41" points="12.1,11.956 0,11.956 0,9.652 11.6328,9.652 " gorn="0.0.6.0.2.0.1" />
+              <ns0:polygon id="polygon77" points="11.6328,10.9368 12.1,11.956 12.1,1.1944 11.6328,2.3552 10.7624,2.3552 10.7624,10.9304 " gorn="0.0.6.0.2.0.2" fill="#141414" />
+              <ns0:polygon id="polygon79" points="0.4672,3.4312 3.1112,3.4312 3.1112,9.652 0.4672,9.652 0.4672,10.9368 0,11.956 0,1.1944 0.4672,2.3552 " gorn="0.0.6.0.2.0.3" fill="#1F1F1F" />
+              <ns0:path id="path81" d="M0.4672,2.3552v8.5872h11.1656V2.3552C11.6328,2.3552,0.4672,2.3552,0.4672,2.3552z" gorn="0.0.6.0.2.0.4" fill="#303030" connector-curvature="0" />
+              <ns0:circle cy="9.3704" id="circle83" r="0.9712" gorn="0.0.6.0.2.0.5" fill="#212121" cx="2.1408" />
+            </ns0:g>
+          </ns0:g>
+          <ns0:g transform="matrix(1, 0, 0, 1, -16.9988, -11.6103)">
+            <ns0:g id="g85" gorn="0.0.6.0.3.0" display="none">
+              <ns0:g id="g87" gorn="0.0.6.0.3.0.0" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 1.3782 8.3218)">
+                  <ns0:text id="text89" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.0.0.0" fill="#FFFFFF">16</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g91" gorn="0.0.6.0.3.0.1" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 7.1641 8.3218)">
+                  <ns0:text id="text93" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.1.0.0" fill="#FFFFFF">15</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g95" gorn="0.0.6.0.3.0.2" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 12.95 8.3218)">
+                  <ns0:text id="text97" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.2.0.0" fill="#FFFFFF">14</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g99" gorn="0.0.6.0.3.0.3" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 18.7344 8.3226)">
+                  <ns0:text id="text101" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.3.0.0" fill="#FFFFFF">13</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g103" gorn="0.0.6.0.3.0.4" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 25.3218 8.3226)">
+                  <ns0:text id="text105" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.4.0.0" fill="#FFFFFF">12</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g107" gorn="0.0.6.0.3.0.5" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 30.3062 8.3218)">
+                  <ns0:text id="text109" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.5.0.0" fill="#FFFFFF">11</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g111" gorn="0.0.6.0.3.0.6" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 36.0922 8.3218)">
+                  <ns0:text id="text113" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.6.0.0" fill="#FFFFFF">10</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g115" gorn="0.0.6.0.3.0.7" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 42.6781 8.3218)">
+                  <ns0:text id="text117" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.7.0.0" fill="#FFFFFF">9</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g119" gorn="0.0.6.0.3.0.8" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 42.6781 40.2219)">
+                  <ns0:text id="text121" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.8.0.0" fill="#FFFFFF">8</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g123" gorn="0.0.6.0.3.0.9" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 36.8922 40.2219)">
+                  <ns0:text id="text125" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.9.0.0" fill="#FFFFFF">7</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g127" gorn="0.0.6.0.3.0.10" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 31.1062 40.2219)">
+                  <ns0:text id="text129" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.10.0.0" fill="#FFFFFF">6</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g131" gorn="0.0.6.0.3.0.11" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 25.3218 40.2219)">
+                  <ns0:text id="text133" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.11.0.0" fill="#FFFFFF">5</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g135" gorn="0.0.6.0.3.0.12" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 19.5344 40.2219)">
+                  <ns0:text id="text137" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.12.0.0" fill="#FFFFFF">4</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g139" gorn="0.0.6.0.3.0.13" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 13.75 40.2219)">
+                  <ns0:text id="text141" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.13.0.0" fill="#FFFFFF">3</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g143" gorn="0.0.6.0.3.0.14" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 7.9641 40.2219)">
+                  <ns0:text id="text145" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.14.0.0" fill="#FFFFFF">2</ns0:text>
+                </ns0:g>
+              </ns0:g>
+              <ns0:g id="g147" gorn="0.0.6.0.3.0.15" display="inline">
+                <ns0:g transform="matrix(1 0 0 1 2.1782 40.2219)">
+                  <ns0:text id="text149" font-family="'DroidSans'" font-size="9.6" gorn="0.0.6.0.3.0.15.0.0" fill="#FFFFFF">1</ns0:text>
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+      </ns0:g>
+      <ns0:g transform="matrix(1, 0, 0, 1, 4.88999, 22.453)">
+        <ns0:g id="sot23-5" gorn="0.0.7.0">
+          <ns0:g transform="matrix(0, 1, -1, 0, 7.93706, -0.282996)">
+            <ns0:g>
+              <ns0:g>
+                <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 5.244 2.41)">
+                  <ns0:rect width="7.654" height="1.134" x="-2.41" fill="#DCDCDC" y="3.26" />
+                </ns0:g>
+                <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 10.63 -2.976)">
+                  <ns0:rect width="7.654" height="1.134" x="2.976" fill="#DCDCDC" y="3.26" />
+                </ns0:g>
+                <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 10.204 1.984)">
+                  <ns0:rect width="3.118" height="1.134" x="2.551" fill="#DCDCDC" y="5.527" />
+                </ns0:g>
+                <ns0:g transform="matrix(2.535182e-06 1 -1 2.535182e-06 7.9365 -0.2835)">
+                  <ns0:rect width="4.535" height="8.22" x="1.8425" fill="#303030" y="-0.2835" />
+                </ns0:g>
+              </ns0:g>
+            </ns0:g>
+          </ns0:g>
+        </ns0:g>
+      </ns0:g>
+      <ns0:rect width="22.6772" height="17.0078" x="32.9414" fill="#212120" y="15.2561" />
+    </ns0:g>
+  </ns0:g>
+  <circle cx="725.0" cy="371.0" r="13" fill="none" stroke="#e37a12" stroke-width="3" />
+  <circle cx="797.0" cy="371.0" r="13" fill="none" stroke="#333333" stroke-width="3" />
+  <circle cx="833.0" cy="371.0" r="13" fill="none" stroke="#9464b5" stroke-width="3" />
+  <circle cx="905.0" cy="371.0" r="13" fill="none" stroke="#278d9d" stroke-width="3" />
+  <circle cx="869.0" cy="371.0" r="13" fill="none" stroke="#d05e9c" stroke-width="3" />
+  <circle cx="941.0" cy="371.0" r="13" fill="none" stroke="#6b6eab" stroke-width="3" />
+  <polyline points="761.0,385.0 761.0,449 680,449" fill="none" stroke="#697786" stroke-width="1.5" />
+  <text x="680" y="476" fill="#202a35" font-family="Arial" font-size="18" font-weight="bold">3V3: leave unconnected (output)</text>
+  <rect x="40" y="505" width="1020" height="115" rx="8" fill="#fff6dc" />
+  <text x="60" y="534" fill="#202a35" font-family="Arial" font-size="16" font-weight="bold">POWER AND FIRST CHECK</text>
+  <text x="60" y="561" fill="#202a35" font-family="Arial" font-size="18" font-weight="normal">Power VIN from the Feather’s main 3.3V rail; do not use IMU 3Vo or switched VIN.</text>
+  <text x="60" y="585" fill="#202a35" font-family="Arial" font-size="18" font-weight="normal">IMU GND can share ground. Keep SPI wires short and connect them to the Feather.</text>
+  <text x="60" y="609" fill="#202a35" font-family="Arial" font-size="17" font-weight="normal">Verify storage=sd, record a short test, and download it over USB or Wi-Fi. Stop/save before power-off.</text>
+  <rect x="40" y="638" width="1020" height="100" rx="8" fill="#edf4fa" />
+  <text x="60" y="666" fill="#202a35" font-family="Arial" font-size="16" font-weight="bold">REUSING THE OLD 254 BOARD’S WIRES</text>
+  <text x="60" y="693" fill="#202a35" font-family="Arial" font-size="18" font-weight="normal">Old 3V → VIN  ·  CLK → SCK  ·  DI → MOSI  ·  DO → MISO  ·  GND → GND  ·  CS → CS</text>
+  <text x="60" y="720" fill="#202a35" font-family="Arial" font-size="17" font-weight="normal">Match labels, not header positions. The 4899 has soldered storage: there is no removable card.</text>
+  <text x="40" y="763" fill="#202a35" font-family="Arial" font-size="13" font-weight="normal">Board artwork: Adafruit · CC BY-SA 3.0 · Connection reference, not a mounting template</text>
+</svg>

@@ -98,17 +98,17 @@ def validate(path):
 
     nets = {
         "VBAT": [(5, 0), (1, 218), (1, 64), (3, 24), (3, 21)],
-        "GND": [(5, 1), (1, 217), (1, 60), (1, 29), (2, 11), (3, 26), (6, 34)],
+        "GND": [(5, 1), (1, 217), (1, 60), (1, 29), (2, 11), (3, 26), (6, 15)],
         "GPIO5_before_resistor": [(1, 73), (4, 0)],
         "DIN_after_resistor": [(4, 1), (3, 25)],
         "QT_switched_3V3": [(1, 30), (2, 12)],
         "SDA_GPIO3": [(1, 31), (2, 13)],
         "SCL_GPIO4": [(1, 32), (2, 14)],
-        "SD_regulated_3V3": [(1, 61), (6, 33)],
-        "SD_SCK_GPIO36": [(1, 53), (6, 35)],
-        "SD_MOSI_GPIO35": [(1, 52), (6, 37)],
-        "SD_MISO_GPIO37": [(1, 51), (6, 36)],
-        "SD_CS_GPIO10": [(1, 70), (6, 38)],
+        "SD_VIN_from_Feather_3V3": [(1, 61), (6, 13)],
+        "SD_SCK_GPIO36": [(1, 53), (6, 16)],
+        "SD_MOSI_GPIO35": [(1, 52), (6, 18)],
+        "SD_MISO_GPIO37": [(1, 51), (6, 17)],
+        "SD_CS_GPIO10": [(1, 70), (6, 19)],
     }
     roots = []
     for name, members in nets.items():
@@ -117,10 +117,15 @@ def validate(path):
         assert len(components) == 1, f"Broken {name} net"
         roots.append(next(iter(components)))
     assert len(set(roots)) == len(roots), "Two distinct electrical nets are shorted"
-    for index, connector in [(3, 20), (1, 66), (6, 32), (6, 39)]:
+    for index, connector in [(3, 20), (1, 66), (6, 14)]:
         assert (
             find((str(index), f"connector{connector}")) not in roots
-        ), "LED DOUT, Feather USB, SD 5V and SD CD must remain unconnected"
+        ), "LED DOUT, Feather USB and SD 3V3 output must remain unconnected"
+    sd = definitions[lookup["6"].get("moduleIdRef")]
+    assert sd.find("./properties/property[@name='part number']").text == "Adafruit #4899"
+    for connector, name in {13: "VIN", 14: "3.3V", 15: "GND", 16: "SCK",
+                            17: "MISO_3.3V", 18: "MOSI", 19: "SS"}.items():
+        assert sd.find(f"./connectors/connector[@id='connector{connector}']").get("name") == name
     resistor = lookup["4"].find("property[@name='resistance']")
     assert resistor.get("value") == "330", "Wrong data resistor value"
     assert hardware == 6 and wires > 10
