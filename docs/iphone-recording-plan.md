@@ -5,6 +5,12 @@ app. Confirmed requirements: iPhone video is the default, using the highest
 supported recording frame rate, and an external-camera option is available in
 the first release. This document is a plan.
 
+Implementation update, 2026-10-27: the first development version is in
+[`ios/`](../ios/README.md), including camera capture, external-camera controls,
+verified motion downloads, session export, and desktop import. The app guide
+records implemented behavior and remaining physical-device validation; the
+acceptance gates below remain the release criteria.
+
 The first useful release should let someone take just their board and iPhone to
 the skatepark, record several sessions without internet, and bring complete,
 recoverable recordings back into the existing desktop review workflow.
@@ -44,8 +50,10 @@ Three screens are sufficient:
    Record, Sync flash, and Finish & save. Offer **iPhone camera** (default) and
    **External camera** before starting a session. The iPhone defaults to **Maximum
    FPS**, prioritizing frame rate over resolution and displaying the selected
-   camera, resolution, and rate. Offer supported lower rates as explicit choices
-   for longer recording or low light, plus optional microphone audio. Keep
+   camera, resolution, and rate. Offer supported frame rates and resolutions as
+   explicit choices above the preview for smaller files, plus optional microphone
+   audio. Remember these choices and show any rate adjustment needed when changing
+   resolution before recording. Keep
    orientation consistent within a clip and record the actual capture settings.
    Decide the minimum iOS version after checking the target phone.
 3. **Sessions:** local recordings with thumbnail, date, duration, rider/deck,

@@ -85,6 +85,16 @@ strip's exact voltage range depends on its revision. Test visibility and correct
 down before relying on it for sync; a regulated 5 V supply with a level shifter
 is the fallback. See [power details and manufacturer sources](docs/recording.md#direct-lipo-wiring-for-the-first-test).
 
+## Native iPhone recorder
+
+The [first native iPhone app](ios/README.md) records video at the highest supported
+frame rate, controls the board over Wi-Fi, and saves verified motion downloads
+with the original video. An external-camera mode keeps the same board controls.
+Open `ios/SkateJudge.xcodeproj` to install a development build on your iPhone.
+Export sessions to the existing desktop review workflow with
+`capture/import_mobile.py`. Physical-device recording and field validation remain
+necessary; see the app guide for setup, recovery, and current limits.
+
 ## First dataset recording
 
 Flash the onboard logger, then initialize its unused storage once over USB:

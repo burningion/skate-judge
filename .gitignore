@@ -9,6 +9,8 @@ imu_viz_*.png
 sessions/
 datasets/
 .build/
+ios/**/.swiftpm/
+ios/**/xcuserdata/
 firmware/trick_benchmark_idf/build/
 firmware/trick_benchmark_idf/managed_components/
 firmware/trick_benchmark_idf/sdkconfig

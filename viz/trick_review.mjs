@@ -554,7 +554,7 @@ export async function init() {
     drawAttempt(ctx, x, h, pair);
     if (pair && !isBackground(pair)) { ctx.fillStyle = "#304432"; ctx.fillRect(x(pair.start_s), 20, x(pair.end_s) - x(pair.start_s), h - 42); }
     waveform(ctx, w, windowStart, length, 26, 108);
-    ctx.font = "11px system-ui"; ctx.fillStyle = "#a5b8b3"; ctx.fillText("AUDIO WAVEFORM", 5, 33); ctx.fillText("ONSET STRENGTH", 5, 155);
+    ctx.font = "11px system-ui"; ctx.fillStyle = "#a5b8b3"; ctx.fillText(audio.available === false ? "NO AUDIO · MANUAL REVIEW AND ALIGNED IMU AVAILABLE" : "AUDIO WAVEFORM", 5, 33); ctx.fillText("ONSET STRENGTH", 5, 155);
     const y = value => h - 26 - Math.min(value, 3) / 3 * 87;
     ctx.strokeStyle = colors.onset; ctx.beginPath();
     const from = Math.max(0, Math.floor(windowStart / audio.step_s)), to = Math.min(audio.strength.length, Math.ceil((windowStart + length) / audio.step_s));

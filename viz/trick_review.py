@@ -27,7 +27,7 @@ import subprocess
 import sys
 import threading
 
-VERSION = 1
+VERSION = 2
 API_VERSION = 7
 SAMPLE_RATE = 16000
 HOP = 160
@@ -348,30 +348,37 @@ def prepare(source, rebuild=False, attempt_model=DEFAULT_ATTEMPT_MODEL):
     data = read_json(analysis_path, {})
     if rebuild or data.get("source") != fingerprint or data.get("schema") != VERSION or not media.exists():
         info = probe(source)
-        if not any(row["codec_type"] == "audio" for row in info["streams"]):
-            raise ValueError("This recording has no audio track. Choose a clip recorded with microphone audio.")
+        has_audio = any(row["codec_type"] == "audio" for row in info["streams"])
         if not any(row["codec_type"] == "video" for row in info["streams"]):
             raise ValueError("This recording has no video track.")
         origin = float(info["format"].get("start_time", 0))
-        print("Preparing a seekable review copy and audio onsets…", flush=True)
+        print("Preparing a seekable review copy" + (" and audio onsets…" if has_audio else " (no audio track)…"), flush=True)
         temporary = directory / ("media.tmp" + extension)
         # Stream copy adds duration/cues to browser MediaRecorder WebM without
         # re-encoding. One shared timestamp shift preserves track offsets.
         command = ["ffmpeg", "-v", "error", "-y", "-copyts", "-start_at_zero",
-                   "-i", str(source), "-map", "0:v:0", "-map", "0:a:0", "-c", "copy",
+                   "-i", str(source), "-map", "0:v:0", "-map", "0:a:0?", "-c", "copy",
                    "-avoid_negative_ts", "disabled"]
         if extension == ".mp4":
             command += ["-movflags", "+faststart"]
+            if any(row.get("codec_name") == "hevc" for row in info["streams"] if row["codec_type"] == "video"):
+                # hvc1 permits native HEVC playback in Safari without reducing FPS.
+                command += ["-tag:v", "hvc1"]
         run(command + [str(temporary)])
         temporary.replace(media)
         review_info = probe(media)
-        audio = extract_audio(media)
-        duration = float(review_info["format"].get("duration", len(audio) / SAMPLE_RATE))
+        audio = extract_audio(media) if has_audio else None
+        audio_duration = len(audio) / SAMPLE_RATE if audio is not None else 0
+        duration = float(review_info["format"].get("duration", audio_duration))
+        features = audio_features(audio) if audio is not None else dict(
+            available=False, unavailable_reason="No audio track. Manual review and aligned IMU suggestions remain available.",
+            step_s=HOP / SAMPLE_RATE, waveform_min=[], waveform_max=[], rms=[], strength=[], onsets=[])
+        features.setdefault("available", True)
         data = dict(schema=VERSION, source=fingerprint, video=source.name,
                     source_pts_origin_s=origin, duration_s=duration,
-                    audio_duration_s=len(audio) / SAMPLE_RATE,
+                    audio_duration_s=audio_duration,
                     algorithm="log-spectral-flux-v1", sample_rate=SAMPLE_RATE,
-                    media_url="/media" + extension, audio=audio_features(audio))
+                    media_url="/media" + extension, audio=features)
         write_json(analysis_path, data)
     # Refresh alignment/quality on every launch, even if audio is cached.
     data["api_version"] = API_VERSION
