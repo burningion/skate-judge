@@ -1,5 +1,12 @@
 # PLA enclosure for Judgy Skateboard
 
+**For the new Mouser 485-4899 storage board and flexible LED strip, use the
+[compact R10 enclosure](compact/README.md)**: print in **PETG**, 98 × 75 × 23 mm, with a two-pixel
+carrier and new two-hole storage mount. Print its fit samples first; strip
+dimensions remain provisional. The files below remain the R9 design for the old
+microSD breakout and rigid LED stick. Their PLA notes are historical; use the
+R10 PETG instructions for the current build.
+
 Open **[skate-judge.scad](skate-judge.scad)** in **OpenSCAD 2021.01 or newer**.
 This is a printable prototype for the project's Feather ESP32-S3, LSM6DSO32,
 500 mAh LiPo, Adafruit 254 microSD breakout and an eight-pixel sync stick mounted

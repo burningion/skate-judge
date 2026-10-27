@@ -54,10 +54,10 @@ def inspect_stl(path):
             "solid_volume_cm3": round(volume/1000,3)}
 
 
-def main():
+def main(directory=HERE, extra_targets=()):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--openscad", help="Path to OpenSCAD 2021.01 or newer")
-    parser.add_argument("--output", type=Path, default=HERE/"exports")
+    parser.add_argument("--output", type=Path, default=directory/"exports")
     parser.add_argument("--replace", action="store_true", help="Replace generated output files")
     args = parser.parse_args()
     executable = args.openscad or shutil.which("openscad")
@@ -76,7 +76,7 @@ def main():
     targets = [("base", "base", True), ("base-velcro", "base", False),
                ("lid", "lid", True), ("fit-coupon", "fit_coupon", True),
                ("led-fit-base", "led_fit_base", False), ("led-fit-lid", "led_fit_lid", False),
-               ("sd-fit-base", "sd_fit_base", False)]
+               ("sd-fit-base", "sd_fit_base", False)] + list(extra_targets)
     outputs = [args.output/f"{name}.stl" for name,_,_ in targets] + [args.output/"validation.json"]
     if not args.replace and any(p.exists() for p in outputs):
         parser.error("Output exists. Choose --output /new/directory, or --replace for generated files.")
@@ -84,12 +84,12 @@ def main():
     # Fit checks apply to a particular export set and must be rerun after a build.
     (args.output/"fit-validation.json").unlink(missing_ok=True)
     report = {"openscad":version_text, "source":"../skate-judge.scad",
-              "source_sha256":hashlib.sha256((HERE/"skate-judge.scad").read_bytes()).hexdigest(), "parts":{}}
+              "source_sha256":hashlib.sha256((directory/"skate-judge.scad").read_bytes()).hexdigest(), "parts":{}}
     for name,part,ears in targets:
         destination = args.output/f"{name}.stl"
         run = subprocess.run([executable,"--export-format","asciistl","-o",str(destination),
                               "-D",f'part="{part}"',"-D",f'mount_ears={str(ears).lower()}',
-                              str(HERE/"skate-judge.scad")], text=True, capture_output=True)
+                              str(directory/"skate-judge.scad")], text=True, capture_output=True)
         if run.returncode or "ERROR:" in run.stderr or "WARNING:" in run.stderr:
             raise RuntimeError(f"OpenSCAD failed for {name}:\n{run.stdout}\n{run.stderr}")
         report["parts"][destination.name] = inspect_stl(destination)

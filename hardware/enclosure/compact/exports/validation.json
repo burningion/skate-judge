@@ -1,0 +1,213 @@
+{
+  "openscad": "OpenSCAD version 2021.01",
+  "source": "../skate-judge.scad",
+  "source_sha256": "ae110985e7694a021a096bd8c3cbc666ba9578ceea6259ed55c3f45ab6deef6d",
+  "parts": {
+    "base.stl": {
+      "triangles": 9996,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          -13.0,
+          0.0
+        ],
+        [
+          98.0,
+          88.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        98.0,
+        101.0,
+        20.0
+      ],
+      "solid_volume_cm3": 48.181,
+      "sha256": "0b15b8fd4907c33d5c70885db8ed11323c76af1a2d37bfff2985521b804f4422"
+    },
+    "base-velcro.stl": {
+      "triangles": 8858,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          -7.0,
+          0.0
+        ],
+        [
+          98.0,
+          82.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        98.0,
+        89.0,
+        20.0
+      ],
+      "solid_volume_cm3": 45.059,
+      "sha256": "6b9c471e1a335dd2855303b302d84c2c7c83409ce33beeb1f6cfddb921740789"
+    },
+    "lid.stl": {
+      "triangles": 1916,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          98.0,
+          75.0,
+          8.0
+        ]
+      ],
+      "size_mm": [
+        98.0,
+        75.0,
+        8.0
+      ],
+      "solid_volume_cm3": 22.721,
+      "sha256": "cea2a81ffb6032854adbfdf1dc56744e98eca675267af50265fa974ea4d05414"
+    },
+    "fit-coupon.stl": {
+      "triangles": 7464,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          46.0,
+          36.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        46.0,
+        36.0,
+        20.0
+      ],
+      "solid_volume_cm3": 10.586,
+      "sha256": "a6c84f70d17cac3684710f041b8d49887574fbfff336cc5a9138f21eae21c461"
+    },
+    "led-fit-base.stl": {
+      "triangles": 278,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          -7.62939e-07,
+          0.0,
+          0.0
+        ],
+        [
+          43.4,
+          13.0,
+          20.0
+        ]
+      ],
+      "size_mm": [
+        43.4,
+        13.0,
+        20.0
+      ],
+      "solid_volume_cm3": 2.525,
+      "sha256": "9646c2cda9c8c6d47d8f4454ce72160efa63af3b10118e821669cdacedcfe2a6"
+    },
+    "led-fit-lid.stl": {
+      "triangles": 108,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          -7.62939e-07,
+          0.0,
+          0.0
+        ],
+        [
+          43.4,
+          13.0,
+          7.0
+        ]
+      ],
+      "size_mm": [
+        43.4,
+        13.0,
+        7.0
+      ],
+      "solid_volume_cm3": 2.098,
+      "sha256": "f2fcdc3be8e6244a864d3e954d21f3a7fd52114bcb0dff0c4a19cdfac0ccb2ea"
+    },
+    "sd-fit-base.stl": {
+      "triangles": 972,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          23.59,
+          19.78,
+          7.0
+        ]
+      ],
+      "size_mm": [
+        23.59,
+        19.78,
+        7.0
+      ],
+      "solid_volume_cm3": 1.57,
+      "sha256": "b789a868dc700d2558d9fbb8879557929fb3bb0ddf7bf14911d7741ec42f3a54"
+    },
+    "led-carrier.stl": {
+      "triangles": 12,
+      "closed": true,
+      "components": 1,
+      "bounds_mm": [
+        [
+          0.0,
+          0.0,
+          0.0
+        ],
+        [
+          33.4,
+          14.0,
+          2.0
+        ]
+      ],
+      "size_mm": [
+        33.4,
+        14.0,
+        2.0
+      ],
+      "solid_volume_cm3": 0.935,
+      "sha256": "07ce9cec72de2ca5c6c0d1605acd1c212787d78fe2aacb5a6742d17af4aa3c73"
+    }
+  },
+  "source_equivalence": {
+    "previous_validated_source_sha256": "a7ec70efcaf3949aee6ca318ef3879897fc247a82458c7581b6cc3ed39291740",
+    "method": "Byte-identical OpenSCAD CSG for all eight default export configurations after PETG comment and optional engraving update. Existing STLs and mesh/fit results retained; no physical material validation implied.",
+    "unchanged_default_parts": [
+      "base",
+      "base-velcro",
+      "lid",
+      "fit-coupon",
+      "led-fit-base",
+      "led-fit-lid",
+      "sd-fit-base",
+      "led-carrier"
+    ]
+  }
+}

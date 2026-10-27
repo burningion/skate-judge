@@ -1,0 +1,566 @@
+// Judgy Skateboard: PETG prototype enclosure. Units: mm.
+// Revision 10, 2026-10-26: compact XTSD / two-pixel flexible-strip prototype.
+// OpenSCAD 2021.01+. See README.md for hardware, tolerances and assembly.
+// PCB coordinates follow Adafruit EagleCAD; component shapes are envelopes.
+
+/* [Output] */
+part = "assembly"; // [assembly,exploded,interior,base,lid,fit_coupon,led_fit_base,led_fit_lid,sd_fit_base,led_carrier,layout]
+show_electronics = true;
+mount_ears = true;
+lid_markings = false; // Optional engraving adds first-layer islands and bridges.
+
+/* [Shell] */
+case_length = 98;
+case_width = 75;
+body_height = 20;
+wall = 3;
+floor_thickness = 3;
+lid_thickness = 3;
+corner_radius = 7;
+fit_clearance = 0.3; // Clearance per side, not total.
+mount_hole_diameter = 4.5;
+
+/* [Lid screws] */
+lid_countersink_diameter = 6.4; // DIN 7991 M3: 6 mm head + 0.4 mm print allowance.
+lid_countersink_angle = 90; // Included bevel angle, in degrees.
+
+/* [Lid heat-set inserts] */
+// Jouth M3x4x5 assumed to mean M3 thread, 4 mm length, 5 mm outside diameter.
+// Confirm against your inserts; print the bore-size coupon before the base.
+lid_insert_length = 4;
+lid_insert_outer_diameter = 5;
+lid_insert_bore_diameter = 4.6; // Starting fit, not a verified vendor hole specification.
+lid_insert_depth_allowance = 1; // Space below a flush insert for displaced plastic.
+lid_screw_relief_depth = 10; // From boss top; accepts existing M3x12 countersunk screws.
+
+/* [Battery: measure the complete wrapped cell] */
+battery_length = 36;
+battery_width = 29;
+battery_thickness = 5;
+battery_xy_clearance = 1.5;
+battery_pad = 0.8;
+
+/* [PCB mounting and ports] */
+pcb_standoff = 4;
+imu_rotation = 180; // [0,180] In-plane turn only; components stay toward lid.
+pcb_pilot_diameter = 1.7; // M2 plastic-compatible screws; print coupon first.
+feather_post_diameter = 5.6; // R8 was 4.2; retain space beside the header pads.
+feather_post_foot_diameter = 8;
+feather_post_foot_height = 2; // Taper to the post below the PCB/solder joints.
+usb_opening_width = 16;
+usb_opening_bottom = 5;
+usb_opening_top = 15;
+
+/* [Power switch: measured KCD11-101 style body] */
+power_switch_width = 13.5; // Along Y; measured body 13.27 mm, allowance included.
+power_switch_height = 8.4; // Along Z; measured body 8.18 mm, allowance included.
+power_switch_y = 50; // Center on the x=0 USB wall, beside the battery bay.
+
+/* [Adafruit 4899 XTSD mount] */
+sd_standoff = 4; // PCB at Z=7, beside the battery strap anchor.
+show_sd_clearances = false;
+
+/* [Flexible LED strip on a removable printed carrier] */
+led_count = 2; // [1,2]
+led_pitch = 12.7; // User estimate; measure center-to-center before printing.
+strip_length = 25.4; // Measure cut segment INCLUDING end solder pads.
+strip_width = 10; // Provisional: actual strip width has not been supplied.
+strip_backing_thickness = 0.7; // Flex PCB plus mounting adhesive, assumed.
+led_package_height = 2; // Projection beyond flex PCB, assumed.
+led_package_size = 5;
+led_lid_clearance = 0.8;
+stick_clearance = 0.3;
+led_wire_end_space = 4;
+led_wire_pad_space = 6;
+led_wire_front = 1;
+led_wire_back = 11;
+led_wire_top = 12.5;
+show_led_wire_envelopes = false;
+
+/* [Hidden] */
+$fn = 48;
+eps = 0.02;
+feather_xy = [8,12.8];
+feather_size = [50.8,22.86];
+// The rear 2.2 mm holes are NOT the generic Feather 2.54 mm inset pattern.
+feather_holes = [[2.54,2.54],[2.54,20.32],[48.26,1.8415],[48.26,20.955]];
+imu_xy = [68,14];
+imu_size = [25.4,17.78];
+imu_native_holes = [[2.54,15.24],[22.86,15.24]];
+// Preserve the installed R6/R9 orientation: screw row on the LED side.
+imu_holes = imu_rotation == 180
+    ? [for(p=imu_native_holes) [imu_size[0]-p[0],imu_size[1]-p[1]]]
+    : imu_native_holes;
+// Official Adafruit SPI Flash SD Card Eagle outline: 21.59 x 17.78.
+// In-plane 180-degree turn: screw row toward IMU, header toward rear wall.
+sd_xy = [71,40];
+sd_size = [21.59,17.78];
+sd_holes = [[2.54,2.54],[19.05,2.54]];
+sd_post_diameter = 5.6;
+sd_pcb_z = floor_thickness+sd_standoff;
+sd_anchor_xy = [79,64];
+battery_xy = [23,38];
+bay_l = battery_length + 2*battery_xy_clearance;
+bay_w = battery_width + 2*battery_xy_clearance;
+pcb_z = floor_thickness + pcb_standoff;
+usb_y = feather_xy[1]+11.43;
+power_switch_bottom = (floor_thickness+body_height-power_switch_height)/2;
+lid_screw_clearance = 3.4;
+lid_insert_bore_depth = lid_insert_length+lid_insert_depth_allowance;
+lid_insert_lead_in = 0.2; // 45-degree entry bevel; default opening is 5.0 mm.
+lid_countersink_depth = (lid_countersink_diameter-lid_screw_clearance)/(2*tan(lid_countersink_angle/2));
+boss_r = 6;
+bosses = [[7,7],[case_length-7,7],[7,case_width-7],[case_length-7,case_width-7]];
+ear_xs = [20,case_length-20];
+ear_ys = [-6,case_width+6];
+// Existing stick-channel names describe the PRINTED carrier in R10.
+led_pcb_thickness = 2;
+stick_length = strip_length+8;
+stick_width = strip_width+4;
+stick_height = led_pcb_thickness+strip_backing_thickness+led_package_height;
+led_x = (case_length-stick_length)/2;
+led_bottom = floor_thickness+0.5;
+led_slot_x = led_x-stick_clearance;
+led_slot_length = stick_length+2*stick_clearance;
+led_slot_front = wall+0.2;
+led_slot_back = led_slot_front+led_pcb_thickness+2*fit_clearance;
+led_window_x = led_x+3.5;
+led_window_length = strip_length+1;
+led_window_bottom = led_bottom+1.5;
+led_window_top = led_bottom+stick_width-1.5;
+led_anchor_x = led_slot_x-10;
+led_top = led_bottom+stick_width;
+led_wire_floor = floor_thickness+1;
+led_sample_x = led_x-led_wire_end_space-1;
+led_sample_length = stick_length+2*led_wire_end_space+2;
+led_sample_depth = led_wire_back+2;
+
+assert(case_length >= 98 && case_width >= 75, "Compact layout needs at least 98 x 75 mm.");
+assert(wall >= 2.4 && wall <= 3.5 && floor_thickness >= 3, "Keep 2.4-3.5 mm walls and >=3 mm floor; rework layout outside these limits.");
+assert(body_height >= 20 && body_height <= 40 && lid_thickness >= 2.4, "Insufficient PCB/port/lid clearance.");
+assert(lid_countersink_angle > 0 && lid_countersink_angle < 180, "Countersink angle must be between 0 and 180 degrees.");
+assert(lid_countersink_diameter > lid_screw_clearance && lid_countersink_diameter <= 2*boss_r-2, "Countersink must clear the shaft and stay within the supported boss area.");
+assert(lid_countersink_depth <= lid_thickness-1.2, "Countersink must leave at least 1.2 mm of lid beneath the bevel; increase lid_thickness or reduce the recess.");
+assert(lid_insert_length > 0 && lid_insert_depth_allowance >= 0.5, "Allow at least 0.5 mm below the heat-set insert for displaced plastic.");
+assert(lid_insert_bore_diameter-0.2 > lid_screw_clearance && lid_insert_bore_diameter+0.2 < lid_insert_outer_diameter, "All three coupon bores must clear M3 screws and be smaller than the insert OD.");
+assert(lid_insert_outer_diameter <= 2*boss_r-4, "Retain at least 2 mm of boss wall around the installed insert.");
+assert(lid_screw_relief_depth >= lid_insert_bore_depth && lid_screw_relief_depth <= body_height-floor_thickness, "Screw relief must reach below the insert pocket and leave a sealed floor.");
+assert(fit_clearance >= 0.15 && fit_clearance <= 0.6, "Use 0.15-0.6 mm clearance per side.");
+assert(battery_length > 0 && battery_width > 0 && battery_thickness > 0 && battery_xy_clearance >= 1, "Battery dimensions/clearance invalid.");
+assert(battery_xy[0]+bay_l+8 <= case_length-wall, "Battery tray/strap anchor exceeds case length.");
+assert(battery_xy[1]+bay_w+2 <= case_width-wall, "Increase case_width for this battery.");
+assert(floor_thickness+battery_pad+battery_thickness+3 <= body_height, "Increase body_height: allow 3 mm above cell, no clamping.");
+assert(pcb_z+1.6+7+2 <= body_height, "Increase body_height for PCB components.");
+assert(feather_post_diameter >= pcb_pilot_diameter+3 && feather_post_diameter <= 5.6,
+       "Keep at least 1.5 mm around Feather pilots and clearance to nearby header solder.");
+assert(feather_post_foot_diameter >= feather_post_diameter && feather_post_foot_diameter <= 8,
+       "Feather feet must support the posts and stay within the checked 8 mm footprint.");
+assert(feather_post_foot_height > 0 && feather_post_foot_height <= pcb_standoff-2,
+       "End Feather foot tapers at least 2 mm below the PCB for solder clearance.");
+assert(imu_rotation == 0 || imu_rotation == 180, "IMU rotation must be 0 or 180 degrees in the PCB plane.");
+assert(sd_standoff >= 4 && sd_pcb_z+6 <= body_height, "Allow at least 4 mm SD posts and 6 mm above its PCB for direct-soldered wiring.");
+assert(sd_xy[0]+sd_size[0]+2 <= case_length-wall && sd_xy[1] >= imu_xy[1]+imu_size[1]+3, "SD PCB must clear the right wall and IMU.");
+assert(sd_xy[0] >= battery_xy[0]+bay_l+2.5, "XTSD PCB must remain beside the battery tray.");
+assert(sd_xy[1]+2.54+sd_post_diameter/2+1 <= battery_xy[1]+bay_w/2-6,
+       "XTSD posts must clear the battery strap anchor in Y.");
+assert(sd_xy[0]+2.54-sd_post_diameter/2 >= battery_xy[0]+bay_l+8+0.5, "XTSD posts must clear the battery strap anchor.");
+assert(usb_opening_top < body_height && usb_opening_bottom >= floor_thickness, "USB opening must fit between floor and lid.");
+assert(power_switch_width > 0 && power_switch_height > 0, "Power-switch cutout dimensions must be positive.");
+assert(power_switch_y-power_switch_width/2 >= usb_y+usb_opening_width/2+wall &&
+       power_switch_y+power_switch_width/2 <= case_width-7-boss_r-wall,
+       "Power-switch opening must leave a wall-width gap to USB and the rear lid boss.");
+assert(power_switch_bottom >= floor_thickness+2.4 &&
+       power_switch_bottom+power_switch_height <= body_height-2.4-fit_clearance,
+       "Power-switch opening must retain its lower frame and clear the lid locating ribs.");
+assert(led_count == 1 || led_count == 2, "Use one or two LEDs.");
+assert(strip_length >= (led_count-1)*led_pitch+led_package_size+4 && strip_length <= 32,
+       "Segment must include pixels and end pads; compact holder accepts up to 32 mm.");
+assert(strip_width >= 8 && strip_width <= 10.5, "Check strip width; enlarge shell height for wider strips.");
+assert(strip_backing_thickness > 0 && led_package_height > 0 &&
+       led_slot_front+fit_clearance-strip_backing_thickness-led_package_height >= 0.5,
+       "LED faces must be recessed at least 0.5 mm.");
+assert(stick_clearance >= 0.15 && stick_clearance <= 0.4, "Keep 0.15-0.4 mm LED end clearance so the retaining edges still overlap the PCB.");
+assert(led_top+led_lid_clearance+1.2 <= body_height && led_lid_clearance >= 0.5, "Increase body_height for the LED channel and lid stop.");
+assert(led_anchor_x-3 >= 13 && led_slot_x+led_slot_length+2 <= case_length-13, "LED channel/strain relief conflicts with corner bosses.");
+assert(feather_xy[1] >= 12+fit_clearance, "Feather must clear the LED wire anchor's Y=12 edge.");
+assert(norm([feather_xy[0]+2.54-7,feather_xy[1]+2.54-7])-2.54 >= boss_r+fit_clearance,
+       "Feather rounded corner must clear the front lid boss.");
+assert(battery_xy[1]-2 >= feather_xy[1]+feather_size[1]+fit_clearance,
+       "Keep the battery tray clear of the Feather PCB outline.");
+assert(led_slot_back+2 < feather_xy[1]-2, "LED channel must clear the Feather and its wiring.");
+assert(led_wire_end_space >= 3 && led_wire_end_space <= 6 && led_wire_pad_space >= 4 && led_wire_pad_space <= 6, "Use 3-6 mm outside / 4-6 mm inside each LED end; revise guides beyond that.");
+assert(led_wire_front >= 0.8 && led_wire_front <= 1.5 && led_wire_back >= 9 && led_wire_back <= 12, "Keep an exterior skin and clearance to the Feather behind the LED passages.");
+assert(led_wire_top > led_wire_floor+4 && led_wire_top < led_top-2, "Lead envelope must fit below the lid's corner locators.");
+assert(part=="assembly" || part=="exploded" || part=="interior" || part=="base" || part=="lid" || part=="fit_coupon" || part=="led_fit_base" || part=="led_fit_lid" || part=="sd_fit_base" || part=="led_carrier" || part=="layout", "Unknown part.");
+
+function enclosure_size() = [case_length,case_width,body_height+lid_thickness];
+function sd_sample_origin() = [sd_xy[0]-1,sd_xy[1]-1,0];
+
+module rounded_rect(l,w,r) {
+    hull() for(x=[r,l-r], y=[r,w-r]) translate([x,y]) circle(r=r);
+}
+module rounded_box(l,w,h,r=3) {
+    linear_extrude(height=h) rounded_rect(l,w,r);
+}
+module slot(l,w,h) {
+    linear_extrude(height=h) hull() for(x=[-(l-w)/2,(l-w)/2]) translate([x,0]) circle(d=w);
+}
+module lid_insert_cut(top=body_height,diameter=lid_insert_bore_diameter) {
+    // Blind stepped bore: wider insert pocket, then clearance for the screw tip.
+    translate([0,0,top-lid_screw_relief_depth])
+        cylinder(d=lid_screw_clearance,h=lid_screw_relief_depth+eps);
+    translate([0,0,top-lid_insert_bore_depth])
+        cylinder(d=diameter,h=lid_insert_bore_depth+eps);
+    translate([0,0,top-lid_insert_lead_in])
+        cylinder(d1=diameter,d2=diameter+2*(lid_insert_lead_in+eps),h=lid_insert_lead_in+eps);
+}
+
+module ears() {
+    for(x=ear_xs, y=ear_ys) {
+        // Broad, planar roots; these are rigid lugs, not flexures.
+        intersection() {
+            hull() {
+                translate([x,y,0]) cylinder(r=7,h=4.5);
+                translate([x-6,y<0?4:case_width-4,0]) cylinder(r=6,h=4.5);
+                translate([x+6,y<0?4:case_width-4,0]) cylinder(r=6,h=4.5);
+            }
+            // End the roots at the inner wall: no step protrudes into the battery bay.
+            translate([-1,y<0?-20:case_width-wall,-eps]) cube([case_length+2,wall+20,5]);
+        }
+    }
+}
+module tether_lugs() {
+    // Independent of ears, retained on the Velcro version.
+    for(y=[-3,case_width+3]) translate([case_length/2-9,y-4,0]) rounded_box(18,8,4.5,3);
+}
+module tie_anchor(x,y) {
+    // Strap runs in X, through a short 2.2 mm-high bridge above a sealed floor.
+    difference() {
+        translate([x-3,y-6,floor_thickness-eps]) rounded_box(6,12,5,1.2);
+        translate([x-4,y-4.2,floor_thickness+1.2]) cube([8,8.4,2.2]);
+    }
+}
+module pcb_posts(origin,holes,diameter,height=pcb_standoff) {
+    for(p=holes) translate([origin[0]+p[0],origin[1]+p[1],floor_thickness-eps])
+        cylinder(d=diameter,h=height+eps);
+}
+module pcb_pilots(origin,holes,height=pcb_standoff) {
+    for(p=holes) translate([origin[0]+p[0],origin[1]+p[1],floor_thickness+0.4])
+        cylinder(d=pcb_pilot_diameter,h=height+eps);
+}
+module feather_posts() {
+    pcb_posts(feather_xy,feather_holes,feather_post_diameter);
+    // Broad roots spread the connection into the floor; taper upward without
+    // changing the PCB seating plane or the existing blind screw pilots.
+    for(p=feather_holes)
+        translate([feather_xy[0]+p[0],feather_xy[1]+p[1],floor_thickness-eps])
+            cylinder(d1=feather_post_foot_diameter,d2=feather_post_diameter,
+                     h=feather_post_foot_height+eps);
+}
+module battery_tray() {
+    // Rounded edges and a loose, broad fabric strap; no rigid lid pressure.
+    difference() {
+        translate([battery_xy[0]-2,battery_xy[1]-2,floor_thickness-eps])
+            rounded_box(bay_l+4,bay_w+4,5+eps,2);
+        translate([battery_xy[0],battery_xy[1],floor_thickness-eps])
+            rounded_box(bay_l,bay_w,5+2*eps,1);
+        // Strap access through both side walls.
+        translate([battery_xy[0]-3,battery_xy[1]+bay_w/2-5,floor_thickness+1])
+            cube([bay_l+6,10,6]);
+        // Battery lead exit toward the Feather, away from the strap.
+        translate([battery_xy[0]+3,battery_xy[1]-3,floor_thickness+1]) cube([10,4,6]);
+    }
+    tie_anchor(battery_xy[0]-5,battery_xy[1]+bay_w/2);
+    tie_anchor(battery_xy[0]+bay_l+5,battery_xy[1]+bay_w/2);
+}
+module led_channel() {
+    // Vertical printed carrier drops in from the open rim. Lid stops upward travel.
+    // Its component face points toward -Y, through the front wall opening.
+    translate([led_slot_x-2,wall-eps,floor_thickness-eps])
+        cube([led_slot_length+4,led_slot_back+2-wall+eps,led_bottom-floor_thickness+eps]);
+    for(x=[led_slot_x-2,led_slot_x+led_slot_length])
+        translate([x,wall-eps,floor_thickness-eps])
+            cube([2,led_slot_back+2-wall+eps,body_height-floor_thickness+eps]);
+    // Rear supports are inboard of both solder zones and grow from the floor.
+    // The lid supplies the upper-corner X stops after the wired carrier is inserted.
+    for(x=[led_x+led_wire_pad_space+2,led_x+stick_length-led_wire_pad_space-5])
+        translate([x,led_slot_back,floor_thickness-eps])
+            cube([3,2,led_top+0.5-floor_thickness+eps]);
+}
+module led_wire_passages() {
+    // Actual through-slots across the end walls, not recesses behind the carrier.
+    // Open to the rim so the solder joints can travel down with the carrier.
+    for(x=[led_x-led_wire_end_space,led_x+stick_length-led_wire_pad_space])
+        translate([x,led_wire_front,led_wire_floor])
+            cube([led_wire_end_space+led_wire_pad_space,led_wire_back-led_wire_front,body_height+1]);
+}
+module base() {
+    difference() {
+        union() {
+            difference() {
+                rounded_box(case_length,case_width,body_height,corner_radius);
+                translate([wall,wall,floor_thickness])
+                    rounded_box(case_length-2*wall,case_width-2*wall,body_height,corner_radius-wall);
+            }
+            for(p=bosses) translate([p[0],p[1],0]) cylinder(r=boss_r,h=body_height);
+            if(mount_ears) ears();
+            tether_lugs();
+            feather_posts();
+            pcb_posts(imu_xy,imu_holes,5.6);
+            pcb_posts(sd_xy,sd_holes,sd_post_diameter,sd_standoff);
+            tie_anchor(sd_anchor_xy[0],sd_anchor_xy[1]);
+            battery_tray();
+            led_channel();
+            // Internal strain relief beside the LED's DIN end, clear of the Feather.
+            tie_anchor(led_anchor_x,6);
+        }
+        for(p=bosses) translate([p[0],p[1],0]) lid_insert_cut();
+        if(mount_ears) for(x=ear_xs, y=ear_ys)
+            translate([x,y,-eps]) cylinder(d=mount_hole_diameter,h=5);
+        for(y=[-3,case_width+3]) translate([case_length/2,y,-eps]) slot(10,2.8,5);
+        pcb_pilots(feather_xy,feather_holes);
+        pcb_pilots(imu_xy,imu_holes);
+        pcb_pilots(sd_xy,sd_holes,sd_standoff);
+        led_wire_passages();
+        // Closed rectangular switch opening, entirely in the base; no lid change.
+        // This creates a 13.5 mm roof bridge at the default dimensions.
+        translate([-eps,power_switch_y-power_switch_width/2,power_switch_bottom])
+            cube([wall+2*eps,power_switch_width,power_switch_height]);
+        // Open-to-rim ports print without a roof; lid tongues close their upper part.
+        translate([-eps,usb_y-usb_opening_width/2,usb_opening_bottom]) cube([wall+2*eps,usb_opening_width,body_height]);
+        translate([led_window_x,-eps,led_window_bottom])
+            cube([led_window_length,led_slot_front+eps,body_height]);
+    }
+}
+module lid_features_in_case_xy() {
+    // Feature positions use the CASE's XY coordinates. lid() maps them into
+    // print coordinates so an actual 180-degree flip puts them on these walls.
+    difference() {
+        union() {
+            rounded_box(case_length,case_width,lid_thickness,corner_radius);
+            translate([18,case_width-wall-fit_clearance-1.6,lid_thickness-eps])
+                cube([case_length-36,1.6,2.4+eps]);
+            // Front locating ribs stop short of the LED channel's full-height ends.
+            for(span=[[18,led_slot_x-2-fit_clearance],
+                      [led_slot_x+led_slot_length+2+fit_clearance,case_length-18]])
+                translate([span[0],wall+fit_clearance,lid_thickness-eps])
+                    cube([span[1]-span[0],1.6,2.4+eps]);
+            for(x=[wall+fit_clearance,case_length-wall-fit_clearance-1.6])
+                translate([x,case_width-25,lid_thickness-eps]) cube([1.6,9,2.4+eps]);
+            translate([fit_clearance,usb_y-usb_opening_width/2+fit_clearance,lid_thickness-eps])
+                cube([wall-2*fit_clearance,usb_opening_width-2*fit_clearance,body_height-usb_opening_top+eps]);
+            // Front header of the LED window prints upright on the flat lid.
+            translate([led_window_x+fit_clearance,fit_clearance,lid_thickness-eps])
+                cube([led_window_length-2*fit_clearance,wall-2*fit_clearance,body_height-led_window_top+eps]);
+            // Stop above the board: retains it without clamping or flexing the print.
+            translate([led_slot_x+fit_clearance,led_slot_front+fit_clearance,lid_thickness-eps])
+                cube([led_slot_length-2*fit_clearance,led_pcb_thickness,body_height-led_top-led_lid_clearance+eps]);
+            // Locate only the upper carrier corners. The lower end
+            // passages stay open for wires; these do not squeeze the strip faces.
+            for(x=[led_slot_x-1.6,led_slot_x+led_slot_length])
+                translate([x,led_slot_front+fit_clearance,lid_thickness-eps])
+                    cube([1.6,led_pcb_thickness,body_height-led_top+1.5+eps]);
+        }
+        for(p=bosses) translate([p[0],p[1],0]) {
+            translate([0,0,-eps]) cylinder(d=lid_screw_clearance,h=lid_thickness+2*eps);
+            // Exterior is z=0 in print orientation. Widen below that plane
+            // so the surface opening is exactly the requested diameter.
+            translate([0,0,-eps])
+                cylinder(d1=lid_countersink_diameter+2*eps*tan(lid_countersink_angle/2),
+                         d2=lid_screw_clearance,h=lid_countersink_depth+eps);
+        }
+        // Off by default: a plain first layer is easier to print reliably.
+        if(lid_markings) {
+            translate([case_length/2,case_width/2,0.45]) mirror([0,0,1]) linear_extrude(height=0.5)
+                text("JUDGY",size=9,halign="center",valign="center",font="Liberation Sans:style=Bold");
+            translate([case_length/2,case_width/2-13,0.45]) mirror([0,0,1]) linear_extrude(height=0.5)
+                text("DECK / PETG",size=3.5,halign="center",valign="center");
+        }
+    }
+}
+module lid() {
+    // PRINT: exterior down. Mirroring Y HERE makes the manufactured lid correct.
+    // Assembly must use a rotation, never a reflection of the printed solid.
+    translate([0,case_width,0]) mirror([0,1,0]) lid_features_in_case_xy();
+}
+module led_carrier() {
+    // Print flat; bond the non-component back of the cut strip to this face.
+    cube([stick_length,stick_width,led_pcb_thickness]);
+}
+module led_electronics() {
+    translate([led_x,led_slot_front+fit_clearance+led_pcb_thickness,led_bottom]) rotate([90,0,0]) {
+        color([0.8,0.45,0.12]) led_carrier();
+        color("black") translate([4,2,led_pcb_thickness])
+            cube([strip_length,strip_width,strip_backing_thickness]);
+        for(i=[0:led_count-1]) color("ivory")
+            translate([4+strip_length/2+(i-(led_count-1)/2)*led_pitch-led_package_size/2,
+                       2+(strip_width-led_package_size)/2,led_pcb_thickness+strip_backing_thickness])
+                cube([led_package_size,led_package_size,led_package_height]);
+    }
+}
+module pcb_envelope(origin,size,holes) {
+    translate([origin[0],origin[1],pcb_z]) difference() {
+        color([0.08,0.4,0.38]) rounded_box(size[0],size[1],1.6,2.54);
+        for(p=holes) translate([p[0],p[1],-eps]) cylinder(d=2.2,h=2);
+    }
+}
+module imu_frame() {
+    translate([imu_xy[0],imu_xy[1],0])
+        if(imu_rotation == 180)
+            translate([imu_size[0],imu_size[1],0]) rotate([0,0,180]) children();
+        else children();
+}
+module imu_electronics() {
+    imu_frame() {
+        pcb_envelope([0,0],imu_size,imu_native_holes);
+        color("ivory") for(x=[-1,imu_size[0]-4])
+            translate([x,5,pcb_z+1.6]) cube([5,6,3]);
+    }
+}
+module imu_fastener_envelopes() {
+    for(p=imu_holes) translate([imu_xy[0]+p[0],imu_xy[1]+p[1],pcb_z+1.6+eps])
+        cylinder(d=4,h=2);
+}
+module imu_pilot_clearance() {
+    for(p=imu_holes) translate([imu_xy[0]+p[0],imu_xy[1]+p[1],floor_thickness+0.5])
+        cylinder(d=1.65,h=pcb_standoff-0.4);
+}
+module other_electronics() {
+    led_electronics();
+    pcb_envelope(feather_xy,feather_size,feather_holes);
+    imu_electronics();
+    color("silver") translate([feather_xy[0]-1.14,usb_y-4.6,pcb_z+1.6]) cube([7,9.2,3.4]);
+    color([0.22,0.23,0.25]) translate([feather_xy[0]+30,feather_xy[1]+4,pcb_z+1.6]) cube([18,15,3.2]);
+    color("ivory") translate([feather_xy[0]+7,feather_xy[1]+18,pcb_z+1.6]) cube([8,7,6]);
+    color("ivory") translate([feather_xy[0]+20,usb_y-3,pcb_z+1.6]) cube([5,6,3]);
+    color([0.7,0.72,0.75]) translate([battery_xy[0]+battery_xy_clearance,battery_xy[1]+battery_xy_clearance,floor_thickness+battery_pad])
+        rounded_box(battery_length,battery_width,battery_thickness,1);
+}
+module sd_electronics() {
+    translate([sd_xy[0],sd_xy[1],sd_pcb_z]) {
+        color([0.05,0.25,0.65]) difference() {
+            rounded_box(sd_size[0],sd_size[1],1.6,1.905);
+            for(p=sd_holes) translate([p[0],p[1],-eps]) cylinder(d=2.5,h=1.6+2*eps);
+        }
+        // Simplified packages in the 180-degree orientation; no card/socket.
+        color([0.15,0.15,0.15]) translate([1.969,5.382,1.6]) cube([8,6,1.3]);
+        color([0.15,0.15,0.15]) translate([10.389,5.563,1.6]) cube([6.4,6.4,1.3]);
+        color([0.15,0.15,0.15]) translate([17,7,1.6]) cube([3,3,1.3]);
+    }
+}
+module electronics() { other_electronics(); sd_electronics(); }
+module sd_fastener_envelopes() {
+    // Assumed M2x5 pan heads: <=4 mm diameter, <=2 mm high. Shafts intentionally
+    // enter pilots and are excluded; head-to-component clearance is checked.
+    for(p=sd_holes) translate([sd_xy[0]+p[0],sd_xy[1]+p[1],sd_pcb_z+1.6+eps])
+        cylinder(d=4,h=2);
+}
+module sd_solder_envelope() {
+    // Header row at Y=15.24 after the in-plane turn. Direct-soldered leads.
+    translate([sd_xy[0]+2,sd_xy[1]+13.5,sd_pcb_z-1.5]) cube([17.6,3.5,7.5]);
+}
+module sd_pilot_clearance() {
+    // Independent nominal 1.7 mm pilot probes, stopping short of blind bottoms.
+    for(p=sd_holes) translate([sd_xy[0]+p[0],sd_xy[1]+p[1],floor_thickness+0.5])
+        cylinder(d=1.65,h=sd_standoff-0.4);
+}
+module sd_fit_base() {
+    // Same two post centers/heights and blind pilots, on a compact test floor.
+    difference() {
+        union() {
+            rounded_box(sd_size[0]+2,sd_size[1]+2,floor_thickness,2);
+            pcb_posts([1,1],sd_holes,sd_post_diameter,sd_standoff);
+        }
+        pcb_pilots([1,1],sd_holes,sd_standoff);
+    }
+}
+module assembled_lid(lift=0) {
+    translate([0,case_width,body_height+lid_thickness+lift]) rotate([180,0,0]) lid();
+}
+module led_solder_envelopes(travel=0) {
+    // Assumed solder + insulated-lead keepouts, 0.5 mm clear of passage walls.
+    // These are fit fixtures, not a measured model of the user's solder joints.
+    for(x=[led_x-led_wire_end_space,led_x+stick_length-led_wire_pad_space])
+        translate([x+0.5,led_wire_front+0.5,led_wire_floor+0.5])
+            cube([led_wire_end_space+led_wire_pad_space-1,led_wire_back-led_wire_front-1,led_wire_top-led_wire_floor-0.5+travel]);
+}
+module wired_led_insertion(travel=22) {
+    // Sweep each box vertically, preserving the actual carrier/pixel footprint.
+    translate([led_x,led_slot_front+fit_clearance,led_bottom])
+        cube([stick_length,led_pcb_thickness,stick_width+travel]);
+    translate([led_x+4,led_slot_front+fit_clearance-strip_backing_thickness,led_bottom+2])
+        cube([strip_length,strip_backing_thickness,strip_width+travel]);
+    for(i=[0:led_count-1])
+        translate([led_x+4+strip_length/2+(i-(led_count-1)/2)*led_pitch-led_package_size/2,
+                   led_slot_front+fit_clearance-strip_backing_thickness-led_package_height,
+                   led_bottom+2+(strip_width-led_package_size)/2])
+            cube([led_package_size,led_package_height,led_package_size+travel]);
+    led_solder_envelopes(travel);
+}
+module led_fit_base() {
+    translate([-led_sample_x,0,0]) intersection() {
+        base();
+        translate([led_sample_x,0,-eps]) cube([led_sample_length,led_sample_depth,body_height+2*eps]);
+    }
+}
+module led_fit_lid() {
+    translate([-led_sample_x,-(case_width-led_sample_depth),0]) intersection() {
+        lid();
+        translate([led_sample_x,case_width-led_sample_depth,-eps]) cube([led_sample_length,led_sample_depth,lid_thickness+body_height]);
+    }
+}
+module fit_coupon() {
+    // Full-height, 12 mm bosses reproduce the insert pocket and screw relief.
+    // Labels give bore diameters; center insert bore matches the default base.
+    difference() {
+        union() {
+            rounded_box(46,36,floor_thickness,2);
+            for(i=[0:2]) translate([8+15*i,9,0]) cylinder(r=boss_r,h=body_height);
+            for(i=[0:2]) translate([8+15*i,26,floor_thickness-eps])
+                cylinder(d=5.6,h=pcb_standoff+eps);
+        }
+        for(i=[0:2]) {
+            bore = lid_insert_bore_diameter+0.2*(i-1);
+            translate([8+15*i,9,0]) lid_insert_cut(diameter=bore);
+            translate([8+15*i,26,floor_thickness+0.4]) cylinder(d=1.6+0.1*i,h=pcb_standoff+eps);
+            translate([8+15*i,17,floor_thickness-0.4]) linear_extrude(height=0.5)
+                text(str(bore),size=2.5,halign="center");
+            translate([8+15*i,31,floor_thickness-0.4]) linear_extrude(height=0.5)
+                text(str(1.6+0.1*i),size=2.5,halign="center");
+        }
+    }
+}
+
+echo("Main shell incl lid, excluding screw heads",[case_length,case_width,body_height+lid_thickness]);
+echo("Base footprint",[case_length,case_width+(mount_ears?26:14)]);
+echo("Battery nominal",[battery_length,battery_width,battery_thickness],"loose bay",[bay_l,bay_w]);
+echo("Lid insert: assumed length / OD / bore diameter / bore depth",lid_insert_length,lid_insert_outer_diameter,lid_insert_bore_diameter,lid_insert_bore_depth);
+echo("Lid screw: M3 countersunk, length includes head; nominal full-insert engagement at",lid_thickness+lid_insert_length,"mm; blind bottom at",lid_thickness+lid_screw_relief_depth,"mm; leave tip clearance (default M3x8 or existing M3x12)");
+echo("Lid countersink: exterior diameter / included angle / depth",lid_countersink_diameter,lid_countersink_angle,lid_countersink_depth);
+echo("Integrated LED: -Y long side; nominal front recess",led_slot_front+fit_clearance-(stick_height-led_pcb_thickness));
+echo("SD mount: Adafruit 4899, two M2x5 screws, 16.51 mm centers; PCB underside Z",sd_pcb_z);
+echo("Feather posts: body diameter / foot diameter / foot height / standoff",feather_post_diameter,feather_post_foot_diameter,feather_post_foot_height,pcb_standoff);
+echo("IMU in-plane rotation / hole centers / PCB underside Z",imu_rotation,[for(p=imu_holes) [imu_xy[0]+p[0],imu_xy[1]+p[1]]],pcb_z);
+echo("Power-switch cutout on USB wall (X=0): Y width / Z height / Y center / Z bottom",power_switch_width,power_switch_height,power_switch_y,power_switch_bottom);
+
+if(part=="base") base();
+if(part=="lid") lid();
+if(part=="fit_coupon") fit_coupon();
+if(part=="led_fit_base") led_fit_base();
+if(part=="led_fit_lid") led_fit_lid();
+if(part=="sd_fit_base") sd_fit_base();
+if(part=="led_carrier") led_carrier();
+if(part=="layout") {
+    base();
+    translate([case_length+12,0,0]) lid();
+    translate([0,case_width+22,0]) fit_coupon();
+    translate([50,case_width+22,0]) sd_fit_base();
+}
+if(part=="assembly" || part=="exploded" || part=="interior") {
+    color([0.17,0.24,0.3]) base();
+    if(part!="interior") color([0.87,0.55,0.19]) translate([0,part=="exploded"?42:0,0]) assembled_lid(part=="exploded"?30:0);
+    if(show_electronics) electronics();
+    if(show_electronics) color("silver") { sd_fastener_envelopes(); imu_fastener_envelopes(); }
+    if(show_sd_clearances) color([0.9,0.2,0.15,0.35]) sd_solder_envelope();
+    if(show_led_wire_envelopes) color([0.9,0.15,0.05,0.65]) led_solder_envelopes();
+}

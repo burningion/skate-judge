@@ -109,9 +109,12 @@ off. `/status` should report `led_count=5`, `led_format="GRB"` and `led_pin=5`.
 ### Direct-LiPo wiring for the first test
 
 See the [editable Fritzing project](../hardware/fritzing/README.md) for a
-connector-level drawing, with a bundled-parts `.fzz` file. Its artwork and the
-enclosure channel still show the old rigid stick; use the replacement strip's
-DIN/power labels and check its physical mounting separately.
+connector-level drawing, with a bundled-parts `.fzz` file. Its artwork still
+shows the old rigid stick; use the replacement strip's DIN/power labels. The
+[compact R10 enclosure](../hardware/enclosure/compact/README.md) has a removable
+carrier for two flexible pixels and fit samples for the provisional dimensions.
+Use `SYNC_LED_COUNT=2 ./flash-feather.sh` if shortening the strip to two pixels;
+the five-pixel configuration above describes the existing firmware default.
 
 Disconnect USB and the battery while making the connections. With the battery
 plugged into the Feather, its `BAT` pad exposes battery voltage directly. The

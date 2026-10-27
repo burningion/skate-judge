@@ -51,15 +51,18 @@ tests/                 sensor/video integrity, local HTTP, and webcam controller
 An [editable Fritzing wiring project](hardware/fritzing/README.md) is included,
 with bundled parts and a preview of the direct-LiPo prototype.
 
-A [parametric OpenSCAD enclosure](hardware/enclosure/README.md) includes PLA print
+A [parametric OpenSCAD enclosure](hardware/enclosure/compact/README.md) includes PETG print
 files, a screw-mounted deck base, a Velcro alternative, and a recessed LED mount
 integrated into the enclosure's side.
 Check the battery dimensions and mounting clearance before printing.
 
 This setup uses the Adafruit Feather ESP32-S3 **8 MB flash / no PSRAM**, an
 LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and a **cut five-pixel WS2812B/E RGB strip**.
-The Fritzing artwork and enclosure LED channel still depict the previous rigid
-eight-pixel stick; the flexible strip's physical mounting needs a separate fit check.
+The Fritzing artwork depicts the previous rigid eight-pixel stick. The new
+[compact enclosure](hardware/enclosure/compact/README.md) fits the Adafruit 4899
+soldered SD board and a two-pixel flexible strip, with small holder samples to
+check the provisional strip dimensions before printing. The firmware preset
+still defaults to five pixels; use `SYNC_LED_COUNT=2` when shortening the strip.
 For the first direct-LiPo bench test, wire with power disconnected:
 
 | Connection | Destination |

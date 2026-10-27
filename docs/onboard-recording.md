@@ -59,6 +59,12 @@ physical LED visibility and real skating impacts still require video review.
 
 ## SD card and internal flash
 
+**2026-10-26 hardware replacement:** the new Adafruit 4899 / Mouser 485-4899 is
+512 MB of soldered SD-protocol storage. Its [compact enclosure guide](../hardware/enclosure/compact/README.md#storage-and-firmware)
+includes the new pin labels and two-pixel LED configuration. Keep the existing
+SPI pin assignments; bench-check this board before relying on it. The removable
+card instructions and recorded validation results below refer to the old 254.
+
 The logger now prefers an **Adafruit 254 microSD breakout board+** with a mounted
 card. The [editable Fritzing design](../hardware/fritzing/skate-judge-direct-lipo.fzz)
 includes these connections:
