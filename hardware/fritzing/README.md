@@ -3,14 +3,17 @@
 Open **[skate-judge-direct-lipo.fzz](skate-judge-direct-lipo.fzz)** in Fritzing.
 It contains native components, electrical connections, movable wire bendpoints,
 labels, and editable notes—not a flattened drawing. All six part definitions
-and their artwork are bundled, including the four official Adafruit boards.
+and their artwork are bundled, including the three official Adafruit boards.
 No separate part-library download is required to open the bundle.
 
 ![Preview of the direct-LiPo wiring](skate-judge-direct-lipo.png)
 
 The circuit now uses the **Adafruit 4899 / XTSD 512 MB soldered SD board**.
-The LED artwork still depicts the previous eight-pixel stick; use the actual
-flexible strip's DIN, GND and positive-input labels and configured pixel count.
+The LED artwork shows **three WS2812B RGB LEDs on a flexible PCB strip**, with
+copper solder pads, cut lines, and data-direction arrows. This is a generic
+illustration: match the actual strip's DIN, GND and positive-input labels.
+For this three-pixel strip, flash with `SYNC_LED_COUNT=3 ./flash-feather.sh`
+from the repository root; the firmware preset still defaults to five pixels.
 
 ### SD soldering reference
 
@@ -47,10 +50,10 @@ battery graphic is a generic 1S 500 mAh illustration, not a model of your exact 
 | Connection | Destination |
 | --- | --- |
 | 3.7 V / 500 mAh LiPo | Feather battery JST, correct polarity |
-| Feather `BAT` | NeoPixel stick `5V` / `+` input; actual supply is battery voltage |
-| Feather `GND` | NeoPixel stick `GND` |
-| Feather pad **5**, GPIO5 | R1, **330 Ω**, then stick `DIN` |
-| Stick `DOUT` | Unconnected |
+| Feather `BAT` | Flexible strip `5V` / `+` input; actual supply is battery voltage |
+| Feather `GND` | Flexible strip `GND` |
+| Feather pad **5**, GPIO5 | R1, **330 Ω**, then strip `DIN` |
+| Strip `DOUT` | Unconnected |
 | Feather STEMMA QT | IMU STEMMA QT: GND, switched 3.3 V, SDA/GPIO3, SCL/GPIO4 |
 | Feather `3.3V` | Adafruit **4899** `VIN` |
 | Feather `GND` | 4899 `GND` |
@@ -82,8 +85,7 @@ new board. Stop/save before removing power. See [SD recording and verification](
 for storage selection, firmware settings, and the required physical bench test.
 
 This is the documented **direct-LiPo first test**, not the regulated 5 V alternative.
-The stick's listed supply range is 4–7 V, so operation as a single LiPo discharges
-below 4 V is not guaranteed. Test both fully charged and partly discharged before
+The strip's voltage range depends on its revision. Test both fully charged and partly discharged before
 relying on the sync flashes. Verify battery polarity and protect it from impacts.
 See the [hardware reference](../../docs/recording.md#direct-lipo-wiring-for-the-first-test)
 for the wiring caveats, manufacturer sources, and regulated-power alternative.
@@ -128,17 +130,20 @@ lose any hand edits to them; do not use it on your working Fritzing file.
 
 ## Parts and attribution
 
-- Feather ESP32-S3, LSM6DSO32, RGB NeoPixel Stick, and Adafruit 4899 artwork/definitions:
+- Feather ESP32-S3, LSM6DSO32, and Adafruit 4899 artwork/definitions:
   [Adafruit Fritzing Library](https://github.com/adafruit/Fritzing-Library), pinned
   at `7d905c3e982de3712c3033da4596cc71ea32de1c`. The Feather asset identifies the
-  8 MB revision; the RGB stick asset is not the WWA or RGBW part.
+  8 MB revision. The previous RGB stick archive is retained in `sources/` but
+  is no longer included in the project.
 - Standard resistor artwork/definition: Fritzing / Brendan Howell,
   [Fritzing parts](https://github.com/fritzing/fritzing-parts), pinned at
   `e64ffe973e92176b989ab390ab668638a85ee305`. R1's native resistance property is 330 Ω.
-- Generic battery illustration and arrangement: skate-judge contributors.
+- Generic battery and three-pixel flexible strip illustrations/definitions and
+  arrangement: skate-judge contributors. Strip pitch, pad order, and dimensions
+  are illustrative, not a mounting template or fabrication footprint.
 - Upstream URLs and archive hashes: [sources/provenance.json](sources/provenance.json).
 
-The diagram, bundled artwork, and generic battery part are distributed under
+The diagram, bundled artwork, and generic battery and strip parts are distributed under
 **Creative Commons Attribution–ShareAlike 3.0 Unported**. Attribution is also inside
 the `.fzz`; see [the license](sources/CC-BY-SA-3.0.txt) and
 [Fritzing's graphics notice](sources/Fritzing-LICENSE.txt). This notice does not

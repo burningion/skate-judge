@@ -247,12 +247,6 @@ def parts():
             {"breadboard": (70, 265), "schematic": (510, 300), "pcb": (330, 100)},
         ),
         (
-            "stick",
-            3,
-            "LED1 · 8-pixel RGB stick",
-            {"breadboard": (550, 135), "schematic": (510, 100), "pcb": (100, 250)},
-        ),
-        (
             "resistor",
             4,
             "R1 · 330 Ω",
@@ -290,6 +284,19 @@ def parts():
         "BAT1 · 1S LiPo",
         members,
         {"breadboard": (190, 105), "schematic": (100, 250), "pcb": (100, 350)},
+    )
+    members = {
+        "part.skate-judge-ws2812b-strip.fzp": (
+            HERE / "parts/ws2812b-strip.fzp"
+        ).read_bytes()
+    }
+    for view in ("breadboard", "schematic", "pcb"):
+        members[f"svg.{view}.skate-judge-ws2812b-strip.svg"] = (
+            HERE / "parts" / f"ws2812b-strip-{view}.svg"
+        ).read_bytes()
+    result["strip"] = Part(
+        "strip", 3, "LED1 · 3-pixel WS2812B strip", members,
+        {"breadboard": (550, 135), "schematic": (510, 100), "pcb": (100, 250)},
     )
     return result
 
@@ -391,19 +398,19 @@ def build(output, replace_generated=False):
             [(347.435, 150)],
         ),
         (
-            "BAT → stick +5V input (battery voltage)",
+            "BAT → strip +5V input (battery voltage)",
             "feather",
             "connector64",
-            "stick",
+            "strip",
             "connector24",
             "battery",
             [(372.55, 215), (535, 215), (535, 157.5)],
         ),
         (
-            "Common ground → stick GND",
+            "Common ground → strip GND",
             "feather",
             "connector60",
-            "stick",
+            "strip",
             "connector26",
             "ground",
             [(363.55, 350), (765, 350), (765, 110), (535, 110), (535, 139.5)],
@@ -418,10 +425,10 @@ def build(output, replace_generated=False):
             [(453.55, 193), (480, 193), (480, 148.5)],
         ),
         (
-            "330 Ω → stick DIN",
+            "330 Ω → strip DIN",
             "resistor",
             "connector1",
-            "stick",
+            "strip",
             "connector25",
             "data",
             [],
@@ -569,8 +576,8 @@ def build(output, replace_generated=False):
             205,
             195,
             115,
-            "LED STICK",
-            "GPIO5 (pad marked 5) is DATA, not 5 V. R1: recommended 330 Ω, near DIN. DOUT is unconnected. BAT supplies battery voltage, not regulated 5 V.",
+            "3-PIXEL FLEXIBLE LED STRIP",
+            "3 WS2812B LEDs on flexible PCB. Wire the DIN end; arrows point toward DOUT. GPIO5 → R1 (330 Ω) → DIN. BAT → +5V; GND → GND. DOUT unused. Match pad labels on your strip. BAT is battery voltage.",
         ),
         (
             55, 465, 460, 110,
@@ -583,7 +590,7 @@ def build(output, replace_generated=False):
             690,
             75,
             "CHECK BEFORE SKATING",
-            "Direct LiPo is a bench-test option: this RGB stick is specified for 4–7 V, so operation below 4 V is not guaranteed. Test fully charged and partly discharged. Verify JST polarity. Insulate and protect the battery. Crossings without a junction are not connections.",
+            "Direct LiPo is a bench-test option; the strip's voltage range depends on its revision. Test fully charged and partly discharged. Verify JST polarity. Insulate and protect the battery. Crossings without a junction are not connections.",
         ),
     ]
     for index, (x, y, width, height, heading, text) in enumerate(notes, 900):
@@ -612,7 +619,7 @@ def build(output, replace_generated=False):
         HERE / "sources/CC-BY-SA-3.0.txt"
     ).read_bytes()
     members["ATTRIBUTION.txt"] = (
-        b"Board artwork: Adafruit. Resistor artwork: Fritzing / Brendan Howell. Battery illustration and arrangement: skate-judge contributors. CC BY-SA 3.0.\n"
+        b"Board artwork: Adafruit. Resistor artwork: Fritzing / Brendan Howell. Generic battery and flexible LED strip illustrations and arrangement: skate-judge contributors. CC BY-SA 3.0.\n"
     )
     archive(targets[1], members)
     preview(targets[2], ps, preview_wires, notes)

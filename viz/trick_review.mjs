@@ -55,6 +55,27 @@ export function attemptEventTimeline(context, mapping, origin, duration) {
     }))}, mapping, origin, duration);
 }
 
+export function jumpEventTimeline(context, mapping, origin, duration, sensitivity = "sensitive") {
+  if (context?.availability !== "ready") return [];
+  return boardEventTimeline({events: context.events.filter(row =>
+    sensitivity !== "conservative" || row.detection_method !== "load_pair").map(row => ({...row, estimated_peak: true,
+    earliest_s: row.takeoff_s, observed_s: row.peak_s, latest_s: row.landing_s,
+  }))}, mapping, origin, duration).filter(row => row.observed_s >= 0 && row.observed_s < duration);
+}
+
+export function nearestFrame(times, target) {
+  if (!times.length) return target;
+  let lo = 0, hi = times.length;
+  while (lo < hi) {
+    const middle = (lo + hi) >>> 1;
+    if (times[middle] < target) lo = middle + 1;
+    else hi = middle;
+  }
+  if (!lo) return times[0];
+  if (lo === times.length) return times.at(-1);
+  return target - times[lo - 1] <= times[lo] - target ? times[lo - 1] : times[lo];
+}
+
 export function groupAttemptEvents(events, scoredRanges = null, gap = 1) {
   // Keep the original detections for score filtering;
   // a strong peak must not lend its score to a weaker neighboring window.
@@ -140,6 +161,7 @@ function consolidateAttemptCandidates(pairs, attempts, threshold, gap = 1) {
 }
 
 const attemptEventKinds = [["potential_attempt", "Potential attempt", "#c9f887"]];
+const jumpEventKinds = [["estimated_peak", "Likely flight · line marks estimated peak", "#90d8de"]];
 const boardEventKinds = [
   ["free_fall", "Free-fall", "#bdacff"],
   ["wake_up", "Wake-up", "#f4cc83"],
@@ -147,6 +169,7 @@ const boardEventKinds = [
 ];
 
 function boardEventName(row) {
+  if (row.estimated_peak) return `Estimated peak ${row.observed_s.toFixed(3)} s · flight ${(row.latest_s - row.earliest_s).toFixed(3)} s`;
   if (row.potential_attempt) return `Potential attempt · score ${row.score.toFixed(2)}`
     + (row.detections?.length > 1 ? ` · ${row.detections.length} detections grouped` : "");
   return boardEventKinds.filter(([key]) => row[key]).map(([, name]) => name).join(" + ");
@@ -265,7 +288,7 @@ export function validInterval(start, end, duration) {
 }
 
 export function requireCurrentServer(data, saved) {
-  if (data.api_version !== 7 || !saved.label_context || typeof saved.labels_revision !== "string") {
+  if (data.api_version !== 8 || !saved.label_context || typeof saved.labels_revision !== "string") {
     throw new Error("Restart the review server to load the updated tools: press Ctrl+C in its terminal, rerun the review command, then reload this page. Refreshing the browser alone keeps the older Python server running.");
   }
 }
@@ -300,6 +323,20 @@ export async function init() {
   const [data, saved] = await Promise.all([request("/api/data"), request("/api/review")]);
   requireCurrentServer(data, saved);
   const video = $("video"), audio = data.audio, duration = data.duration_s;
+  const jumpReview = data.review_mode === "jumps";
+  if (jumpReview) {
+    $("board-event-mode").value = "jumps";
+    $("board-event-mode-field").hidden = true;
+    $("page-title").textContent = "Find your jump peaks";
+    $("page-description").textContent = "Review jumps recorded with a waist or lower-back IMU. Match the LED flashes, then step through the estimated peaks.";
+    $("workspace").className = "workspace jump-review";
+    $("review-queue").hidden = true;
+    $("detail").hidden = $("detail-legend").hidden = true;
+    $("detail-title").textContent = "Sensor detail";
+    $("video-panel").append($("status"));
+    $("overview").setAttribute("aria-label", "Whole recording with likely flights and estimated jump peaks. Click to seek.");
+    video.setAttribute("aria-label", "Recorded jump session");
+  }
   const frameTimes = data.video_timing?.frame_times_s || [];
   const syncUnavailable = data.sensor.sync_unavailable_reason || (data.sensor.syncs.length ? ""
     : "Flash matching needs the recorded LED events from this session's events.jsonl. Download or import the sensor recording, then restart the review server.");
@@ -329,7 +366,7 @@ export async function init() {
   const windowFor = pair => pair && attemptWindow(pair, duration, labelContext.coverage, reviewed);
   const eventWindow = event => {
     if (!event) return null;
-    if (!event.potential_attempt) return [Math.max(0, event.earliest_s - 1), Math.min(duration, event.latest_s + 2)];
+    if (!event.potential_attempt && !event.estimated_peak) return [Math.max(0, event.earliest_s - 1), Math.min(duration, event.latest_s + 2)];
     const index = boardEvents.findIndex(row => row.event_id === event.event_id);
     // Include approach and follow-through without playing into another group.
     return [Math.max(0, event.earliest_s - .5, Math.min(event.earliest_s, boardEvents[index - 1]?.latest_s ?? 0)),
@@ -440,6 +477,8 @@ export async function init() {
     const attempts = attemptFilterTimeline(data.sensor.attempts, alignmentMatches() ? mapping : null, data.source_pts_origin_s, duration);
     boardEvents = $("board-event-mode").value === "raw"
       ? boardEventTimeline(data.sensor.board_motion, alignmentMatches() ? mapping : null, data.source_pts_origin_s, duration)
+      : $("board-event-mode").value === "jumps"
+      ? jumpEventTimeline(data.sensor.jumps, alignmentMatches() ? mapping : null, data.source_pts_origin_s, duration, $("jump-sensitivity").value)
       : groupAttemptEvents(attemptEventTimeline(data.sensor.attempts, alignmentMatches() ? mapping : null, data.source_pts_origin_s, duration),
         attempts.unavailable_reason ? null : attempts.scored_ranges);
     if (selectedBoardEvent) {
@@ -476,6 +515,7 @@ export async function init() {
       : `${motion.events.length} motion peaks in this clip. Acceleration adds impact candidates; gyro supports nearby events. Suggestions still need review.`);
     rows = mergeReviews(proposals, reviewed);
     rows = mergeReviews(rows, [...drafts.values()]);
+    if (jumpReview) rows = [];
     if (!selectedBoardEvent && (!selection() || ($("pending-only").checked && !needsReview(selection())))) selected = visibleRows()[0]?.id || null;
     $("threshold-value").textContent = opts.threshold.toFixed(2);
     setEditor(); list(); draw();
@@ -539,7 +579,7 @@ export async function init() {
   function draw() {
     const pair = selection(), opts = settings(), length = span();
     const overview = canvas("overview"), o = overview.ctx;
-    for (const row of rows) {
+    for (const row of jumpReview ? [] : rows) {
       o.fillStyle = row.status === "rejected" ? "#513b32" : row.id === selected ? "#587346" : "#2c4b35";
       const range = row.label_id || isBackground(row) ? windowFor(row) : null;
       const start = range?.[0] ?? row.start_s, end = range?.[1] ?? row.end_s;
@@ -547,8 +587,19 @@ export async function init() {
       o.fillRect(start / duration * overview.w, 0, Math.max(2, (end - start) / duration * overview.w), overview.h);
     }
     waveform(o, overview.w, 0, duration, 6, overview.h - 12);
+    for (const event of boardEvents.filter(row => row.estimated_peak)) {
+      o.fillStyle = "#90d8de44";
+      o.fillRect(event.earliest_s / duration * overview.w, 0,
+        (event.latest_s - event.earliest_s) / duration * overview.w, overview.h);
+      marker(o, event.observed_s / duration * overview.w, overview.h, "#90d8de");
+    }
     o.strokeStyle = "#8aa68d"; o.strokeRect(windowStart / duration * overview.w, 1, length / duration * overview.w, overview.h - 2);
     marker(o, video.currentTime / duration * overview.w, overview.h, "#ffffff");
+    if (jumpReview) {
+      if (data.sensor.samples.length) drawImu();
+      drawBoardEvents();
+      return;
+    }
     const {ctx, w, h} = canvas("detail"), x = t => (t - windowStart) / length * w;
     drawSaved(ctx, x, h);
     drawAttempt(ctx, x, h, pair);
@@ -577,41 +628,58 @@ export async function init() {
     if (saving) return;
     stashDraft(); selected = null; selectedBoardEvent = event;
     video.pause(); audition = null;
-    video.currentTime = clamp(event.earliest_s, 0, duration);
+    video.currentTime = clamp(event.estimated_peak
+      ? nearestFrame(frameTimes, event.observed_s) + 1e-6 : event.earliest_s, 0, duration);
     windowStart = clamp(video.currentTime - span() / 3, 0, Math.max(0, duration - span()));
     setEditor(); list(); draw();
   }
   function drawBoardEvents() {
     const raw = $("board-event-mode").value === "raw";
-    const context = raw ? data.sensor.board_motion : data.sensor.attempts;
+    const jumps = $("board-event-mode").value === "jumps";
+    const context = raw ? data.sensor.board_motion : jumps ? data.sensor.jumps : data.sensor.attempts;
     const matched = alignmentMatches();
     const shown = boardEvents.filter(event => event.earliest_s < windowStart + span() && event.latest_s >= windowStart);
     const available = context?.availability === (raw ? "recorded" : "ready");
-    $("board-event-title").textContent = raw ? "Raw board observations" : "Potential trick attempts";
-    const noun = raw ? "raw observation(s)" : "potential attempt(s)";
+    const eventCount = jumps && $("jump-sensitivity").value === "conservative"
+      ? (context?.events || []).filter(event => event.detection_method !== "load_pair").length
+      : context?.events?.length || 0;
+    $("board-event-title").textContent = raw ? "Raw board observations" : jumps ? "Estimated jump peaks" : "Potential trick attempts";
+    const noun = raw ? "raw observation(s)" : jumps ? "estimated peak(s)" : "potential attempt(s)";
     const skipped = Object.values(context?.quality?.skipped || {}).reduce((sum, count) => sum + count, 0);
-    const modelInfo = raw || !available ? "" : (matched ? ` Grouped from ${boardEvents.reduce((sum, event) => sum + event.detections.length, 0)} model detections.` : "")
+    const modelInfo = raw || jumps || !available ? "" : (matched ? ` Grouped from ${boardEvents.reduce((sum, event) => sum + event.detections.length, 0)} model detections.` : "")
       + ` Learned model: ${context.model_name}; score cutoff ${context.threshold.toFixed(2)}.`
       + (skipped ? ` ${skipped} sensor windows could not be scored.` : "")
       + (context.training_session_overlap ? " This recording was used to train the model." : "");
-    $("board-event-status").textContent = (!context ? "Restart the review server to load attempt detection."
-      : context.message || (!matched ? `${context.events.length} ${raw ? noun : "model detection(s)"}. Match LED flashes to place them on the video timeline.`
+    $("board-event-status").textContent = (!context ? "Restart the review server to load event detection."
+      : context.message || (!matched ? `${eventCount} ${raw || jumps ? noun : "model detection(s)"}. Match LED flashes to place them on the video timeline.`
       : `${boardEvents.length} ${noun} in this clip · ${shown.length} in view.`)) + modelInfo;
     $("board-event-help").textContent = raw
       ? "All sensor interrupts, including everyday board movement. Bands show uncertain motion times. Free-fall describes the board, not a rider fall."
+      : jumps ? "More sensitive adds push-off/landing pairs with interrupted unloading; Conservative requires sustained low-g flight. Peaks estimate the midpoint between sensor boundaries. Tucks, rotation and trampoline motion can shift it. Check the video; these are not measured apexes."
       : "Overlapping model windows, or windows up to 1 s apart, form one potential attempt. Bands span the full group; Play attempt adds 0.5 s before and 1 s after. Groups do not cross known sensor gaps. The displayed score is the strongest detection, not a confidence percentage. Confirm the action in the video.";
     $("board-event-help").hidden = !(available || context?.events?.length);
     $("board-events").hidden = !matched || !(available || boardEvents.length);
-    $("board-events").setAttribute("aria-label", raw ? "Raw board motion intervals. Click to seek." : "Learned potential trick attempt windows. Click to seek.");
+    $("board-events").setAttribute("aria-label", raw ? "Raw board motion intervals. Click to seek." : jumps ? "Likely flight intervals and estimated peaks. Click a flight to seek its peak." : "Learned potential trick attempt windows. Click to seek.");
+    const seekTime = event => jumps ? event.observed_s : event.earliest_s;
     const activeIndex = boardEvents.findIndex(event => event.event_id === selectedBoardEvent?.event_id);
     const previous = activeIndex >= 0 ? boardEvents[activeIndex - 1]
-      : [...boardEvents].reverse().find(event => event.earliest_s < video.currentTime - .001);
+      : [...boardEvents].reverse().find(event => seekTime(event) < video.currentTime - .001);
     const next = activeIndex >= 0 ? boardEvents[activeIndex + 1]
-      : boardEvents.find(event => event.earliest_s > video.currentTime + .001);
+      : boardEvents.find(event => seekTime(event) > video.currentTime + .001);
+    $("board-event-previous").textContent = jumps ? "← Previous peak" : "← Previous event";
+    $("board-event-next").textContent = jumps ? "Next peak →" : "Next event →";
     $("board-event-previous").disabled = saving || !previous;
     $("board-event-next").disabled = saving || !next;
     $("board-event-previous").onclick = () => previous && seekBoardEvent(previous);
     $("board-event-next").onclick = () => next && seekBoardEvent(next);
+    $("jump-navigation").hidden = !jumps;
+    $("jump-previous").disabled = $("board-event-previous").disabled;
+    $("jump-next").disabled = $("board-event-next").disabled;
+    $("jump-previous").onclick = () => previous && seekBoardEvent(previous);
+    $("jump-next").onclick = () => next && seekBoardEvent(next);
+    $("jump-selected").textContent = selectedBoardEvent?.estimated_peak
+      ? `Jump ${activeIndex + 1} of ${boardEvents.length} · ${boardEventName(selectedBoardEvent)} · frame ${nearestFrame(frameTimes, selectedBoardEvent.observed_s).toFixed(3)} s${selectedBoardEvent.detection_method === "load_pair" ? " · Push-off / landing estimate" : ""}`
+      : $("board-event-status").textContent;
     // Keep focused event buttons stable while the playhead advances.
     const listKey = `${selectedBoardEvent?.event_id}:${saving}|` + shown.map(event => `${event.event_id}:${event.earliest_s}:${event.latest_s}`).join("|");
     if (listKey !== boardListKey || !$("board-event-list").children.length) {
@@ -622,8 +690,10 @@ export async function init() {
         button.type = "button";
         button.disabled = saving;
         button.setAttribute("aria-pressed", String(event.event_id === selectedBoardEvent?.event_id));
-        button.textContent = `${boardEventName(event)} · ${event.earliest_s.toFixed(3)}–${event.latest_s.toFixed(3)} s`;
-        button.title = event.potential_attempt
+        button.textContent = event.estimated_peak ? boardEventName(event) : `${boardEventName(event)} · ${event.earliest_s.toFixed(3)}–${event.latest_s.toFixed(3)} s`;
+        button.title = event.estimated_peak
+          ? `Likely flight ${event.earliest_s.toFixed(3)}–${event.latest_s.toFixed(3)} s. Click to pause at the estimated peak.`
+          : event.potential_attempt
           ? `${event.detections.length} detection(s); strongest center ${event.observed_s.toFixed(3)} s. Play attempt reviews the complete group with context.`
           : `Observed at ${event.observed_s.toFixed(3)} s. Click to review from the start of its possible interval.`;
         button.onclick = () => seekBoardEvent(event);
@@ -635,7 +705,7 @@ export async function init() {
     // Share the horizontal time axis with the audio and IMU plots above.
     const x = t => (t - windowStart) / span() * w;
     ctx.font = "11px system-ui";
-    for (const [index, [key, name, color]] of (raw ? boardEventKinds : attemptEventKinds).entries()) {
+    for (const [index, [key, name, color]] of (raw ? boardEventKinds : jumps ? jumpEventKinds : attemptEventKinds).entries()) {
       const y = index * 27;
       ctx.fillStyle = color; ctx.fillText(name, 3, y + 11);
       ctx.strokeStyle = colors.faint; ctx.beginPath(); ctx.moveTo(0, y + 25); ctx.lineTo(w, y + 25); ctx.stroke();
@@ -645,6 +715,7 @@ export async function init() {
         ctx.fillRect(start, y + 14, Math.max(2, end - start), 10);
         ctx.globalAlpha = 1; ctx.strokeStyle = color;
         ctx.strokeRect(start, y + 14, Math.max(2, end - start), 10);
+        if (event.estimated_peak) marker(ctx, x(event.observed_s), h - 19, color);
       }
     }
     for (let i = 0; i <= 4; i++) {
@@ -660,7 +731,7 @@ export async function init() {
     $("sensor-count").textContent = `${samples.length} samples in view`;
     const pair = selection(), plotHeight = h - 22, half = plotHeight / 2;
     const xAt = t => (t - windowStart) / length * w;
-    drawSaved(ctx, xAt, h);
+    if (!jumpReview) drawSaved(ctx, xAt, h);
     drawAttempt(ctx, xAt, h, pair);
     if (pair && !isBackground(pair)) {
       ctx.fillStyle = "#304432";
@@ -813,10 +884,11 @@ export async function init() {
   $("back").onclick = () => step(-1);
   $("forward").onclick = () => step(1);
   $("speed").onchange = () => { video.playbackRate = Number($("speed").value); };
+  $("jump-sensitivity").onchange = () => { regenerate(); };
   $("seek").oninput = () => { audition = null; seek(Number($("seek").value)); };
   $("zoom").onchange = () => { center(video.currentTime); draw(); };
   for (const id of ["threshold", "min-gap", "max-gap", "candidate-mode", "motion-threshold", "filter-threshold", "attempt-threshold", "show-filtered"]) $(id).oninput = () => { regenerate(); changed(); };
-  for (const id of ["offset", "scale"]) $(id).oninput = () => { alignmentStatus(); changed(); regenerate(); };
+  for (const id of ["offset", "scale"]) $(id).oninput = () => { alignmentStatus(); if (!jumpReview) changed(); regenerate(); };
   $("imu").onpointerdown = event => {
     const box = $("imu").getBoundingClientRect(); audition = null;
     video.currentTime = clamp(windowStart + (event.clientX - box.left) / box.width * span(), 0, duration);
@@ -824,8 +896,11 @@ export async function init() {
   };
   $("board-events").onpointerdown = event => {
     const box = $("board-events").getBoundingClientRect();
+    const time = clamp(windowStart + (event.clientX - box.left) / box.width * span(), 0, duration);
+    const jump = boardEvents.find(row => row.estimated_peak && row.earliest_s <= time && time <= row.latest_s);
+    if (jump) { seekBoardEvent(jump); return; }
     video.pause(); audition = null;
-    video.currentTime = clamp(windowStart + (event.clientX - box.left) / box.width * span(), 0, duration);
+    video.currentTime = time;
     draw();
   };
   $("start").onchange = () => updateBoundary("start_s", Number($("start").value));
@@ -937,13 +1012,18 @@ export async function init() {
     if (event.key === " " && event.target.closest("button")) return;
     if (saving || event.repeat) return;
     const key = event.key.toLowerCase();
+    if ($("board-event-mode").value === "jumps") {
+      const action = {n: "jump-next", p: "jump-previous", " ": "play", arrowleft: "back", arrowright: "forward"}[key];
+      if (action) { event.preventDefault(); $(action).click(); return; }
+      if (jumpReview) return;
+    }
     const outcomes = {"1": "make", "2": "bail", "3": "fall", "4": "unknown", "0": "background"};
     if (outcomes[key]) { event.preventDefault(); savePair("label", outcomes[key]); return; }
     const action = {" ": video.paused ? "audition" : "play", arrowleft: "back", arrowright: "forward", i: "label-mark-start", o: "label-mark-end", n: "next", p: "previous", s: "save", x: "reject"}[key];
     if (action) { event.preventDefault(); $(action).click(); }
   });
   window.addEventListener("beforeunload", event => { if (dirty) { event.preventDefault(); event.returnValue = ""; } });
-  new ResizeObserver(() => draw()).observe($("detail"));
+  new ResizeObserver(() => draw()).observe($("overview"));
   let lastTime = -1;
   function tick() {
     if (audition && !video.paused && video.currentTime >= audition.end) {
@@ -958,5 +1038,6 @@ export async function init() {
     requestAnimationFrame(tick);
   }
   video.addEventListener("ended", () => { if (audition && $("loop").checked) { seek(audition.start); play(); } });
-  regenerate(); status(`Ready. ${reviewed.filter(row => row.label_id).length} saved labels. Watch an attempt, then choose an outcome or Not a trick.`); requestAnimationFrame(tick);
+  regenerate(); status(jumpReview ? "Experimental jump review · match the beginning and ending LED flashes, then use Next peak."
+    : `Ready. ${reviewed.filter(row => row.label_id).length} saved labels. Watch an attempt, then choose an outcome or Not a trick.`); requestAnimationFrame(tick);
 }

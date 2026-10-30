@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {readFile} from "node:fs/promises";
-import {attemptEventTimeline, attemptFilterTimeline, attemptWindow, backgroundWindow, boardEventTimeline, groupAttemptEvents, init, mergeReviews, motionTimeline, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAttemptCandidates, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {attemptEventTimeline, attemptFilterTimeline, attemptWindow, backgroundWindow, boardEventTimeline, groupAttemptEvents, init, jumpEventTimeline, mergeReviews, motionTimeline, nearestFrame, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAttemptCandidates, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
 import {evaluateClips} from "../viz/evaluate_candidates.mjs";
 
 const opts = {threshold: .65, min_gap: .18, max_gap: .9};
@@ -345,7 +345,8 @@ test("new proposals fully covered by a human label do not return as duplicate wo
 
 // Exercise the real controller with a small DOM/media fixture. This verifies
 // user actions and requests without depending on a graphical browser or codec.
-async function controller(t, {legacyServer = false, intervals = [], onsets = [2, 2.5, 8, 8.5], sensor = {}} = {}) {
+async function controller(t, {legacyServer = false, intervals = [], onsets = [2, 2.5, 8, 8.5], sensor = {},
+    reviewMode = "attempts", frameTimes = [0, 1001 / 120000, 2002 / 120000]} = {}) {
   const html = await readFile(new URL("../viz/trick_review.html", import.meta.url), "utf8");
   const nodes = new Map(), listeners = new Map();
   function element() {
@@ -374,8 +375,8 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
   const state = {revision: 0, labels_revision: "0", intervals,
     settings: {...opts, offset: 999, scale: .99},
     label_context: {available: true, mapping, coverage: [0, 20]}};
-  const data = {api_version: 7, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4",
-    video_timing: {fps: 120000 / 1001, frame_times_s: [0, 1001 / 120000, 2002 / 120000]},
+  const data = {api_version: 8, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4", review_mode: reviewMode,
+    video_timing: {fps: 120000 / 1001, frame_times_s: frameTimes},
     audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
     sensor: {mapping, samples: [], warnings: [], syncs: [], offset_hint_s: 0, ...sensor}};
@@ -433,6 +434,125 @@ test("missing sensor data keeps flash controls visible and explains recovery", a
   assert.equal(get("sync-id").disabled, true);
   await get("save-sync").click();
   assert.equal(calls.length, 0);
+});
+
+function jumpFixture() {
+  return {availability: "ready", events: [
+    {event_id: "jump-1", takeoff_s: 2, peak_s: 2.317, landing_s: 2.634},
+    {event_id: "jump-2", takeoff_s: 10, peak_s: 10.407, landing_s: 10.814},
+  ]};
+}
+
+test("jump peaks follow clock drift and media origin, excluding offscreen apexes", () => {
+  const context = jumpFixture(), original = structuredClone(context);
+  const mapped = jumpEventTimeline(context, {scale: 1.01, offset_s: .1}, 1, 20);
+  assert.ok(Math.abs(mapped[0].observed_s - ((2.317 - .1) / 1.01 - 1)) < 1e-10);
+  assert.ok(Math.abs(mapped[0].earliest_s - ((2 - .1) / 1.01 - 1)) < 1e-10);
+  assert.equal(mapped[0].estimated_peak, true);
+  assert.equal(jumpEventTimeline(context, {scale: 1, offset_s: 0}, 2.4, 20).length, 1);
+  for (const mapping of [null, {scale: 0, offset_s: 0}, {scale: 1, offset_s: NaN}]) {
+    assert.deepEqual(jumpEventTimeline(context, mapping, 0, 20), []);
+  }
+  assert.deepEqual(jumpEventTimeline({...context, availability: "unavailable"}, {scale: 1, offset_s: 0}, 0, 20), []);
+  assert.deepEqual(context, original);
+});
+
+test("peak frame selection uses actual timestamps, including irregular intervals and edges", () => {
+  const frames = [.01, .02, .05, .1];
+  assert.equal(nearestFrame(frames, .034), .02);
+  assert.equal(nearestFrame(frames, .04), .05);
+  assert.equal(nearestFrame(frames, .05), .05);
+  assert.equal(nearestFrame(frames, 0), .01);
+  assert.equal(nearestFrame(frames, 1), .1);
+  assert.equal(nearestFrame([], 2.3), 2.3);
+});
+
+test("conservative jump review filters load pairs without changing timing or legacy events", () => {
+  const context = jumpFixture();
+  context.events[1].detection_method = "load_pair";
+  const mapping = {scale: 1, offset_s: 0};
+  assert.equal(jumpEventTimeline(context, mapping, 0, 20).length, 2);
+  const strict = jumpEventTimeline(context, mapping, 0, 20, "conservative");
+  assert.equal(strict.length, 1);
+  assert.equal(strict[0].observed_s, 2.317);
+  assert.equal(context.events.length, 2);
+});
+
+test("jump sensitivity updates navigation and clears a filtered selection without saving labels", async t => {
+  const jumps = jumpFixture();
+  jumps.events[1].detection_method = "load_pair";
+  const {get, calls, key} = await controller(t, {reviewMode: "jumps", sensor: {jumps},
+    frameTimes: Array.from({length: 1200}, (_, i) => i / 60)});
+  key("n"); key("n");
+  assert.match(get("jump-selected").textContent, /Jump 2 of 2.*Push-off \/ landing estimate/);
+  get("jump-sensitivity").value = "conservative"; get("jump-sensitivity").onchange();
+  assert.match(get("jump-selected").textContent, /1 estimated peak/);
+  assert.equal(get("jump-next").disabled, true);
+  key("p");
+  assert.match(get("jump-selected").textContent, /Jump 1 of 1/);
+  get("jump-sensitivity").value = "sensitive"; get("jump-sensitivity").onchange();
+  assert.equal(get("jump-next").disabled, false);
+  get("offset").value = .5; get("offset").oninput();
+  get("jump-sensitivity").value = "conservative"; get("jump-sensitivity").onchange();
+  assert.match(get("jump-selected").textContent, /1 estimated peak.*Match LED flashes/);
+  assert.equal(get("jump-next").disabled, true);
+  assert.deepEqual(calls, []);
+});
+
+test("jump mode navigates distinct peaks, pauses on indexed frames, and never saves labels", async t => {
+  const frames = Array.from({length: 1200}, (_, i) => i / 60);
+  const {get, calls, key} = await controller(t, {reviewMode: "jumps", frameTimes: frames,
+    sensor: {jumps: jumpFixture()}});
+  assert.equal(get("board-event-mode").value, "jumps");
+  assert.equal(get("review-queue").hidden, true);
+  assert.equal(get("jump-navigation").hidden, false);
+  assert.equal(get("jump-previous").disabled, true);
+  assert.match(get("jump-selected").textContent, /2 estimated peak/);
+  await get("video").play();
+  key("n");
+  assert.equal(get("video").paused, true);
+  assert.ok(Math.abs(get("video").currentTime - (139 / 60 + 1e-6)) < 1e-10);
+  assert.match(get("jump-selected").textContent, /Jump 1 of 2.*Estimated peak 2.317/);
+  key("n");
+  assert.ok(Math.abs(get("video").currentTime - (624 / 60 + 1e-6)) < 1e-10);
+  assert.equal(get("jump-next").disabled, true);
+  key("p");
+  assert.ok(Math.abs(get("video").currentTime - (139 / 60 + 1e-6)) < 1e-10);
+  key(" ");
+  assert.equal(get("video").paused, false);
+  key(" ");
+  assert.equal(get("video").paused, true);
+  key("ArrowRight");
+  assert.ok(Math.abs(get("video").currentTime - (140 / 60 + 1e-6)) < 1e-10);
+  for (const keyName of ["1", "0", "s", "x"]) key(keyName);
+  assert.deepEqual(calls, []);
+});
+
+test("jump navigation is gated by verified alignment and distinguishes unavailable from no detections", async t => {
+  const {get} = await controller(t, {reviewMode: "jumps", sensor: {jumps: jumpFixture()}});
+  get("offset").value = .5; get("offset").oninput();
+  assert.equal(get("board-events").hidden, true);
+  assert.equal(get("jump-next").disabled, true);
+  assert.equal(get("jump-previous").disabled, true);
+  assert.match(get("jump-selected").textContent, /Match LED flashes/);
+  get("offset").value = 0; get("offset").oninput();
+  assert.equal(get("jump-next").disabled, false);
+});
+
+test("unavailable jump scans explain the issue and cannot navigate", async t => {
+  const {get} = await controller(t, {reviewMode: "jumps", sensor: {jumps: {
+    availability: "unavailable", events: [], message: "Stop recording and finish importing."}}});
+  assert.match(get("jump-selected").textContent, /Stop recording/);
+  assert.equal(get("jump-next").disabled, true);
+  assert.equal(get("board-events").hidden, true);
+});
+
+test("quiet jump scans show zero peaks and never substitute skateboard detections", async t => {
+  const {get} = await controller(t, {reviewMode: "jumps", sensor: {
+    jumps: {availability: "ready", events: []}, attempts: attemptFixture()}});
+  assert.match(get("jump-selected").textContent, /0 estimated peak/);
+  assert.equal(get("jump-next").disabled, true);
+  assert.equal(get("board-event-list").children.length, 0);
 });
 
 test("board events seek within their uncertainty bands and never create labels or proposals", async t => {
@@ -912,6 +1032,7 @@ test("an old running server gets restart instructions before accessing missing l
   const {calls} = await controller(t, {legacyServer: true});
   assert.equal(calls.length, 0);
   assert.throws(() => requireCurrentServer({api_version: 4}, {intervals: []}), /Restart the review server/);
+  assert.throws(() => requireCurrentServer({api_version: 7}, {label_context: {}, labels_revision: "saved"}), /Restart the review server/);
 });
 
 test("frame stepping follows 119.88 fps timestamps and irregular presentation intervals", () => {

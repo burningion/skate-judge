@@ -28,7 +28,7 @@ import sys
 import threading
 
 VERSION = 2
-API_VERSION = 7
+API_VERSION = 8
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +37,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping
 from capture.motion_events import board_motion_context
+from capture.jumps import detect_jumps
+from capture.import_mobile import import_in_place, safe_name
 
 
 def read_json(path, fallback=None):
@@ -285,8 +287,17 @@ def sensor_context(source):
         except ValueError as error:
             result["warnings"].append(str(error))
     result["motion"] = motion_features(result["samples"])
+    result["jumps"] = detect_jumps(result["samples"])
+    jump_problem = ""
+    if not meta.get("closed_utc"):
+        jump_problem = "Stop recording and finish importing the sensor data before detecting jumps."
+    elif meta.get("onboard_quality", {}).get("complete") is False or meta.get("onboard_stop_error"):
+        jump_problem = "The board recording is incomplete. Recover the recording before detecting jumps."
     if invalid_samples:
         result["motion"]["unavailable_reason"] = "IMU contains nonfinite samples; using audio only."
+        jump_problem = "IMU contains nonfinite samples; jump detection is unavailable."
+    if jump_problem:
+        result["jumps"].update(availability="unavailable", events=[], message=jump_problem)
     return result
 
 
@@ -331,13 +342,30 @@ def attempt_context(session, model_path, cache_path):
         return dict(result, message=f"Attempt detector unavailable: {error}")
 
 
-def prepare(source, rebuild=False, attempt_model=DEFAULT_ATTEMPT_MODEL):
+def prepare(source, rebuild=False, attempt_model=DEFAULT_ATTEMPT_MODEL, jump_peaks=False):
     for binary in ("ffmpeg", "ffprobe"):
         if not shutil.which(binary):
             raise ValueError(f"Install {binary} first (macOS: brew install ffmpeg).")
     source = source.resolve(strict=True)
+    if source.is_dir():
+        mobile = read_json(source / "mobile_session.json", {})
+        if not mobile.get("videoFile"):
+            raise ValueError("Choose a video file or an iPhone session folder containing its recorded video.")
+        video = source / safe_name(mobile["videoFile"])
+        if video.is_symlink():
+            raise ValueError("The mobile session video must be a regular file.")
+        source = video.resolve(strict=True)
     if source.suffix.lower() not in (".webm", ".mp4", ".mov", ".mkv"):
         raise ValueError("Choose a WebM, MP4, MOV, or MKV recording.")
+    if (source.parent / "mobile_session.json").is_file() and not (source.parent / "samples.csv").exists():
+        print("Verifying and importing iPhone motion data…", flush=True)
+    try:
+        imported = import_in_place(source.parent)
+    except (ValueError, OSError, KeyError, TypeError) as error:
+        raise ValueError(f"Could not import iPhone motion data: {error}") from error
+    if imported is not None:
+        print(f"Imported {imported['samples']:,} sensor samples. "
+              f"Quality: {', '.join(imported['onboard_quality']['issues']) or 'passed'}.", flush=True)
     directory = source.parent / "review" / source.stem
     directory.mkdir(parents=True, exist_ok=True)
     extension = ".webm" if source.suffix.lower() == ".webm" else ".mp4"
@@ -384,7 +412,10 @@ def prepare(source, rebuild=False, attempt_model=DEFAULT_ATTEMPT_MODEL):
     data["api_version"] = API_VERSION
     data["video_timing"] = cached_video_timing(directory, media, data["duration_s"])
     data["sensor"] = sensor_context(source)
-    data["sensor"]["attempts"] = attempt_context(source.parent, attempt_model, directory / "attempts.json")
+    data["review_mode"] = "jumps" if jump_peaks else "attempts"
+    data["sensor"]["attempts"] = (dict(availability="unavailable", events=[],
+        message="Jump review uses the waist/back detector. Open without --jump-peaks for skateboard attempts.")
+        if jump_peaks else attempt_context(source.parent, attempt_model, directory / "attempts.json"))
     return directory, media, data
 
 
@@ -734,16 +765,20 @@ def make_server(directory, media, data, port):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("video", type=Path)
+    parser.add_argument("video", type=Path, help="Video file or extracted iPhone session folder (imports motion data automatically)")
     parser.add_argument("--port", type=int, default=8766)
     parser.add_argument("--rebuild", action="store_true", help="Rebuild derived audio/media; preserve reviewed intervals")
     parser.add_argument("--prepare-only", action="store_true")
+    parser.add_argument("--jump-peaks", action="store_true",
+                        help="Review estimated jump peaks from a waist/back-mounted IMU")
     parser.add_argument("--attempt-model", type=Path, default=DEFAULT_ATTEMPT_MODEL,
                         help="Trained attempt model JSON (default: .build/attempts-v1/model.json)")
     args = parser.parse_args()
     try:
-        directory, media, data = prepare(args.video, args.rebuild, args.attempt_model)
-        print(f"Ready: {data['duration_s']:.2f}s, {len(data['audio']['onsets'])} raw onsets.\nDerived files: {directory}", flush=True)
+        directory, media, data = prepare(args.video, args.rebuild, args.attempt_model, args.jump_peaks)
+        summary = (f"{len(data['sensor']['jumps']['events'])} estimated jump peaks"
+                   if args.jump_peaks else f"{len(data['audio']['onsets'])} raw onsets")
+        print(f"Ready: {data['duration_s']:.2f}s, {summary}.\nDerived files: {directory}", flush=True)
         if args.prepare_only:
             return
         server = make_server(directory, media, data, args.port)

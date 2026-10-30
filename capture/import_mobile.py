@@ -20,8 +20,13 @@ import zipfile
 
 if __package__:
     from .onboard_log import import_log, read_packets
+    from .session import file_lock
 else:
     from onboard_log import import_log, read_packets
+    from session import file_lock
+
+
+REVIEW_FILES = {"review", "labels.jsonl", "video_sync.jsonl", ".labels.lock", ".mobile-import.lock", ".DS_Store"}
 
 
 def digest(path):
@@ -73,7 +78,10 @@ def unpack(source, destination):
                 shutil.copyfileobj(reader, writer, 1024 * 1024)
 
 
-def verify_export(directory):
+def verify_export(directory, *, allow_review_files=False):
+    for name in ("export_manifest.json", "mobile_session.json"):
+        if (directory / name).is_symlink():
+            raise ValueError("Session export must contain only regular files.")
     manifest = json.loads((directory / "export_manifest.json").read_text())
     mobile = json.loads((directory / "mobile_session.json").read_text())
     if manifest.get("schema") != 1 or mobile.get("schema") != 1:
@@ -91,9 +99,11 @@ def verify_export(directory):
             raise ValueError("Duplicate or recursive export inventory.")
         seen.add(name)
         file = directory / name
-        if not file.is_file() or file.stat().st_size != entry.get("bytes") or digest(file) != entry.get("sha256"):
+        if file.is_symlink() or not file.is_file() or file.stat().st_size != entry.get("bytes") or digest(file) != entry.get("sha256"):
             raise ValueError(f"Export checksum or size mismatch: {name}")
     actual = {file.name for file in directory.iterdir()} - {"export_manifest.json"}
+    if allow_review_files:
+        actual -= REVIEW_FILES - seen
     if actual != seen or not {"metadata.json", "mobile_session.json"}.issubset(seen):
         raise ValueError("Export inventory does not match session files.")
     metadata = json.loads((directory / "metadata.json").read_text())
@@ -122,6 +132,53 @@ def verify_export(directory):
     if video and safe_name(video) not in seen:
         raise ValueError("The session's original video is missing.")
     return mobile, raw
+
+
+def import_in_place(directory):
+    """Decode an unimported mobile folder for review; leave other sessions alone.
+
+    Verify originals, then stage the sensor files before changing the session.
+    Video inspection is left to review's existing frame index to avoid decoding
+    a high-frame-rate movie twice. Concurrent review launches share this lock.
+    """
+    directory = Path(directory)
+    if not (directory / "mobile_session.json").is_file():
+        return None
+    with file_lock(directory / ".mobile-import.lock"):
+        if all((directory / name).is_file() for name in ("samples.csv", "events.jsonl")):
+            return None
+        generated = ("source_metadata.json", "source_export_manifest.json", "samples.csv", "events.jsonl")
+        if any((directory / name).exists() or (directory / name).is_symlink() for name in generated):
+            raise ValueError("Mobile session has existing import files but is missing samples or events. "
+                             "Import the original export into a new directory to recover it.")
+        manifest = directory / "export_manifest.json"
+        if not manifest.is_file():
+            raise ValueError("Mobile session is missing export_manifest.json. Use Export complete session "
+                             "in the iPhone app, then extract that ZIP before opening review.")
+        _, raw = verify_export(directory, allow_review_files=True)
+        with tempfile.TemporaryDirectory(prefix=".mobile-import-", dir=directory.parent) as temporary:
+            staging = Path(temporary)
+            shutil.copyfile(raw, staging / raw.name)
+            shutil.copyfile(directory / "metadata.json", staging / "metadata.json")
+            shutil.copyfile(directory / "metadata.json", staging / "source_metadata.json")
+            shutil.copyfile(manifest, staging / "source_export_manifest.json")
+            metadata = import_log(staging / raw.name, staging, allow_incomplete=True)
+            published = []
+            try:
+                for name in (*generated, "metadata.json"):
+                    (staging / name).replace(directory / name)
+                    published.append(name)
+                # Keep the inventory under its provenance name after metadata changes.
+                manifest.unlink()
+            except OSError:
+                if "metadata.json" in published:
+                    shutil.copyfile(directory / "source_metadata.json", staging / "metadata.json")
+                    (staging / "metadata.json").replace(directory / "metadata.json")
+                for name in reversed(published):
+                    if name != "metadata.json":
+                        (directory / name).unlink()
+                raise
+        return metadata
 
 
 def inspect_video(path, requested_fps=None):

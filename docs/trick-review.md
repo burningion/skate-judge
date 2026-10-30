@@ -1,5 +1,8 @@
 # Audio, motion, and video trick review
 
+For a waist/back-mounted IMU, use the experimental [jump peak view](jump-peaks.md)
+with `--jump-peaks` to navigate directly to estimated apex frames.
+
 Open a closed recording with audio:
 
 ```bash
@@ -11,6 +14,11 @@ Open **http://127.0.0.1:8766** on the same computer. The command prints the
 address; use `--port 0` to choose a free port. Plain `python3` also works if
 NumPy and SciPy are already installed. No cloud service or frontend build is
 needed. Ctrl+C stops the server; saved edits remain on disk.
+
+For an iPhone recording, extract the complete exported ZIP and pass either its
+session folder or the original video to the same command. Review verifies and
+imports the motion data automatically on the first launch, preserving existing
+review edits. Keep the exported files together, including `export_manifest.json`.
 
 ## Label a session quickly
 
@@ -362,7 +370,8 @@ reports the active drift correction. Re-matching a flash updates its existing
 point rather than counting it as an additional flash.
 
 If sensor data is missing, this section stays visible and identifies the missing
-`samples.csv` or `events.jsonl`. Download or import the onboard recording into
+`samples.csv` or `events.jsonl`. Complete iPhone export folders are imported
+automatically at startup. For other recordings, download or import the onboard recording into
 the same session folder (see [onboard recovery](onboard-recording.md#record-and-download)),
 then restart the review server and reload the page. Flash matching requires recorded
 LED events and a closed/imported session. Recovered recordings retain acquisition

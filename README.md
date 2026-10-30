@@ -59,12 +59,13 @@ integrated into the enclosure's side.
 Check the battery dimensions and mounting clearance before printing.
 
 This setup uses the Adafruit Feather ESP32-S3 **8 MB flash / no PSRAM**, an
-LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and a **cut five-pixel WS2812B/E RGB strip**.
-The Fritzing artwork depicts the previous rigid eight-pixel stick. The new
+LSM6DSO32 IMU, a **3.7 V 500 mAh LiPo**, and a **cut three-pixel WS2812B RGB strip**.
+The Fritzing artwork shows the three-pixel flexible PCB strip. The new
 [compact enclosure](hardware/enclosure/compact/README.md) fits the Adafruit 4899
 soldered SD board and a two-pixel flexible strip, with small holder samples to
 check the provisional strip dimensions before printing. The firmware preset
-still defaults to five pixels; use `SYNC_LED_COUNT=2` when shortening the strip.
+still defaults to five pixels; use `SYNC_LED_COUNT=3 ./flash-feather.sh` for
+the current three-pixel strip.
 For the first direct-LiPo bench test, wire with power disconnected:
 
 | Connection | Destination |
@@ -218,6 +219,16 @@ of recordings. If interrupted, rerun it to clear the remaining files. Storage
 that is not mounted cannot be wiped.
 
 ## Review a recorded trick
+
+For an IMU worn on the waist or lower back, the experimental
+[jump peak view](docs/jump-peaks.md) steps directly to each estimated apex:
+
+```bash
+uv run viz/trick_review.py sessions/jumps-001/clip.mov --jump-peaks
+```
+
+Match the LED flashes, then use **Next peak / Previous peak** (N/P). Peaks are
+estimated from flight midpoints and still need validation against real video.
 
 The [review guide](docs/trick-review.md) explains audio candidates, an experimental
 IMU filter for background sounds, editable pop/contact boundaries, and matching

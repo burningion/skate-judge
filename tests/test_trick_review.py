@@ -390,7 +390,7 @@ class ReviewHttpTests(unittest.TestCase):
 
     def test_range_and_head(self):
         with self.request("/api/data") as response:
-            self.assertEqual(json.load(response)["api_version"], 7)
+            self.assertEqual(json.load(response)["api_version"], 8)
         with self.request("/media.webm", headers={"Range": "bytes=10-19"}) as response:
             self.assertEqual(response.status, 206)
             self.assertEqual(response.read(), bytes(range(10, 20)))

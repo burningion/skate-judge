@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1.8in" height="0.8in" viewBox="0 0 162 72">
+  <g id="schematic">
+    <rect x="18" y="1" width="126" height="70" fill="white" stroke="#222" stroke-width="1.5"/>
+    <g fill="none" stroke="#222" stroke-width="1.5">
+      <line id="connector26pin" x1="0" y1="9" x2="18" y2="9"/>
+      <line id="connector25pin" x1="0" y1="36" x2="18" y2="36"/>
+      <line id="connector24pin" x1="0" y1="63" x2="18" y2="63"/>
+      <line id="connector22pin" x1="144" y1="9" x2="162" y2="9"/>
+      <line id="connector20pin" x1="144" y1="36" x2="162" y2="36"/>
+      <line id="connector21pin" x1="144" y1="63" x2="162" y2="63"/>
+    </g>
+    <g fill="none" stroke="none">
+      <rect id="connector26terminal" x="0" y="8.95" width="0.1" height="0.1"/>
+      <rect id="connector25terminal" x="0" y="35.95" width="0.1" height="0.1"/>
+      <rect id="connector24terminal" x="0" y="62.95" width="0.1" height="0.1"/>
+      <rect id="connector22terminal" x="161.9" y="8.95" width="0.1" height="0.1"/>
+      <rect id="connector20terminal" x="161.9" y="35.95" width="0.1" height="0.1"/>
+      <rect id="connector21terminal" x="161.9" y="62.95" width="0.1" height="0.1"/>
+    </g>
+    <g fill="#222" font-family="Arial" font-size="7">
+      <text x="22" y="12">GND</text><text x="22" y="39">DIN</text><text x="22" y="66">+5V</text>
+      <text x="140" y="12" text-anchor="end">GND</text><text x="140" y="39" text-anchor="end">DOUT</text><text x="140" y="66" text-anchor="end">+5V</text>
+      <text x="81" y="27" text-anchor="middle" font-size="9">WS2812B</text>
+      <text x="81" y="39" text-anchor="middle">3 pixels →</text>
+      <text x="81" y="51" text-anchor="middle">flexible strip</text>
+    </g>
+  </g>
+</svg>

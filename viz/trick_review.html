@@ -44,18 +44,21 @@
   #sensor-panel { margin-top: 16px; border-top: 1px solid #354946; padding-top: 16px; }
   #sensor-panel label { margin: 10px 0; }
   [hidden] { display: none !important; }
+  .workspace.jump-review { grid-template-columns: minmax(0, 1fr); max-width: 1000px; }
+  .jump-review video { max-height: 55vh; }
+  #jump-navigation { margin-top: 12px; padding: 12px; border: 1px solid #607644; border-radius: 8px; }
   @media(max-width:850px) { main { padding: 16px; } .workspace { grid-template-columns: 1fr; } #candidates { max-height: 200px; } }
 </style>
 </head>
 <body>
 <main>
   <div class="brand">SKATE JUDGE / REVIEW</div>
-  <h1>Review trick attempts</h1>
-  <p class="muted">Label attempts and everyday board activity. Learned attempt detections and audio peaks help you find places to review.</p>
+  <h1 id="page-title">Review trick attempts</h1>
+  <p id="page-description" class="muted">Label attempts and everyday board activity. Learned attempt detections and audio peaks help you find places to review.</p>
   <div class="row between"><span id="filename" class="file muted">Loading recording…</span><span class="badge">LOCAL AUDIO + VIDEO</span></div>
-  <div class="workspace">
+  <div id="workspace" class="workspace">
     <div>
-      <section class="panel" aria-label="Video and timeline">
+      <section id="video-panel" class="panel" aria-label="Video and timeline">
         <video id="video" controls playsinline preload="metadata" aria-label="Recorded skate session with audio"></video>
         <div class="row transport">
           <button id="play" type="button">Play / pause</button>
@@ -66,15 +69,22 @@
           <a class="muted help" href="#sensor-panel">LED sync &amp; sensors ↓</a>
           <span id="time">0:00.000</span>
         </div>
+        <section id="jump-navigation" aria-label="Jump peak navigation" hidden>
+          <label>Detection <select id="jump-sensitivity"><option value="sensitive" selected>More sensitive</option><option value="conservative">Conservative</option></select></label>
+          <div class="row"><button id="jump-previous" type="button" disabled>← Previous peak [P]</button><button id="jump-next" class="primary" type="button" disabled>Next peak [N] →</button></div>
+          <p id="jump-selected" class="help" aria-live="polite"></p>
+          <p class="help muted">Peak estimates assume similar body height at takeoff and landing.</p>
+          <p class="help muted">Pauses on the nearest recorded frame. Use ← / → to inspect adjacent frames; Space plays or pauses.</p>
+        </section>
         <div class="timeline">
           <div class="row between"><h2>Whole recording</h2><small>Click to seek</small></div>
           <canvas id="overview" role="img" aria-label="Whole recording waveform, onset pairs, and playhead"></canvas>
           <input id="seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="Video time">
         </div>
         <div class="timeline">
-          <div class="row between"><h2>Boundary detail</h2><label>Window <select id="zoom"><option value="3">3 s</option><option value="6" selected>6 s</option><option value="12">12 s</option><option value="24">24 s</option></select></label></div>
+          <div class="row between"><h2 id="detail-title">Boundary detail</h2><label>Window <select id="zoom"><option value="3">3 s</option><option value="6" selected>6 s</option><option value="12">12 s</option><option value="24">24 s</option></select></label></div>
           <canvas id="detail" role="img" aria-label="Detailed waveform and onset strength. Drag start and finish markers, or click to seek."></canvas>
-          <div class="legend"><span class="start">● Pop</span><span class="finish">● Contact</span><span style="color:#82c9df">▭ Selected range</span><span style="color:#819b7e">▰ Saved label</span><span class="onset">│ Audio onset</span><span class="muted">Drag pop/contact · click to seek</span></div>
+          <div id="detail-legend" class="legend"><span class="start">● Pop</span><span class="finish">● Contact</span><span style="color:#82c9df">▭ Selected range</span><span style="color:#819b7e">▰ Saved label</span><span class="onset">│ Audio onset</span><span class="muted">Drag pop/contact · click to seek</span></div>
         </div>
         <section id="sensor-panel" aria-labelledby="sensor-title">
           <div class="row between"><h2 id="sensor-title">Accelerometer + gyroscope</h2><small id="sensor-count"></small></div>
@@ -96,7 +106,7 @@
             <div class="row between"><h2 id="board-event-title">Potential trick attempts</h2>
               <div class="row"><button id="board-event-previous" type="button" disabled>← Previous event</button><button id="board-event-next" type="button" disabled>Next event →</button></div>
             </div>
-            <label>Events to show <select id="board-event-mode"><option value="attempts" selected>Potential attempts (learned model)</option><option value="raw">All raw board observations</option></select></label>
+            <label id="board-event-mode-field">Events to show <select id="board-event-mode"><option value="attempts" selected>Potential attempts (learned model)</option><option value="jumps">Jump peaks (waist/back IMU · experimental)</option><option value="raw">All raw board observations</option></select></label>
             <p id="board-event-status" class="help muted"></p>
             <p id="board-event-help" class="help muted" hidden></p>
             <canvas id="board-events" role="img" aria-label="Learned potential trick attempt windows. Click to seek." hidden></canvas>
@@ -105,7 +115,7 @@
         </section>
       </section>
     </div>
-    <aside class="panel" aria-label="Candidate pairs and boundary editor">
+    <aside id="review-queue" class="panel" aria-label="Candidate pairs and boundary editor">
       <div class="row between"><h2>Review queue</h2><span id="count" class="badge">Analyzing</span></div>
       <p class="help muted">Review real attempts first. Skip duplicate suggestions. For rolling, pushing, or waiting, label one watched background range across as many sounds as needed.</p>
       <details><summary>Candidate detection settings</summary><div class="settings">

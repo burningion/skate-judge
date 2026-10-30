@@ -39,7 +39,6 @@ class FritzingProjectTests(unittest.TestCase):
             ("feather", "connector218", (358.065, 242.71525)),
             ("feather", "connector30", (390.8811, 288.0669)),
             ("imu", "connector12", (164.9548, 299.1281)),
-            ("stick", "connector25", (551.7711, 148.5004)),
         ]:
             actual = ps[key].point(connector)
             for a, e in zip(actual, expected):

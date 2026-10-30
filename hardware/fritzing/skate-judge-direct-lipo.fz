@@ -166,49 +166,6 @@
         </pcbView>
       </views>
     </instance>
-    <instance moduleIdRef="adafruit_6530a5d9a89aa5dfd404e4335177b1a6_1" modelIndex="3" path="adafruit_6530a5d9a89aa5dfd404e4335177b1a6_1.fzp">
-      <title>LED1 · 8-pixel RGB stick</title>
-      <views>
-        <breadboardView layer="breadboard">
-          <geometry x="550" y="135" z="2" />
-          <titleGeometry visible="true" x="550" y="123" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
-            <displayKey key="" />
-          </titleGeometry>
-          <connectors>
-            <connector connectorId="connector24" layer="breadboard">
-              <geometry x="0" y="0" />
-              <connects>
-                <connect connectorId="connector1" modelIndex="107" layer="breadboardWire" />
-              </connects>
-            </connector>
-            <connector connectorId="connector26" layer="breadboard">
-              <geometry x="0" y="0" />
-              <connects>
-                <connect connectorId="connector1" modelIndex="113" layer="breadboardWire" />
-              </connects>
-            </connector>
-            <connector connectorId="connector25" layer="breadboard">
-              <geometry x="0" y="0" />
-              <connects>
-                <connect connectorId="connector1" modelIndex="118" layer="breadboardWire" />
-              </connects>
-            </connector>
-          </connectors>
-        </breadboardView>
-        <schematicView layer="schematic">
-          <geometry x="510" y="100" z="2" />
-          <titleGeometry visible="true" x="510" y="88" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
-            <displayKey key="" />
-          </titleGeometry>
-        </schematicView>
-        <pcbView layer="copper0">
-          <geometry x="100" y="250" z="2" />
-          <titleGeometry visible="true" x="100" y="238" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
-            <displayKey key="" />
-          </titleGeometry>
-        </pcbView>
-      </views>
-    </instance>
     <instance moduleIdRef="ResistorModuleID" modelIndex="4" path="resistor.fzp">
       <title>R1 · 330 Ω</title>
       <property name="resistance" value="330" />
@@ -348,6 +305,49 @@
         </pcbView>
       </views>
     </instance>
+    <instance moduleIdRef="skate_judge_ws2812b_strip_3pixel_v1" modelIndex="3" path="skate-judge-ws2812b-strip.fzp">
+      <title>LED1 · 3-pixel WS2812B strip</title>
+      <views>
+        <breadboardView layer="breadboard">
+          <geometry x="550" y="135" z="2" />
+          <titleGeometry visible="true" x="550" y="123" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+          <connectors>
+            <connector connectorId="connector24" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="107" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector26" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="113" layer="breadboardWire" />
+              </connects>
+            </connector>
+            <connector connectorId="connector25" layer="breadboard">
+              <geometry x="0" y="0" />
+              <connects>
+                <connect connectorId="connector1" modelIndex="118" layer="breadboardWire" />
+              </connects>
+            </connector>
+          </connectors>
+        </breadboardView>
+        <schematicView layer="schematic">
+          <geometry x="510" y="100" z="2" />
+          <titleGeometry visible="true" x="510" y="88" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </schematicView>
+        <pcbView layer="copper0">
+          <geometry x="100" y="250" z="2" />
+          <titleGeometry visible="true" x="100" y="238" z="8" xOffset="0" yOffset="-12" textColor="#202020" fontSize="7">
+            <displayKey key="" />
+          </titleGeometry>
+        </pcbView>
+      </views>
+    </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="100" path="wire.fzp">
       <title>LiPo positive → Feather battery JST +</title>
       <views>
@@ -441,7 +441,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="104" path="wire.fzp">
-      <title>BAT → stick +5V input (battery voltage)</title>
+      <title>BAT → strip +5V input (battery voltage)</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="372.55" y="249.5" x1="0" y1="0" x2="0.0" y2="-34.5" z="4" wireFlags="64" />
@@ -464,7 +464,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="105" path="wire.fzp">
-      <title>BAT → stick +5V input (battery voltage)</title>
+      <title>BAT → strip +5V input (battery voltage)</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="372.55" y="215" x1="0" y1="0" x2="162.45" y2="0" z="4" wireFlags="64" />
@@ -487,7 +487,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="106" path="wire.fzp">
-      <title>BAT → stick +5V input (battery voltage)</title>
+      <title>BAT → strip +5V input (battery voltage)</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="535" y="215" x1="0" y1="0" x2="0" y2="-57.5" z="4" wireFlags="64" />
@@ -510,10 +510,10 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="107" path="wire.fzp">
-      <title>BAT → stick +5V input (battery voltage)</title>
+      <title>BAT → strip +5V input (battery voltage)</title>
       <views>
         <breadboardView layer="breadboardWire">
-          <geometry x="535" y="157.5" x1="0" y1="0" x2="16.771056521742707" y2="0.00036473409738846385" z="4" wireFlags="64" />
+          <geometry x="535" y="157.5" x1="0" y1="0" x2="19.0" y2="0.0" z="4" wireFlags="64" />
           <wireExtras mils="22.2222" color="#cf202f" opacity="1" banded="0" />
           <connectors>
             <connector connectorId="connector0" layer="breadboardWire">
@@ -533,7 +533,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="108" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="363.55" y="321.5" x1="0" y1="0" x2="0.0" y2="28.5" z="4" wireFlags="64" />
@@ -556,7 +556,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="109" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="363.55" y="350" x1="0" y1="0" x2="401.45" y2="0" z="4" wireFlags="64" />
@@ -579,7 +579,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="110" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="765" y="350" x1="0" y1="0" x2="0" y2="-240" z="4" wireFlags="64" />
@@ -602,7 +602,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="111" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="765" y="110" x1="0" y1="0" x2="-230" y2="0" z="4" wireFlags="64" />
@@ -625,7 +625,7 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="112" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
           <geometry x="535" y="110" x1="0" y1="0" x2="0" y2="29.5" z="4" wireFlags="64" />
@@ -648,10 +648,10 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="113" path="wire.fzp">
-      <title>Common ground → stick GND</title>
+      <title>Common ground → strip GND</title>
       <views>
         <breadboardView layer="breadboardWire">
-          <geometry x="535" y="139.5" x1="0" y1="0" x2="16.77097715486991" y2="0.00036473409738846385" z="4" wireFlags="64" />
+          <geometry x="535" y="139.5" x1="0" y1="0" x2="19.0" y2="0.0" z="4" wireFlags="64" />
           <wireExtras mils="22.2222" color="#333333" opacity="1" banded="0" />
           <connectors>
             <connector connectorId="connector0" layer="breadboardWire">
@@ -763,10 +763,10 @@
       </views>
     </instance>
     <instance moduleIdRef="WireModuleID" modelIndex="118" path="wire.fzp">
-      <title>330 Ω → stick DIN</title>
+      <title>330 Ω → strip DIN</title>
       <views>
         <breadboardView layer="breadboardWire">
-          <geometry x="539.3158" y="148.5004" x1="0" y1="0" x2="12.455279338423566" y2="-3.526590262481477e-05" z="4" wireFlags="64" />
+          <geometry x="539.3158" y="148.5004" x1="0" y1="0" x2="14.684200000000033" y2="-0.0004000000000132786" z="4" wireFlags="64" />
           <wireExtras mils="22.2222" color="#20964c" opacity="1" banded="0" />
           <connectors>
             <connector connectorId="connector0" layer="breadboardWire">
@@ -1770,8 +1770,8 @@
       </views>
     </instance>
     <instance moduleIdRef="NoteModuleID" modelIndex="902" path="note.fzp">
-      <title>LED STICK</title>
-      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;LED STICK&lt;/b&gt;&lt;br/&gt;GPIO5 (pad marked 5) is DATA, not 5 V. R1: recommended 330 Ω, near DIN. DOUT is unconnected. BAT supplies battery voltage, not regulated 5 V.&lt;/body&gt;&lt;/html&gt;</text>
+      <title>3-PIXEL FLEXIBLE LED STRIP</title>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;3-PIXEL FLEXIBLE LED STRIP&lt;/b&gt;&lt;br/&gt;3 WS2812B LEDs on flexible PCB. Wire the DIN end; arrows point toward DOUT. GPIO5 → R1 (330 Ω) → DIN. BAT → +5V; GND → GND. DOUT unused. Match pad labels on your strip. BAT is battery voltage.&lt;/body&gt;&lt;/html&gt;</text>
       <views>
         <breadboardView layer="breadboardNote">
           <geometry x="550" y="205" width="195" height="115" z="6" />
@@ -1789,7 +1789,7 @@
     </instance>
     <instance moduleIdRef="NoteModuleID" modelIndex="904" path="note.fzp">
       <title>CHECK BEFORE SKATING</title>
-      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;CHECK BEFORE SKATING&lt;/b&gt;&lt;br/&gt;Direct LiPo is a bench-test option: this RGB stick is specified for 4–7 V, so operation below 4 V is not guaranteed. Test fully charged and partly discharged. Verify JST polarity. Insulate and protect the battery. Crossings without a junction are not connections.&lt;/body&gt;&lt;/html&gt;</text>
+      <text>&lt;html&gt;&lt;body style="font-family:Arial;font-size:9pt;"&gt;&lt;b&gt;CHECK BEFORE SKATING&lt;/b&gt;&lt;br/&gt;Direct LiPo is a bench-test option; the strip&amp;#x27;s voltage range depends on its revision. Test fully charged and partly discharged. Verify JST polarity. Insulate and protect the battery. Crossings without a junction are not connections.&lt;/body&gt;&lt;/html&gt;</text>
       <views>
         <breadboardView layer="breadboardNote">
           <geometry x="55" y="600" width="690" height="75" z="6" />
