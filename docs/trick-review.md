@@ -22,7 +22,8 @@ review edits. Keep the exported files together, including `export_manifest.json`
 
 ## Label a session quickly
 
-After matching the LED flashes, use the same page to label every attempt. For
+Use the in-app phone timing estimate when available, or match LED flashes, then
+use the same page to label every attempt. For
 example, open the A7S clip with:
 
 ```bash
@@ -127,8 +128,10 @@ server. The page detects incompatible responses and shows restart instructions.
 **Bail** means they step or jump clear without falling; **fall** means they
 visibly fall to the ground. Use **unknown** when the outcome is unjudgeable.
 
-Saving writes directly to the session's `labels.jsonl`, using the measured LED
-alignment to map the attempt window onto `samples.csv` time. Reopening the page
+Saving writes directly to the session's `labels.jsonl`, using the active phone
+estimate or LED alignment to map the attempt window onto `samples.csv` time.
+Each label retains the alignment source and mapping used when it was saved.
+Reopening the page
 restores saved labels and skips. **Download saved labels** exports the latest
 revision of each label for this clip as JSONL, including background, original
 video timestamps, mapped sensor timestamps, and review provenance. Unsaved
@@ -161,7 +164,7 @@ uv run viz/trick_review.py sessions/a7s-028/C0771.MP4 \
   --attempt-model .build/attempts-v1/model.json
 ```
 
-Save the LED flash alignment first so the event bands use the video's clock.
+Use phone timing or save LED alignment first so the event bands use the video's clock.
 Click a listed event, click the event plot, or use **Previous event** /
 **Next event** to inspect the corresponding video. The review page groups
 overlapping two-second detection windows, including chains of neighboring windows,
@@ -259,8 +262,8 @@ and unsaved human edits are preserved. No hidden suggestion becomes a background
 label automatically. The mode, cutoff, and visibility settings are saved with
 the next label or skip, matching the other detection controls.
 
-LED alignment and an available trained model are required. Missing models and
-unverified alignment keep the audio queue visible with an explanation. Where
+Saved alignment (including a phone clock estimate) and an available trained
+model are required. Missing models and exploratory alignment keep the audio queue visible with an explanation. Where
 the model skipped sensor windows, candidates without sufficient scored coverage
 also stay visible as **model unchecked**. A successful scan with no matching
 detection can hide a candidate only in regions the model actually scored.
@@ -322,7 +325,7 @@ sessions have moved.
 
 ### Add motion suggestions to audio
 
-With saved LED alignment and usable sensor data, **Audio + extra motion candidates (experimental)**:
+With saved alignment and usable sensor data, **Audio + extra motion candidates (experimental)**:
 
 - Retains the audio candidates and their timestamps. Nearby acceleration peaks
   (within 100 ms) and angular-speed peaks (within 200 ms) add evidence to them.
@@ -352,19 +355,38 @@ This was development data, not a held-out evaluation, and does not demonstrate
 better review efficiency. Audio-only remains the default; saved mode choices are
 restored when reopening a review.
 
+## Phone timing and optional LED refinement
+
+New recordings made inside Skate Judge on iOS 18.2+ can open automatically
+aligned. **ESTIMATED phone timing** identifies a clock-based estimate and reports
+network timing uncertainty near the clock checks. This is not a guarantee of
+frame-level accuracy: camera exposure, sensor timing, and extrapolation beyond
+the checks add uncertainty. Short recordings may have no measured drift.
+Older exports, older iOS versions, and external-camera clips fall back to LED
+matching. Recording in Apple's separate Camera app does not supply this evidence.
+
+LED matches are optional refinements when phone timing is available. One match
+corrects offset and keeps any drift estimated from the phone clocks; two or more
+matches determine both offset and drift from the LEDs. The original phone
+evidence remains intact in the movie's JSON sidecar. Matches are never fabricated
+from Wi-Fi estimates. Labels made with estimated timing retain that provenance;
+dataset exports preserve the timing evidence hashes and flag the estimate in
+their warnings. Later alignment changes flag affected labels for review.
+
 ## Match the LED to the sensor clock
 
 The **Accelerometer + gyroscope** plots are visible beneath the audio timeline
 by default, with a sample count, start/finish markers, and the same time window.
-Click the motion plot to seek. **LED sync & sensors** beneath the video jumps
-to the plots and the expanded **Match LED flashes · align video and sensors** controls. Then
+Click the motion plot to seek. **Alignment & sensors** beneath the video jumps
+to the plots and the expanded **LED matches · align or refine timing** controls. Then
 pause at the first frame where a known
 LED flash lights up, select its recorded sync ID, and click **Match flash to
 current frame**. Match another flash near the end to estimate drift. The app
 stores correspondences in the existing session `video_sync.jsonl` and uses the
 same alignment validation as `capture/session.py align`. Re-matching an ID
 updates its correspondence with an appended revision. Inconsistent fits are
-rejected before writing. A single point assumes no drift. The terminal asks for
+rejected before writing. A single point assumes no drift unless phone timing
+has already measured it. The terminal asks for
 a second flash only when one distinct flash is matched; with two or more it
 reports the active drift correction. Re-matching a flash updates its existing
 point rather than counting it as an additional flash.
@@ -378,7 +400,7 @@ LED events and a closed/imported session. Recovered recordings retain acquisitio
 and storage warnings, including an incomplete recording after a failed stop.
 
 The motion plots show raw acceleration and angular-speed magnitudes.
-When no measured alignment exists, the suggested offset comes only from file
+When neither a usable phone estimate nor LED matches exist, the suggested offset comes only from file
 creation times and is explicitly **unaligned / exploratory**. Manually adjusting
 offset/scale also gives an exploratory overlay. Sync matches must refer to
 flashes actually visible in the selected clip; flashes from another clip cannot

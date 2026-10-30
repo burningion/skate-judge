@@ -28,8 +28,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 if __package__:
     from .video import CHUNK_LIMIT, VideoConflict, VideoStore
+    from .clock_alignment import clock_mapping
 else:
     from video import CHUNK_LIMIT, VideoConflict, VideoStore
+    from clock_alignment import clock_mapping
 
 OUTCOMES = ("make", "bail", "fall", "background", "unknown")
 BACKGROUND_ACTIVITIES = ("rolling", "pushing", "carrying", "waiting", "handling", "mixed", "other")
@@ -885,7 +887,11 @@ def sync_point(args):
     points[args.sync_id] = value
     scale, offset, count = fit_video_points(list(points.values()))
     append_json(args.session / "video_sync.jsonl", value)
-    summary = ("1 flash matched. Add a second flash near the end to estimate clock drift."
+    mapping = video_mapping_details(args.session, args.video)
+    scale, offset, count = mapping["scale"], mapping["offset_s"], mapping["points"]
+    summary = ("1 flash matched. Phone clock drift retained; add a second flash to measure it optically."
+               if mapping["source"] == "led_phone_clock" else
+               "1 flash matched. Add a second flash near the end to estimate clock drift."
                if count == 1 else
                f"Using {count} flash matches; drift correction is active "
                f"(clock scale {scale:.9f}, offset {offset:+.6f}s).")
@@ -893,17 +899,40 @@ def sync_point(args):
 
 
 def video_mapping(path, video):
+    mapping = video_mapping_details(path, video)
+    return mapping["scale"], mapping["offset_s"], mapping["points"]
+
+
+def video_mapping_details(path, video):
     # Re-entering a flash corrects its existing correspondence.
     points = {
         row["sync_id"]: row
         for row in read_jsonl(path / "video_sync.jsonl")
         if row["video"] == video
     }
-    if not points:
-        raise ValueError(
-            "No video sync points. Use align with the visible LED flash time first."
-        )
-    return fit_video_points(list(points.values()))
+    return resolve_video_mapping(list(points.values()), lambda: clock_mapping(path, video))
+
+
+def resolve_video_mapping(points, load_clock):
+    """Shared precedence for live review and immutable dataset snapshots."""
+    estimate = None
+    if len(points) < 2:
+        try:
+            estimate = load_clock()
+        except ValueError:
+            if not points:
+                raise
+    if points:
+        scale, offset, count = fit_video_points(points)
+        if count == 1 and estimate and estimate["drift_estimated"]:
+            point = points[0]
+            scale = estimate["scale"]
+            return dict(scale=scale, offset_s=point["t_s"] - scale * point["video_s"],
+                        points=1, source="led_phone_clock", drift_estimated=True)
+        return dict(scale=scale, offset_s=offset, points=count, source="led")
+    if estimate:
+        return estimate
+    raise ValueError("No video alignment. Match an LED flash or import an in-app phone clock estimate.")
 
 
 def fit_video_points(points):
@@ -950,9 +979,14 @@ def build_label(args):
     if "closed_utc" not in meta:
         raise ValueError("Stop recording before adding or correcting offline labels.")
     if args.video:
-        scale, offset, count = video_mapping(args.session, args.video)
+        mapping = video_mapping_details(args.session, args.video)
+        scale, offset, count = mapping["scale"], mapping["offset_s"], mapping["points"]
         start, end = scale * args.start + offset, scale * args.end + offset
-        if count == 1:
+        if mapping["source"] == "phone_clock":
+            print("Using estimated phone clock alignment; LED matches can refine it later.")
+        elif mapping["source"] == "led_phone_clock":
+            print("One LED match fixes offset; drift is estimated from the phone clock.")
+        elif count == 1:
             print("Only one sync point: assuming no clock drift.")
     else:
         start, end = args.start, args.end
@@ -984,7 +1018,7 @@ def build_label(args):
         created_utc=datetime.now(timezone.utc).isoformat(),
     )
     if args.video:
-        row["video_mapping"] = dict(scale=scale, offset_s=offset, points=count)
+        row["video_mapping"] = mapping
     if args.outcome == "background" and activity:
         row["activity"] = activity
     if args.replace and existing[args.replace].get("video") == args.video:

@@ -288,9 +288,19 @@ export function validInterval(start, end, duration) {
 }
 
 export function requireCurrentServer(data, saved) {
-  if (data.api_version !== 8 || !saved.label_context || typeof saved.labels_revision !== "string") {
+  if (data.api_version !== 9 || !saved.label_context || typeof saved.labels_revision !== "string") {
     throw new Error("Restart the review server to load the updated tools: press Ctrl+C in its terminal, rerun the review command, then reload this page. Refreshing the browser alone keeps the older Python server running.");
   }
+}
+
+export function alignmentDescription(mapping, matched = true) {
+  if (!mapping || !matched) return "UNALIGNED / EXPLORATORY — no saved alignment is applied to this overlay.";
+  if (mapping.source === "phone_clock") {
+    const uncertainty = (mapping.network_uncertainty_s * 1000).toFixed(1);
+    return `ESTIMATED phone timing · network uncertainty near clock checks: ±${uncertainty} ms. ${mapping.drift_estimated ? "Clock drift estimated." : "Clock drift unmeasured."} LED matches can refine alignment.`;
+  }
+  if (mapping.source === "led_phone_clock") return "Using 1 saved LED match for offset and phone timing for estimated drift. Match an ending flash to measure drift with LEDs.";
+  return `Using ${mapping.points} saved LED sync point(s).${mapping.points === 1 ? " Drift is unmeasured with one point." : " Offset and drift come from LED matches."}`;
 }
 
 export function stepFrame(times, current, direction) {
@@ -781,7 +791,7 @@ export async function init() {
     const chosenOutcome = outcome ?? $("outcome").value;
     if (decision === "label" && !chosenOutcome) { status("Choose an outcome, or use Not a trick for a false positive.", true); return; }
     if (decision === "label" && (!labelContext.available || !alignmentMatches())) {
-      status("Use the saved LED alignment before labeling. Reset the offset and scale to the saved match, or reload.", true); return;
+      status("Use the saved alignment before labeling. Reset the offset and scale to the saved phone estimate or LED match, or reload.", true); return;
     }
     const clean = {id: pair.id, start_s: pair.start_s, end_s: pair.end_s, note: $("note").value,
       status: decision === "skip" ? "rejected" : "reviewed", outcome: chosenOutcome,
@@ -846,8 +856,11 @@ export async function init() {
   }
   function alignmentStatus() {
     const matched = alignmentMatches();
-    $("alignment").textContent = matched ? `Using ${mapping.points} saved LED sync point(s).${mapping.points === 1 ? " Drift is unmeasured with one point." : ""}` : "UNALIGNED / EXPLORATORY — the offset has not been verified against this clip’s LED flashes.";
-    $("alignment").className = matched ? "help" : "help warning";
+    $("alignment").textContent = alignmentDescription(mapping, matched);
+    $("alignment").className = matched && mapping.source !== "phone_clock" ? "help" : "help warning";
+    const estimate = data.sensor.clock_estimate;
+    $("clock-estimate").hidden = !estimate;
+    if (estimate) $("clock-estimate").textContent = `Phone timing evidence retained: ${estimate.probe_count} clock checks. Network uncertainty excludes camera exposure and sensor timing errors; accuracy outside the measured interval is unverified. LED refinements keep the original estimate.`;
   }
   alignmentStatus();
   for (const sync of data.sensor.syncs) {

@@ -149,11 +149,14 @@ The normal flow is:
    diagnostics and incomplete files for recovery.
 
 Starting the two devices together does not establish accurate synchronization.
-Keep the existing visible LED method: match beginning and ending flashes to
-estimate video offset and drift. Phone wall time, button time, and HTTP response
-time are diagnostics, not sensor timestamps. The first release performs flash
-matching in desktop review and exports video as **unaligned** until then.
-Automatic flash detection and in-app alignment come later.
+The October 30 update adds optional clock evidence for in-app recordings on
+iOS 18.2+: the actual AVFoundation start PTS and timed board-clock exchanges,
+converted into the movie's capture-clock timeline. Review applies this as an
+explicit estimate with network uncertainty; wall time and button time remain
+diagnostics. Beginning/end LED matches can refine or replace the estimate and
+remain the fallback for older iOS versions, older exports, and external cameras.
+See [the implemented timing behavior](../ios/README.md). Automatic LED detection
+and an in-app alignment editor remain deferred.
 
 **Native implementation**
 

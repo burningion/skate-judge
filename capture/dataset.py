@@ -16,10 +16,12 @@ from pathlib import Path
 import tempfile
 
 if __package__:
-    from .session import OUTCOMES, fit_video_points
+    from .session import OUTCOMES, resolve_video_mapping
+    from .clock_alignment import fit_clock_evidence
     from .motion_events import board_motion_context, overlapping_events
 else:
-    from session import OUTCOMES, fit_video_points
+    from session import OUTCOMES, resolve_video_mapping
+    from clock_alignment import fit_clock_evidence
     from motion_events import board_motion_context, overlapping_events
 
 CHANNELS = ("t_s", "ax", "ay", "az", "gx", "gy", "gz")
@@ -52,6 +54,19 @@ def inspect_session(path, *, allow_sample_gaps=False):
     board_events = board_motion_context(meta, content["events.jsonl"] if events_present else None)
     history = jsonl(content["labels.jsonl"])
     latest = {row["id"]: row for row in history}
+    clock_files = sorted({str(Path(row["video"]).with_suffix(".json")) for row in latest.values()
+                          if isinstance(row.get("video"), str) and row["video"]
+                          and Path(row["video"]).name == row["video"]})
+    for name in clock_files:
+        content[name] = (path / name).read_bytes() if (path / name).exists() else b""
+
+    def estimate(video):
+        try:
+            data = content.get(str(Path(video).with_suffix(".json")), b"")
+            evidence = json.loads(data).get("clock_alignment") if data else None
+            return fit_clock_evidence(evidence, meta, video) if evidence is not None else None
+        except (KeyError, TypeError, AttributeError, ValueError) as error:
+            raise ValueError("Invalid phone clock evidence") from error
     if any(not isinstance(identity, str) or not identity for identity in latest):
         raise ValueError("Labels need nonempty string IDs")
     syncs = {(row["video"], row["sync_id"]): row for row in jsonl(content["video_sync.jsonl"])}
@@ -89,9 +104,13 @@ def inspect_session(path, *, allow_sample_gaps=False):
         else:
             video = label["video"]
             try:
-                scale, offset, points = fit_video_points(
-                    [row for (name, _), row in syncs.items() if name == video])
-                if points == 1:
+                mapping = resolve_video_mapping([row for (name, _), row in syncs.items() if name == video], lambda: estimate(video))
+                scale, offset, points = mapping["scale"], mapping["offset_s"], mapping["points"]
+                if mapping["source"] == "phone_clock":
+                    warnings.append("estimated phone clock alignment; no LED matches")
+                elif mapping["source"] == "led_phone_clock":
+                    warnings.append("one LED match; drift estimated from phone timing")
+                elif points == 1:
                     warnings.append("only one flash match; drift is unmeasured")
                 if not valid_range or any(
                     not finite(label.get(key)) or not math.isclose(
@@ -161,6 +180,7 @@ def inspect_session(path, *, allow_sample_gaps=False):
                 warnings=session_warnings,
                 board_motion={k: v for k, v in board_events.items() if k not in ("events", "warnings")},
                 events_file_present=events_present,
+                clock_alignment_files=clock_files,
                 label_revisions=len(history), unique_labels=len(latest),
                 eligible_attempts=sum(r["outcome_training"] and r["label"]["outcome"] != "background" for r in rows),
                 background=sum(r["outcome_training"] and r["label"]["outcome"] == "background" for r in rows),

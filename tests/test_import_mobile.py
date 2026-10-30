@@ -51,6 +51,28 @@ class MobileImportTests(unittest.TestCase):
         self.assertTrue((self.output / "source_export_manifest.json").exists())
         self.assertEqual((self.source / f"onboard-{IDENTITY}.bin").read_bytes(), (self.output / f"onboard-{IDENTITY}.bin").read_bytes())
 
+    def test_optional_phone_clock_evidence_survives_import_and_refinement(self):
+        from test_clock_alignment import clock_fixture
+        from capture.clock_alignment import clock_mapping
+        self.bundle()
+        _, timing = clock_fixture("phone.mov", offset=0)
+        timing.update(sessionID=IDENTITY, bootID="1234abcd")
+        # Use the decoded raw origin; the phone stores absolute board times.
+        meta = import_bundle(self.source, self.output)
+        for probe in timing["probes"]:
+            t = (probe["sendVideoS"] + probe["receiveVideoS"]) / 2
+            probe["deviceUS"] = meta["device_origin_us"] + t * 1e6
+        sidecar = self.source / "phone.json"
+        sidecar.write_text(json.dumps(dict(clock_alignment=timing)))
+        self.inventory()
+        target = self.root / "with-timing"
+        import_bundle(self.source, target)
+        self.assertEqual((target / "phone.json").read_bytes(), sidecar.read_bytes())
+        self.assertEqual(clock_mapping(target, "phone.mov")["source"], "phone_clock")
+        import_in_place(self.source)
+        self.assertEqual(clock_mapping(self.source, "phone.mov")["source"], "phone_clock")
+        self.assertFalse((self.source / "video_sync.jsonl").exists())
+
     def test_in_place_import_preserves_originals_and_review_edits_and_runs_once(self):
         self.bundle()
         originals = {p.name: p.read_bytes() for p in self.source.iterdir()}

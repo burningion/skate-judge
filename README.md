@@ -239,7 +239,9 @@ With FFmpeg installed, run:
 uv run viz/trick_review.py sessions/<session>/webcam-<id>.webm
 ```
 
-Open the printed local URL, match the LED flashes, then label attempts in the
+Open the printed local URL. In-app iPhone recordings can open with estimated
+clock alignment; optionally refine it with LED matches. Other recordings still
+need LED matching. Then label attempts in the
 same page. Choose the trick and outcome, or **Not a trick** for an onset false
 positive; saving advances to the next suggestion. Labels save to `labels.jsonl`
 with aligned sensor times. **Download saved labels** exports this clip's current

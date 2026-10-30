@@ -175,6 +175,21 @@ class SensorContextTests(unittest.TestCase):
         (self.session / "metadata.json").write_text(json.dumps(self.meta))
         return sensor_context(self.source)
 
+    def test_phone_clock_estimate_is_loaded_without_led_matches_and_bad_evidence_is_optional(self):
+        from test_clock_alignment import clock_fixture
+        self.meta, evidence = clock_fixture(self.source.name)
+        sidecar = self.source.with_suffix(".json")
+        sidecar.write_text(json.dumps(dict(clock_alignment=evidence)))
+        result = self.context()
+        self.assertEqual(result["mapping"]["source"], "phone_clock")
+        self.assertEqual(result["clock_estimate"], result["mapping"])
+        self.assertFalse((self.session / "video_sync.jsonl").exists())
+        evidence["bootID"] = "another-boot"
+        sidecar.write_text(json.dumps(dict(clock_alignment=evidence)))
+        result = self.context()
+        self.assertIsNone(result["mapping"])
+        self.assertTrue(any("Phone clock estimate unavailable" in warning for warning in result["warnings"]))
+
     def test_failed_download_explains_missing_files_and_preserves_board_error(self):
         result = self.context()
         self.assertEqual(result["samples"], [])
@@ -390,7 +405,7 @@ class ReviewHttpTests(unittest.TestCase):
 
     def test_range_and_head(self):
         with self.request("/api/data") as response:
-            self.assertEqual(json.load(response)["api_version"], 8)
+            self.assertEqual(json.load(response)["api_version"], 9)
         with self.request("/media.webm", headers={"Range": "bytes=10-19"}) as response:
             self.assertEqual(response.status, 206)
             self.assertEqual(response.read(), bytes(range(10, 20)))
@@ -426,7 +441,7 @@ class ReviewHttpTests(unittest.TestCase):
             self.assertEqual(json.load(response)["points"], 1)
         with self.request("/api/sync", dict(sync_id=2, review_s=9)) as response:
             mapping = json.load(response)
-            self.assertEqual(mapping, dict(scale=1, offset_s=10.25, points=2))
+            self.assertEqual(mapping, dict(scale=1, offset_s=10.25, points=2, source="led"))
         sync_path = self.session / "video_sync.jsonl"
         original = sync_path.read_text()
         self.assertEqual(json.loads(original.splitlines()[0])["video_s"], .75)
@@ -441,6 +456,43 @@ class ReviewHttpTests(unittest.TestCase):
                 self.request("/api/sync", value)
             self.assertEqual(caught.exception.code, 400)
         self.assertFalse((self.session / "video_sync.jsonl").exists())
+
+    def test_phone_alignment_labels_and_led_refinement_survive_reload_with_pts_origin(self):
+        from test_clock_alignment import clock_fixture
+        meta, evidence = clock_fixture("example.webm", offset=10)
+        self.data["source_pts_origin_s"] = -.25
+        (self.session / "metadata.json").write_text(json.dumps(meta))
+        sidecar = self.session / "example.json"
+        sidecar.write_text(json.dumps(dict(clock_alignment=evidence)))
+        original_timing = sidecar.read_bytes()
+        (self.session / "events.jsonl").write_text("\n".join(json.dumps(dict(
+            kind="sync", sync_id=i, edge=1, led_enabled=True, boot_id=meta["boot_id"],
+            device_us=meta["device_origin_us"] + t * 1e6)) for i, t in [(1, 11), (2, 19)]))
+        with self.request("/api/review") as response:
+            initial = json.load(response)["label_context"]
+        self.assertTrue(initial["available"])
+        self.assertEqual(initial["mapping"]["source"], "phone_clock")
+        with self.request("/api/label", self.decision()) as response:
+            saved = json.load(response)
+        self.assertFalse(saved["intervals"][0]["label_stale"])
+        label_path = self.session / "labels.jsonl"
+        original_labels = label_path.read_bytes()
+        label = json.loads(original_labels)
+        self.assertAlmostEqual(label["start_s"], 10 + 1.0002 * .75)
+        self.assertEqual(label["video_mapping"]["source"], "phone_clock")
+        with self.request("/api/sync", dict(sync_id=1, review_s=1)) as response:
+            mapping = json.load(response)
+        self.assertEqual(mapping["source"], "led_phone_clock")
+        self.assertAlmostEqual(mapping["scale"] * .75 + mapping["offset_s"], 11)
+        with self.request("/api/review") as response:
+            self.assertTrue(json.load(response)["intervals"][0]["label_stale"])
+        with self.request("/api/sync", dict(sync_id=2, review_s=9)) as response:
+            mapping = json.load(response)
+        self.assertEqual(mapping, dict(scale=1, offset_s=10.25, points=2, source="led"))
+        self.assertEqual(label_path.read_bytes(), original_labels)
+        self.assertEqual(sidecar.read_bytes(), original_timing)
+        with self.request("/api/review") as response:
+            self.assertEqual(json.load(response)["label_context"]["mapping"], mapping)
 
     def aligned(self):
         self.data["source_pts_origin_s"] = -.25

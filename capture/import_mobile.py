@@ -243,7 +243,7 @@ def main():
         parser.exit(1, f"Import failed: {error}\n")
     print(f"Imported {meta['samples']:,} samples into {args.output}")
     print("Quality: " + (", ".join(meta["onboard_quality"]["issues"]) or "passed"))
-    print("Open the original video in viz/trick_review.py and match the beginning/ending LED flashes.")
+    print("Open the original video in viz/trick_review.py. In-app phone timing is applied when available; LED matches can align or refine it.")
 
 
 if __name__ == "__main__":

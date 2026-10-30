@@ -28,14 +28,15 @@ import sys
 import threading
 
 VERSION = 2
-API_VERSION = 8
+API_VERSION = 9
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_ATTEMPT_MODEL = ROOT / ".build" / "attempts-v1" / "model.json"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping
+from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping_details
+from capture.clock_alignment import clock_mapping
 from capture.motion_events import board_motion_context
 from capture.jumps import detect_jumps
 from capture.import_mobile import import_in_place, safe_name
@@ -278,14 +279,17 @@ def sensor_context(source):
         issues.append(meta["onboard_stop_error"])
     if issues:
         result["warnings"].append(f"Board recording reported {', '.join(issues)}; sensor data may be incomplete.")
-    if (session / "video_sync.jsonl").exists():
-        sys.path.insert(0, str(ROOT)) if str(ROOT) not in sys.path else None
-        from capture.session import video_mapping
+    result["clock_estimate"] = None
+    try:
+        result["clock_estimate"] = clock_mapping(session, source.name)
+    except ValueError as error:
+        result["warnings"].append(str(error))
+    if (session / "video_sync.jsonl").exists() or result["clock_estimate"]:
         try:
-            scale, offset, count = video_mapping(session, source.name)
-            result["mapping"] = dict(scale=scale, offset_s=offset, points=count)
+            result["mapping"] = video_mapping_details(session, source.name)
         except ValueError as error:
-            result["warnings"].append(str(error))
+            if str(error) not in result["warnings"]:
+                result["warnings"].append(str(error))
     result["motion"] = motion_features(result["samples"])
     result["jumps"] = detect_jumps(result["samples"])
     jump_problem = ""
@@ -504,8 +508,8 @@ def make_server(directory, media, data, port):
                        or "Align this clip to a closed sensor recording to save labels.",
                        mapping=None, coverage=None)
         try:
-            scale, offset, count = video_mapping(session, data["video"])
-            context["mapping"] = dict(scale=scale, offset_s=offset, points=count)
+            context["mapping"] = video_mapping_details(session, data["video"])
+            scale, offset = context["mapping"]["scale"], context["mapping"]["offset_s"]
             duration = meta.get("duration_s")
             if "closed_utc" in meta and finite_number(duration) and duration > 0:
                 origin = data["source_pts_origin_s"]
@@ -738,7 +742,7 @@ def make_server(directory, media, data, port):
                         scale, offset, count = fit_video_points(list(points.values()))
                         sync_point(argparse.Namespace(session=session, video=data["video"],
                                                       sync_id=identity, video_seconds=original_s))
-                        data["sensor"]["mapping"] = dict(scale=scale, offset_s=offset, points=count)
+                        data["sensor"]["mapping"] = video_mapping_details(session, data["video"])
                     self.json_response(200, data["sensor"]["mapping"])
                     return
                 validated = validate_review(value, data["duration_s"])

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {test} from "node:test";
 import {readFile} from "node:fs/promises";
-import {attemptEventTimeline, attemptFilterTimeline, attemptWindow, backgroundWindow, boardEventTimeline, groupAttemptEvents, init, jumpEventTimeline, mergeReviews, motionTimeline, nearestFrame, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAttemptCandidates, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
+import {alignmentDescription, attemptEventTimeline, attemptFilterTimeline, attemptWindow, backgroundWindow, boardEventTimeline, groupAttemptEvents, init, jumpEventTimeline, mergeReviews, motionTimeline, nearestFrame, needsReview, nextPending, overlappingLabels, proposeCandidates, proposePairs, requireCurrentServer, screenAttemptCandidates, screenAudioCandidates, stepFrame, validInterval} from "../viz/trick_review.mjs";
 import {evaluateClips} from "../viz/evaluate_candidates.mjs";
 
 const opts = {threshold: .65, min_gap: .18, max_gap: .9};
@@ -371,11 +371,11 @@ async function controller(t, {legacyServer = false, intervals = [], onsets = [2,
     nodes.set(match[2], node);
   }
   const get = id => { assert.ok(nodes.has(id), `missing control ${id}`); return nodes.get(id); };
-  const mapping = {scale: 1, offset_s: 0, points: 2};
+  const mapping = sensor.mapping || {scale: 1, offset_s: 0, points: 2};
   const state = {revision: 0, labels_revision: "0", intervals,
     settings: {...opts, offset: 999, scale: .99},
     label_context: {available: true, mapping, coverage: [0, 20]}};
-  const data = {api_version: 8, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4", review_mode: reviewMode,
+  const data = {api_version: 9, video: "test.mp4", duration_s: 20, source_pts_origin_s: 0, media_url: "/media.mp4", review_mode: reviewMode,
     video_timing: {fps: 120000 / 1001, frame_times_s: frameTimes},
     audio: {onsets: onsets.map(time_s => ({time_s, strength: 1})),
       strength: Array(200).fill(0), waveform_min: [], waveform_max: [], step_s: .1},
@@ -434,6 +434,22 @@ test("missing sensor data keeps flash controls visible and explains recovery", a
   assert.equal(get("sync-id").disabled, true);
   await get("save-sync").click();
   assert.equal(calls.length, 0);
+});
+
+test("phone timing is visibly estimated while optional LED matching remains available", async t => {
+  const mapping = {scale: 1, offset_s: 0, points: 0, source: "phone_clock", drift_estimated: true,
+    network_uncertainty_s: .012, probe_count: 12};
+  const {get, calls} = await controller(t, {sensor: {mapping, clock_estimate: mapping,
+    syncs: [{id: 1, session_s: 2}], sync_unavailable_reason: ""}});
+  assert.match(get("alignment").textContent, /ESTIMATED phone timing.*±12.0 ms/);
+  assert.doesNotMatch(get("alignment").textContent, /0 saved LED/);
+  assert.equal(get("clock-estimate").hidden, false);
+  assert.match(get("clock-estimate").textContent, /12 clock checks/);
+  assert.equal(get("save-sync").disabled, false);
+  assert.equal(calls.length, 0, "loading an estimate must not create LED matches or labels");
+  assert.match(alignmentDescription({source: "led_phone_clock", points: 1}), /1 saved LED.*estimated drift/);
+  assert.match(alignmentDescription({source: "led", points: 2}), /Offset and drift come from LED/);
+  assert.match(alignmentDescription(mapping, false), /EXPLORATORY/);
 });
 
 function jumpFixture() {

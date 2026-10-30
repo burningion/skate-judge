@@ -62,6 +62,24 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual([r["label"]["outcome"] for r in labels], ["bail", "make"])
         self.assertEqual(set(windows), {"a7s-001/same-id", "a7s-002/same-id"})
 
+    def test_phone_alignment_is_eligible_with_estimated_provenance_and_frozen_timing(self):
+        from test_clock_alignment import clock_fixture
+        meta, evidence = clock_fixture("clip.mp4", scale=1, offset=-10, times=(10.2, 10.5, 11.2))
+        meta = json.loads((self.path / "metadata.json").read_text()) | meta
+        (self.path / "metadata.json").write_text(json.dumps(meta))
+        sidecar = self.path / "clip.json"
+        sidecar.write_text(json.dumps(dict(clock_alignment=evidence)))
+        (self.path / "video_sync.jsonl").unlink()
+        info, rows, windows = inspect_session(self.path)
+        self.assertTrue(rows[0]["eligible"], rows[0]["exclusion_reasons"])
+        self.assertIn("estimated phone clock alignment; no LED matches", rows[0]["warnings"])
+        self.assertEqual(info["clock_alignment_files"], ["clip.json"])
+        self.assertEqual(info["source_sha256"]["clip.json"], hashlib.sha256(sidecar.read_bytes()).hexdigest())
+        self.assertTrue(windows)
+        self.write_jsonl(self.path / "video_sync.jsonl", [dict(video="clip.mp4", sync_id=1, video_s=10, t_s=.1)])
+        _, rows, _ = inspect_session(self.path)
+        self.assertIn("stale alignment; review and save label again", rows[0]["exclusion_reasons"])
+
     def test_snapshot_contains_windows_provenance_and_cannot_be_overwritten(self):
         before = {p.name: p.read_bytes() for p in self.path.iterdir()}
         output = self.root / "dataset-v1"

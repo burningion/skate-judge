@@ -246,6 +246,24 @@ class AttemptIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "changed since snapshot"):
             detector.load_collection(self.dataset)
 
+    def test_phone_timing_snapshot_allows_missing_leds_and_checks_clock_evidence(self):
+        import hashlib
+        report_path = self.dataset / "report.json"
+        report = json.loads(report_path.read_text())
+        first = report["sessions"][0]
+        source = self.sessions / first["session_id"]
+        (source / "video_sync.jsonl").unlink()
+        first["source_sha256"]["video_sync.jsonl"] = hashlib.sha256(b"").hexdigest()
+        sidecar = source / "test.json"
+        sidecar.write_text('{"clock_alignment": "frozen evidence"}')
+        first["clock_alignment_files"] = ["test.json"]
+        first["source_sha256"]["test.json"] = landing.sha256(sidecar)
+        report_path.write_text(json.dumps(report))
+        detector.load_collection(self.dataset)
+        sidecar.write_text('{"clock_alignment": "changed"}')
+        with self.assertRaisesRegex(ValueError, "test.json.*changed since snapshot"):
+            detector.load_collection(self.dataset)
+
     def test_no_background_exposure_is_undefined_not_zero_false_alarm_rate(self):
         clip = clip_fixture()
         clip["exposure"][:] = 0
