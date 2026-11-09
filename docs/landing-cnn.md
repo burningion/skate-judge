@@ -1,5 +1,9 @@
 # Raw-signal landing CNN
 
+The [full-dataset experiment](full-classifier.md) uses v8, trains on all tricks
+with hand plants held out, and reports improved kickflip results separately
+from continuous attempt-and-landing inference.
+
 This is the original single-head experiment. The [expanded implementation](trick-cnn.md)
 adds magnitude inputs, a trick head, separable convolutions, actual int8 export,
 device benchmarks, and sensor event logging, with new matched-session results.

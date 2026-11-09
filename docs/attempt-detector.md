@@ -1,5 +1,12 @@
 # Detect trick attempts in continuous IMU recordings
 
+The [automatic-contact CNN pipeline](automatic-landing.md) adds sensor-only
+contact estimation and a landing network trained with the same automatic timing.
+
+The newer [full-dataset experiment](full-classifier.md) evaluates attempt finding
+and landing outcome together on v8, with hand plants excluded from training,
+and compares an all-trick contact-aligned CNN against the kickflip-only run.
+
 `learning/attempts.py` detects short trick attempts, with makes, bails, and falls
 in one positive class. It scans acceleration and gyro data without audio, video,
 labels, trick names, or manually supplied contact times at inference. It returns

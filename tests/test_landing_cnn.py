@@ -25,6 +25,28 @@ def tensors():
 
 
 class CNNTests(unittest.TestCase):
+    def test_trick_holdout_is_absent_from_every_session_training_fold(self):
+        raw = tensors()
+        y = np.array([1, 0, 1, 0, 1, 0])
+        groups = np.array(["a", "a", "b", "b", "c", "c"])
+        features = np.array([landing.extract_features(sensor_window(m), 1) for m in [.1, 2, .2, 3, .3, 4]])
+        mask = np.array([False, True, True, True, True, True])
+        original = cnn.fit_network
+        fits = []
+
+        def observed(x, targets, seed, epochs):
+            fits.append(x.copy())
+            return original(x, targets, seed, epochs)
+
+        with patch.object(cnn, "fit_network", side_effect=observed):
+            scores, _, folds, _ = cnn.evaluate(raw, y, groups, features, seeds=(0,), epochs=1,
+                                              training_mask=mask)
+        self.assertTrue(np.isfinite(scores[0]).all())
+        for x, fold in zip(fits, folds):
+            self.assertNotIn(0, fold["train_indices"])
+            self.assertTrue(set(fold["train_sessions"]).isdisjoint({fold["held_out_session"]}))
+            np.testing.assert_array_equal(x, raw[fold["train_indices"]])
+
     def test_resampling_uses_actual_timestamps_and_preserves_six_channels(self):
         times = np.arange(0, 2.5, .0051)
         channels = np.column_stack([times, 2 * times, landing.G + times, .1 * times, .2 * times, .3 * times])
