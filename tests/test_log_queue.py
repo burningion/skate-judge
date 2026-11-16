@@ -38,3 +38,15 @@ class LogQueueTests(unittest.TestCase):
                             str(root / "tests/native/log_queue_test.cpp"), "-o", binary],
                            check=True, capture_output=True, timeout=30)
             subprocess.run([binary], check=True, capture_output=True, timeout=30)
+
+    @unittest.skipUnless(shutil.which("c++"), "C++ compiler needed for live ring test")
+    def test_live_ring_never_returns_overwritten_bytes(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as directory:
+            binary = str(Path(directory) / "live-ring-test")
+            subprocess.run(["c++", "-std=c++17", "-O2", "-pthread", "-Wall", "-Wextra",
+                            "-I", str(root / "firmware/imu_logger"),
+                            str(root / "tests/native/live_ring_test.cpp"), "-o", binary],
+                           check=True, capture_output=True, timeout=30)
+            subprocess.run([binary], check=True, capture_output=True, timeout=60)
+

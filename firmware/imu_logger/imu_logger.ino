@@ -16,6 +16,7 @@
 #include "log_format.h"
 #include "battery_monitor.h"
 #include "motion_events.h"
+#include "live_ring.h"
 
 #ifndef IMU_MOTION_EVENTS
 #define IMU_MOTION_EVENTS 0 // Enable explicitly while validating on the physical board.
@@ -49,6 +50,9 @@ static constexpr uint16_t FIFO_BYTES = 896; // 128 raw tagged FIFO words.
 static Adafruit_NeoPixel pixels(SYNC_LED_COUNT, SYNC_LED_PIN,
   (SYNC_LED_RGBW ? NEO_GRBW : NEO_GRB) + NEO_KHZ800);
 static WebServer server(80);
+// Newest ~6 s of log bytes for a live listener; never read by the recorder.
+static constexpr size_t LIVE_RING_BYTES = 32768;
+static LiveRing<LIVE_RING_BYTES, 1024> liveRing;
 static uint32_t bootId;
 static uint8_t sensorAddress = 0;
 static int idleSda = -1, idleScl = -1;
@@ -175,6 +179,9 @@ static bool writePacket(State &s, uint8_t kind, uint64_t stamp, const void *payl
   }
   LogHeader header = logHeader(kind, size, packetSequence, stamp, payload);
   if (!logQueue.push(&header, sizeof(header), payload, size)) { s.error = "storage_buffer_full"; return false; }
+  // Copy for a live listener only after the packet is safely queued for storage,
+  // so live offsets equal recording-file offsets. This never blocks or fails a log.
+  liveRing.push(&header, sizeof(header), payload, size);
   ++packetSequence;
   s.queuePeak = max(s.queuePeak, uint32_t(logQueue.used()));
   s.bytes += sizeof(header) + size;
@@ -366,6 +373,7 @@ static bool startLog(State &s, const Command &command) {
   }
   if (!pollMotionEvents(s, true)) return false; // Clear idle events before opening the recording.
   logQueue.reset();
+  liveRing.reset();
   String path = String(recordingStorage->mount) + recordingStorage->path(s.id);
   if (!writerControl(OPEN_LOG, path.c_str())) { s.error = writerSnapshot().error; return false; }
   fifoUsed = 0; fifoDiscarded = false; packetSequence = 0;
@@ -565,13 +573,35 @@ static void statusResponse() {
   writer.diagnostics.json(diagnostics, sizeof(diagnostics), writer.written);
   char storageStatus[1000];
   snprintf(storageStatus, sizeof(storageStatus),
-    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_recovering\":%s,\"storage_recoveries\":%lu,\"storage_recovery_attempts\":%lu,\"storage_pending_bytes\":%lu,\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u,\"storage_diagnostics\":%s}",
+    ",\"storage\":\"%s\",\"storage_warning\":\"%s\",\"sd_ready\":%s,\"flash_ready\":%s,\"storage_buffer_bytes\":%u,\"storage_queue_peak_bytes\":%lu,\"storage_max_write_us\":%lu,\"storage_max_flush_us\":%lu,\"storage_recovering\":%s,\"storage_recoveries\":%lu,\"storage_recovery_attempts\":%lu,\"storage_pending_bytes\":%lu,\"storage_diagnostics_version\":2,\"sd_spi_hz\":%u,\"live_ring_bytes\":%u,\"storage_diagnostics\":%s}",
     recordingStorage->name, storageWarning, sdStorage.ready ? "true" : "false", flashStorage.ready ? "true" : "false",
     unsigned(LOG_QUEUE_BYTES), (unsigned long)s.queuePeak, (unsigned long)writer.maxWriteUs, (unsigned long)writer.maxFlushUs,
     writer.recovering ? "true" : "false", (unsigned long)writer.recoveries,
-    (unsigned long)writer.recoveryAttempts, (unsigned long)writer.pendingBytes, unsigned(SD_SPI_HZ), diagnostics);
+    (unsigned long)writer.recoveryAttempts, (unsigned long)writer.pendingBytes, unsigned(SD_SPI_HZ), unsigned(LIVE_RING_BYTES), diagnostics);
   body.remove(body.length() - 1);
   reply(200, "application/json", body + storageStatus);
+}
+// Live bytes of the active (or just-finished) recording, starting at a file
+// offset. Body: "LIV1", actual start offset, current end offset, then bytes.
+// The start moves forward if the listener fell more than the ring behind.
+static void liveResponse() {
+  if (usbRequest) { errorResponse(400, "Live data is available over Wi-Fi only."); return; }
+  String id = parameter("id");
+  State s = snapshot();
+  if (!validId(id) || strcmp(s.id, id.c_str())) { errorResponse(409, "Recording ID does not match."); return; }
+  String offsetText = parameter("offset");
+  char *end = nullptr;
+  unsigned long long requested = strtoull(offsetText.c_str(), &end, 10);
+  if (!offsetText.length() || offsetText[0] < '0' || offsetText[0] > '9' || *end || requested > 0xffffffffULL) {
+    errorResponse(400, "Expected a byte offset."); return;
+  }
+  static uint8_t buffer[12 + 8192];
+  uint32_t offset = uint32_t(requested), head = 0;
+  size_t count = liveRing.read(offset, buffer + 12, sizeof(buffer) - 12, head);
+  memcpy(buffer, "LIV1", 4); memcpy(buffer + 4, &offset, 4); memcpy(buffer + 8, &head, 4);
+  server.setContentLength(12 + count);
+  server.send(200, "application/octet-stream", "");
+  server.client().write(buffer, 12 + count);
 }
 static void enqueueControl(Action action) {
   if (!controlAllowed()) return;
@@ -752,6 +782,7 @@ static void pollUSB() {
     else if (route == "/start" && post) enqueueControl(START);
     else if (route == "/stop" && post) enqueueControl(STOP);
     else if (route == "/sync" && post) enqueueControl(FLASH);
+    else if (route == "/live") liveResponse();
     else if (route == "/files") listFiles();
     else if (route == "/file-info") fileRequest(true, false);
     else if (route == "/file") fileRequest(false, false);
@@ -786,6 +817,7 @@ void setup() {
   server.on("/start", HTTP_POST, [] { enqueueControl(START); });
   server.on("/stop", HTTP_POST, [] { enqueueControl(STOP); });
   server.on("/sync", HTTP_POST, [] { enqueueControl(FLASH); });
+  server.on("/live", HTTP_GET, liveResponse);
   server.on("/files", HTTP_GET, listFiles);
   server.on("/file-info", HTTP_GET, [] { fileRequest(true, false); });
   server.on("/file", HTTP_GET, [] { fileRequest(false, false); });

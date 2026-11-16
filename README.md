@@ -15,7 +15,9 @@ falls. Separate [feature-based](docs/landing-baseline.md) and
 not-landed kickflips using known contact times. An expanded
 [multi-task CNN](docs/trick-cnn.md) adds experimental trick naming, magnitude
 channels, separable convolutions, int8 export, and device benchmarks. Its
-accuracy remains limited; live automatic judgments are not implemented.
+accuracy remains limited. The iPhone app has experimental
+[live detection](docs/live-detection.md): a sound on tricks it calls landed,
+and a video edit of every detected attempt.
 A board-mounted IMU measures the board's motion, which does not always reveal
 whether the rider stayed on.
 Start with [your first dataset recording](docs/first-recording.md). The
@@ -35,6 +37,10 @@ learning/landing.py   offline landing baseline, session-held-out evaluation, sav
 learning/attempts.py  continuous IMU attempt detection, event evaluation, saved inference
 learning/landing_cnn.py raw six-channel landing CNN, grouped evaluation, saved inference
 learning/trick_cnn.py matched multi-task/magnitude/separable CNN experiments
+learning/streaming_landing.py live (causal) event policy and held-out replay
+learning/export_live_model.py phone model resource and Swift parity fixture
+learning/learning_curve.py results versus number of training recordings
+capture/live_stream.py live packet decoding without look-ahead
 learning/export_trick_cnn.py int8 conversion and held-out quantization evaluation
 firmware/trick_benchmark/ standalone S3 inference parity/memory/latency benchmark
 capture/controls.html local webcam recording and countdown UI (--controls)

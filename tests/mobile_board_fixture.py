@@ -2,17 +2,40 @@
 
 PYTHONPATH=.:tests python3 tests/mobile_board_fixture.py
 Then run the SkateJudge UI tests in an iPhone simulator.
+
+To exercise live trick detection, replay a raw recording in real time:
+SKATEJUDGE_LIVE_REPLAY=ios/SkateJudgeCore/Tests/SkateJudgeCoreTests/Fixtures/live_excerpt.bin \
+  PYTHONPATH=.:tests python3 tests/mobile_board_fixture.py
 """
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
+from pathlib import Path
 import re
+import struct
 import socket
 import time
 from urllib.parse import parse_qs, urlsplit
 import zlib
 
-from capture.onboard_log import META, encode_packet
+from capture.onboard_log import HEADER, META, encode_packet
 from test_onboard import fixture
+
+REPLAY = os.environ.get("SKATEJUDGE_LIVE_REPLAY")
+
+
+def replay_packets(identity):
+    """Packets of a real recording, re-labelled for this session, with their arrival times."""
+    data, packets, offset = Path(REPLAY).read_bytes(), [], 0
+    while offset + HEADER.size <= len(data):
+        _, kind, _, length, _, stamp, _ = HEADER.unpack_from(data, offset)
+        packets.append((kind, stamp, data[offset + HEADER.size:offset + HEADER.size + length]))
+        offset += HEADER.size + length
+    meta = dict(json.loads(packets[0][2]), id=identity, boot_id="1234abcd", storage="sd")
+    packets[0] = (META, packets[0][1], json.dumps(meta).encode())
+    first = packets[1][1]
+    return [((stamp - first) / 1e6 if n else 0, encode_packet(kind, n, stamp, payload))
+            for n, (kind, stamp, payload) in enumerate(packets)]
 
 
 class Board:
@@ -22,6 +45,13 @@ class Board:
     start = 0
     raw = b""
     faults = {}
+    replay = None
+
+    def grow(self):
+        """In replay mode the recording grows in real time until it is stopped."""
+        if self.replay and self.phase == "recording":
+            elapsed = time.monotonic() - self.start / 1e6
+            self.raw = b"".join(packet for at, packet in self.replay if at <= elapsed)
 
     def fail(self, name):
         remaining = self.faults.get(name, 0)
@@ -32,7 +62,8 @@ class Board:
 
     def status(self):
         now = int(time.monotonic() * 1e6)
-        return dict(protocol=1, phase=self.phase, id=self.identity, boot_id="1234abcd",
+        self.grow()
+        return dict(live_ring_bytes=32768, protocol=1, phase=self.phase, id=self.identity, boot_id="1234abcd",
                     storage="sd", sensor_ready=True, storage_ready=True, led_enabled=True,
                     accel_hz=196.5, gyro_hz=196.5, accel_samples=416, gyro_samples=416,
                     zero_accel=0, io_errors=0, fifo_overruns=0, error="", free_bytes=1_000_000_000,
@@ -64,11 +95,17 @@ class Handler(BaseHTTPRequestHandler):
         route = urlsplit(self.path)
         params = parse_qs(route.query)
         if route.path == "/health":
-            return self.reply(dict(fixture="skatejudge-ios-v1"))
+            return self.reply(dict(fixture="skatejudge-ios-v1", live_replay="yes" if REPLAY else "no"))
         if route.path == "/status":
             if board.fail("status_failures"):
                 return self.drop_connection()
             return self.reply(board.status())
+        if route.path == "/live":
+            if params.get("id", [""])[0] != board.identity:
+                return self.reply(dict(error="Recording ID does not match."), 409)
+            board.grow()
+            offset = min(int(params.get("offset", ["0"])[0]), len(board.raw))
+            return self.reply(struct.pack("<4sII", b"LIV1", offset, len(board.raw)) + board.raw[offset:offset + 8192])
         info = dict(id=board.identity, storage="sd", bytes=len(board.raw), crc32=f"{zlib.crc32(board.raw):08x}")
         if route.path == "/files":
             return self.reply([info] if board.raw else [])
@@ -101,6 +138,7 @@ class Handler(BaseHTTPRequestHandler):
             board.raw = b"".join(packets)
             board.identity, board.phase, board.marker = identity, "recording", 0
             board.start = int(time.monotonic() * 1e6)
+            board.replay = replay_packets(identity) if REPLAY else None
         elif route.path in ("/sync", "/stop"):
             if params.get("id", [""])[0] != board.identity:
                 return self.reply(dict(error="Recording ID mismatch"), 409)
@@ -111,6 +149,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 if board.fail("stop_failures"):
                     return self.reply(dict(error="Simulated stop failure. Retry this session."), 503)
+                board.grow()
                 board.phase = "saved"
         elif route.path != "/test-led":
             return self.reply(dict(error="Unsupported fixture operation"), 404)

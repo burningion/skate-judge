@@ -32,7 +32,8 @@ API_VERSION = 9
 SAMPLE_RATE = 16000
 HOP = 160
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ATTEMPT_MODEL = ROOT / ".build" / "attempts-v1" / "model.json"
+# The same attempt forest the iPhone app runs live, so review shows what the phone would detect.
+DEFAULT_ATTEMPT_MODEL = ROOT / "ios/SkateJudgeCore/Sources/SkateJudgeCore/Resources/live_model.json"
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from capture.session import append_json, build_label, file_lock, read_jsonl, video_mapping_details
@@ -338,7 +339,8 @@ def attempt_context(session, model_path, cache_path):
                     raise ValueError("Model or sensor data changed during detection; restart to try again.")
                 write_json(cache_path, dict(identity=identity, scan=scan))
         result.update(scan, availability="ready" if scan["status"] == "scanned" else "unknown",
-                      model_name=model_path.parent.name, model_path=str(model_path.resolve()))
+                      model_name=("iPhone live model" if model_path.resolve() == DEFAULT_ATTEMPT_MODEL.resolve()
+                                  else model_path.parent.name), model_path=str(model_path.resolve()))
         if scan["status"] != "scanned":
             result["message"] = "No usable two-second IMU windows. Attempt detection is unknown for this recording."
         return result
@@ -776,7 +778,7 @@ def main():
     parser.add_argument("--jump-peaks", action="store_true",
                         help="Review estimated jump peaks from a waist/back-mounted IMU")
     parser.add_argument("--attempt-model", type=Path, default=DEFAULT_ATTEMPT_MODEL,
-                        help="Trained attempt model JSON (default: .build/attempts-v1/model.json)")
+                        help="Attempt model JSON (default: the model bundled with the iPhone app)")
     args = parser.parse_args()
     try:
         directory, media, data = prepare(args.video, args.rebuild, args.attempt_model, args.jump_peaks)

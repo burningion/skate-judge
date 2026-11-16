@@ -157,7 +157,11 @@ learned from reviewed attempts (makes, bails, and falls) and background. The
 model's score cutoff is 0.50. Raw hardware interrupts do not qualify an attempt.
 No audio, video, or labels from the recording under review are needed at inference.
 
-The default model is `.build/attempts-v1/model.json`. To use another trained run:
+The default is the attempt forest bundled with the iPhone app
+(`ios/SkateJudgeCore/Sources/SkateJudgeCore/Resources/live_model.json`), so
+review shows the same detector the phone runs [live](live-detection.md). Review
+still groups its offline detections as described below; the phone's one-event-
+per-burst policy and landed calls are not shown here. To use another trained run:
 
 ```bash
 uv run viz/trick_review.py sessions/a7s-028/C0771.MP4 \

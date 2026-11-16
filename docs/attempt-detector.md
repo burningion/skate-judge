@@ -14,7 +14,7 @@ approximate event timestamps and uncalibrated attempt scores. This is an offline
 detector; it does not name tricks, judge landings, or trigger feedback on the board.
 
 The [review page](trick-review.md#potential-trick-attempts-and-raw-board-observations)
-loads `.build/attempts-v1/model.json` by default (override with `--attempt-model`)
+loads the attempt forest bundled with the iPhone app by default (override with `--attempt-model`)
 and shows these learned detections in its event panel. Raw sensor interrupts
 remain available in a separate view; their fixed thresholds are not the attempt
 model. New labels require a new dataset export and training run before they

@@ -436,6 +436,17 @@ recoveries. Its maximum local clock error was 49.94 µs. Original board files
 were retained; the bench artifacts are in
 `.build/clock-sync-bench-20261009-150709/`.
 
+## Live data for a listener
+
+`GET /live?id=<recording id>&offset=<file byte offset>` returns a copy of the
+newest log bytes from a 32 KiB RAM ring: `LIV1`, the actual start offset and
+the recording's current end offset (both uint32, little-endian), then up to
+8192 bytes. It is available over Wi-Fi during and after a recording, and
+`/status` reports `live_ring_bytes`. The acquisition task never waits for a
+listener and storage is unaffected; a listener that falls behind is moved
+forward and must find the next packet by magic and CRC. See
+[live detection](live-detection.md).
+
 ## Recovery and explicit deletion
 
 Use `list` while idle to find IDs on both mounted media, including their `storage`
